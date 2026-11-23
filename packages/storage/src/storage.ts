@@ -102,7 +102,7 @@ class GuardedDisk implements Disk {
     const asked = options?.range;
     const range = asked === undefined ? undefined : checkRange(asked);
     // A driver that did not opt in never gets the argument, whatever its own second parameter means.
-    if (!this.#ranges) return withoutRange(await this.#disk.open(checked));
+    if (!this.#ranges) return withoutRange(await this.#disk.open(checked), range !== undefined);
     if (range === undefined) return wholeFile(await this.#disk.open(checked));
     return confirmedRange(range, await this.#disk.open(checked, { range }));
   }

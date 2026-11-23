@@ -12,6 +12,9 @@ const isCount = (value: unknown): value is number => typeof value === 'number' &
 export function checkRange(range: ByteRange): ByteRange {
   const value = range as unknown as Record<string, unknown> | null;
   if (typeof value !== 'object' || value === null) throw new RangeError('A range is { start, end? } or { last }.');
+  for (const key of Reflect.ownKeys(value)) {
+    if (key !== 'start' && key !== 'end' && key !== 'last') throw new RangeError(`A range is { start, end? } or { last }: it has no "${String(key)}".`);
+  }
   const { start, end, last } = value;
   if (last !== undefined) {
     if (start !== undefined || end !== undefined) throw new RangeError('A range is { start, end? } or { last }, not both.');
@@ -48,9 +51,9 @@ const emptyBody = () => new ReadableStream<Uint8Array>({ start: (controller) => 
  * The file as the app gets it when it asked for no range, or the driver did not opt in: one with a `range` or an `acceptsRanges` is
  * built from named fields, each read once, so neither a made-up `range` nor a claim of the driver passes. The body is taken as the whole file; `startServer()` holds it to `size`.
  */
-export function withoutRange(file: OpenedFile): OpenedFile {
-  const { range, acceptsRanges } = file;
-  if (range === undefined && acceptsRanges === undefined) return file;
+export function withoutRange(file: OpenedFile, asked = false): OpenedFile {
+  // A range was asked: always rebuilt, so a getter that answers later what it did not answer at first reaches nobody.
+  if (!asked && file.range === undefined && file.acceptsRanges === undefined) return file;
   const { body, size, lastModified, contentType } = file;
   return { body, size, lastModified, contentType };
 }

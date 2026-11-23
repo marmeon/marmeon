@@ -45,7 +45,7 @@ describe('checkRange', () => {
       { start: '1' }, { start: 1n }, { start: 3, end: 2 }, { start: 0, end: -1 }, { start: 0, end: 1.5 }, { start: 0, end: Number.NaN },
       { last: -1 }, { last: 1.5 }, { last: Number.NaN }, { last: '2' },
       { start: 0, last: 1 }, { end: 3, last: 1 }, { last: 1, start: undefined, end: 0 },
-      {}, { end: 3 }, null, undefined, 3, 'bytes=0-1', [],
+      {}, { end: 3 }, { start: 0, length: 4 }, { start: 0, End: 4 }, { last: 1, extra: true }, null, undefined, 3, 'bytes=0-1', [],
     ];
     for (const range of bad) expect(() => checkRange(range as ByteRange), inspect(range)).toThrow(RangeError);
   });

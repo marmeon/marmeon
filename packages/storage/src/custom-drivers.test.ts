@@ -343,6 +343,26 @@ describe('open() with a range on the disk of a driver', () => {
     expect([file.range, await text(file)]).toEqual([undefined, '0123456789']);
   });
 
+  it('a driver that did not opt in and whose range and acceptsRanges show up only on a later read: the result never shows them', async () => {
+    let rangeReads = 0;
+    let claimReads = 0;
+    const disk = await diskOf(
+      opening(async (inner, key) => {
+        const file = await inner.open(key as string);
+        return Object.defineProperties({}, {
+          body: { value: file.body, enumerable: true },
+          size: { value: file.size, enumerable: true },
+          lastModified: { value: file.lastModified, enumerable: true },
+          contentType: { value: file.contentType, enumerable: true },
+          range: { get: () => (rangeReads++ === 0 ? undefined : { start: 2, end: 4 }), enumerable: true },
+          acceptsRanges: { get: () => (claimReads++ === 0 ? undefined : true), enumerable: true },
+        }) as OpenedFile;
+      }),
+    );
+    const file = await disk.open('digits.txt', { range: { start: 2, end: 4 } });
+    expect([file.range, file.range, file.acceptsRanges, file.acceptsRanges, await text(file)]).toEqual([undefined, undefined, undefined, undefined, '0123456789']);
+  });
+
   it('the answer of an opted-in driver is read once: a getter that changes afterwards does not matter', async () => {
     let sizeReads = 0;
     let rangeReads = 0;
@@ -453,7 +473,7 @@ describe('open() with a range on the disk of a driver', () => {
   it('negative: a range of the caller that is not whole never reaches the driver', async () => {
     let calls = 0;
     const disk = await diskOf(opening(async (inner, key) => (calls++, inner.open(key as string)), true));
-    for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 0, last: 1 }, { last: 0.5 }, { first: 1 }]) {
+    for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 0, last: 1 }, { last: 0.5 }, { first: 1 }, { start: 0, length: 4 }, { start: 0, End: 4 }, { last: 1, extra: true }]) {
       await expect(disk.open('digits.txt', { range } as never)).rejects.toThrow(RangeError);
     }
     expect(calls).toBe(0);

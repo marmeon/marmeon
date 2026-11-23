@@ -118,7 +118,7 @@ describe.each(DISK_KINDS.map((kind) => [kind.name, kind] as const))('the %s disk
 
     it('negative: a range that is not whole numbers, or in two forms, is a RangeError before the file is looked at', async () => {
       const disk = await make();
-      for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 1.5 }, { last: -1 }, { start: 0, last: 1 }, {}]) {
+      for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 1.5 }, { last: -1 }, { start: 0, last: 1 }, {}, { start: 0, length: 4 }, { start: 0, End: 4 }, { last: 1, extra: true }]) {
         await expect(disk.open('missing.txt', { range } as never), JSON.stringify(range)).rejects.toThrow(RangeError);
       }
       await expect(disk.open('missing.txt', { range: { start: 0 } })).rejects.toThrow(FileNotFoundError);
