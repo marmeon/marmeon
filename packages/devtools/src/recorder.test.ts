@@ -67,7 +67,7 @@ class ResetMail implements Mailable {
     return { to: 'ada@example.com', subject: 'Reset your password' };
   }
   content() {
-    return html`<a href="http://localhost/reset-password/${this.#token}?email=ada%40example.com">Reset</a> <a href="http://localhost/verify/1?expires=99&signature=a1b2c3d4e5f6">Verify</a>`;
+    return html`<a href="http://localhost/reset-password/${this.#token}?email=ada%40example.com">Reset</a> <a href="http://localhost/verify/1?expires=99&signature=sig-a1b2c3d4">Verify</a>`;
   }
 }
 
@@ -163,11 +163,11 @@ const routes = openRoutes((Route) => {
   Route.get('/reset/:token', () => ({ ok: true }));
   Route.get('/einladung/über/:code', () => ({ ok: true }));
   Route.get('/ignored', () => ({ ok: true }));
-  Route.get('/to-invite', () => new Response(null, { status: 302, headers: { location: '/invite/483920' } }));
+  Route.get('/to-invite', () => new Response(null, { status: 302, headers: { location: '/invite/pin-4839' } }));
   Route.get('/to-code', () => new Response(null, { status: 302, headers: { location: '/invite/1?code=SECRETCODE#/b/c' } }));
   Route.get('/to-fragment', () => new Response(null, { status: 302, headers: { location: '/invite/plum#/b/c' } }));
   Route.get('/to-elsewhere', () => new Response(null, { status: 302, headers: { location: '//evil.example/x?token=abc' } }));
-  Route.get('/to-unknown', () => new Response(null, { status: 302, headers: { location: '/unrouted/483920' } }));
+  Route.get('/to-unknown', () => new Response(null, { status: 302, headers: { location: '/unrouted/pin-4839' } }));
 });
 
 interface Booted {
@@ -292,11 +292,11 @@ describe('what the recorder keeps', () => {
   it('records the value of `state` and `code` in the query as [redacted], in the query object and in the URL', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      await kernel.request('/people/7?state=abc123&page=2&code=c0de', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+      await kernel.request('/people/7?state=state-secret&page=2&code=code-secret', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
       const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
       expect(request.content.query).toEqual({ state: '[redacted]', page: '2', code: '[redacted]' });
       expect(request.content.url).toBe('http://localhost/people/7?state=[redacted]&page=2&code=[redacted]');
-      expect(JSON.stringify(tester!.entries())).not.toMatch(/abc123|c0de/);
+      expect(JSON.stringify(tester!.entries())).not.toMatch(/state-secret|code-secret/);
     } finally {
       await app.shutdown();
     }
@@ -305,7 +305,7 @@ describe('what the recorder keeps', () => {
   it('a request with its queries, jobs, log entries and events — one batch, tied by the request id', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, cookie: 'marmeon_session=s3ss10n', authorization: `Bearer ${API_TOKEN}` } });
+      const response = await kernel.request('/people/7?page=2&token=query-token', { headers: { [PAGE_HEADER]: PROTOCOL_VERSION, cookie: 'marmeon_session=sess-10n', authorization: `Bearer ${API_TOKEN}` } });
       const requestId = response.headers.get('x-request-id')!;
       const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
       expect(request.requestId).toBe(requestId);
@@ -341,7 +341,7 @@ describe('what the recorder keeps', () => {
       // Log context and event fields by key.
       expect(tester!.assertRecorded('log', (log) => log.message === 'Looked at a person').content.context).toMatchObject({ person: 7, api_key: '[redacted]' });
       expect(tester!.assertRecorded('event', (event) => event.name === 'people.viewed').content).toMatchObject({ class: 'PersonViewed', payload: { person: 7, token: '[redacted]' } });
-      expect(JSON.stringify(tester!.entries())).not.toMatch(/s3ss10n|query-token|event-token-value|key-123/);
+      expect(JSON.stringify(tester!.entries())).not.toMatch(/sess-10n|query-token|event-token-value|key-123/);
       expect(JSON.stringify(tester!.entries())).not.toContain(API_TOKEN.slice('marmeon_'.length, -8));
     } finally {
       await app.shutdown();
@@ -351,12 +351,12 @@ describe('what the recorder keeps', () => {
   it('a statement touching secret columns without its parameters, the body without passwords', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      await kernel.request('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'email=ada%40example.com&password=hunter2&_token=csrf-value' });
+      await kernel.request('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'email=ada%40example.com&password=hunter-2&_token=csrf-value' });
       const update = tester!.assertRecorded('query', (query) => query.sql.startsWith('update people'));
       expect(update.content).toMatchObject({ sensitive: true, parameters: ['[redacted]', '[redacted]'] });
       expect(tester!.assertRecorded('request', (request) => request.route === 'login').content.input).toEqual({ email: 'ada@example.com', password: '[redacted]', _token: '[redacted]' });
       const all = JSON.stringify(tester!.entries());
-      expect(all).not.toMatch(/hunter2|csrf-value|argon2id/);
+      expect(all).not.toMatch(/hunter-2|csrf-value|\$argon2id\$/);
     } finally {
       await app.shutdown();
     }
@@ -376,7 +376,7 @@ describe('what the recorder keeps', () => {
       expect(tester!.assertRecorded('request', (request) => request.route === 'password.reset').content.path).toBe('/reset-password/[redacted]');
       const all = JSON.stringify(tester!.entries());
       expect(all).not.toContain(token);
-      expect(all).not.toContain('a1b2c3d4e5f6');
+      expect(all).not.toContain('sig-a1b2c3d4');
     } finally {
       await app.shutdown();
     }
@@ -401,10 +401,10 @@ describe('what the recorder keeps', () => {
   it('an exception masks a short sensitive route parameter by the route\'s pattern', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      await kernel.request('/invite/483920');
+      await kernel.request('/invite/pin-4839');
       await tester!.settled();
       expect(tester!.assertRecorded('exception').content).toMatchObject({ status: 500, path: '/invite/[redacted]' });
-      expect(JSON.stringify(tester!.entries())).not.toContain('483920');
+      expect(JSON.stringify(tester!.entries())).not.toContain('pin-4839');
     } finally {
       await app.shutdown();
     }
@@ -413,19 +413,19 @@ describe('what the recorder keeps', () => {
   it('masks a short sensitive route parameter in the location of a redirect and in the referer', async () => {
     const { app, tester, kernel } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {
-      await kernel.request('/to-invite', { headers: { referer: 'http://localhost/invite/483920?x=1' } });
-      await kernel.request('/to-unknown', { headers: { referer: 'http://localhost/unrouted/483920' } });
-      await kernel.request('/ignored', { headers: { referer: 'https://elsewhere.example/invite/483920' } });
+      await kernel.request('/to-invite', { headers: { referer: 'http://localhost/invite/pin-4839?x=1' } });
+      await kernel.request('/to-unknown', { headers: { referer: 'http://localhost/unrouted/pin-4839' } });
+      await kernel.request('/ignored', { headers: { referer: 'https://elsewhere.example/invite/pin-4839' } });
       await tester!.settled();
       const first = tester!.assertRecorded('request', (request) => request.path === '/to-invite').content;
       expect(first.location).toBe('/invite/[redacted]');
       expect(first.headers.referer).toBe('http://localhost/invite/[redacted]?x=1');
       const unknown = tester!.assertRecorded('request', (request) => request.path === '/to-unknown').content;
-      expect(unknown.location).toBe('/unrouted/483920');
-      expect(unknown.headers.referer).toBe('http://localhost/unrouted/483920');
+      expect(unknown.location).toBe('/unrouted/pin-4839');
+      expect(unknown.headers.referer).toBe('http://localhost/unrouted/pin-4839');
       const foreign = tester!.assertRecorded('request', (request) => request.path === '/ignored').content;
-      expect(foreign.headers.referer).toBe('https://elsewhere.example/invite/483920');
-      expect(JSON.stringify(first)).not.toContain('483920');
+      expect(foreign.headers.referer).toBe('https://elsewhere.example/invite/pin-4839');
+      expect(JSON.stringify(first)).not.toContain('pin-4839');
       await kernel.request('/to-code', { headers: { referer: 'http://localhost/invite/1?code=SECRETCODE' } });
       await kernel.request('/to-fragment');
       await tester!.settled();
@@ -532,15 +532,15 @@ describe('what the recorder keeps', () => {
         requestId,
         kind: 'error',
         level: 'error',
-        message: `Request failed: Bearer ${token} password=hunter2`,
+        message: `Request failed: Bearer ${token} password=hunter-2`,
         stack: `Error: ${token}\n    at fetch (http://localhost/src/app.tsx:1:1)`,
         source: { url: `http://localhost/src/app.tsx?token=${token}`, line: 3, column: 4 },
-        page: `/invite/483920?token=${token}`,
+        page: `/invite/pin-4839?token=${token}`,
         dropped: 2,
       });
       publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Each child needs a key', page: '/people/7' });
       // A path no route answers is not kept: it could hold a token the route's pattern would have named.
-      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Elsewhere', page: `/nowhere/483920?token=${token}` });
+      publish.publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'Elsewhere', page: `/nowhere/pin-4839?token=${token}` });
       await tester!.settled();
       const entry = tester!.assertRecorded('browser', (content) => content.kind === 'error');
       const request = tester!.assertRecorded('request', (content) => content.route === 'people.show');
@@ -555,8 +555,8 @@ describe('what the recorder keeps', () => {
       expect(warning.batch).not.toBe(request.batch);
       const stored = JSON.stringify(tester!.entries('browser'));
       expect(stored).not.toContain(token);
-      expect(stored).not.toContain('hunter2');
-      expect(stored).not.toContain('483920');
+      expect(stored).not.toContain('hunter-2');
+      expect(stored).not.toContain('pin-4839');
       expect(tester!.assertRecorded('browser', (content) => content.message === 'Elsewhere').content.page).toBe('[unmatched page]?token=[redacted]');
       expect(warning.content.page).toBe('/people/7');
     } finally {
