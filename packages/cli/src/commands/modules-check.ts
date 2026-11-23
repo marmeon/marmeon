@@ -3,12 +3,12 @@ import type { CommandInput } from '../command.ts';
 import { warnUnlisted } from '../unlisted.ts';
 
 /**
- * Warns about job and notification classes under `modules/` that no module lists. Only a warning, exit 0; the files are
+ * Warns about job classes under `modules/` that no module lists and no provider your app lists, and notification classes that no module lists. Only a warning, exit 0; the files are
  * parsed, never imported. A step of `marmeon build`, which runs it; `marmeon dev` does the same at its start.
  */
 export class ModulesCheckCommand {
   static command = 'modules:check';
-  static description = 'Warn about job and notification classes no module lists';
+  static description = 'Warn about job classes that no module and no provider of the app lists, and notification classes that no module lists';
   static hidden = true;
   /** Registers the modules and boots nothing, like `route:types` — `marmeon build` runs it without secrets. */
   static boots = 'build' as const;
@@ -20,7 +20,7 @@ export class ModulesCheckCommand {
   }
 
   handle({ output, root }: CommandInput): number {
-    warnUnlisted(output, root, this.#app.modules);
+    warnUnlisted(output, root, this.#app);
     return 0;
   }
 }

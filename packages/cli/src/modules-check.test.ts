@@ -1,6 +1,8 @@
 import { cpSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createApplication, providerJobs } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
+import { ModulesCheckCommand } from './commands/modules-check.ts';
 import { marmeon, repo } from './__fixtures__/cli.js';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -43,5 +45,38 @@ describe('marmeon modules:check (unlisted jobs and notifications)', { timeout: 3
     expect(check.code).toBe(0);
     expect(check.stderr).not.toContain('is in no module');
     expect(marmeon(app, ['list']).stdout).not.toContain('modules:check');
+  });
+});
+
+describe('ModulesCheckCommand with an app in the build phase', () => {
+  class ListedJob {
+    static readonly job = 'system.listed';
+    handle() {}
+  }
+  class JobsProvider {
+    static [providerJobs] = [ListedJob];
+  }
+
+  async function run(providers: (typeof JobsProvider)[]): Promise<string[]> {
+    const root = realpathSync(tempDir('marmeon-modules-check-'));
+    for (const [file, name, value] of [['Listed', 'ListedJob', 'system.listed'], ['Unlisted', 'UnlistedJob', 'system.unlisted']]) {
+      mkdirSync(join(root, 'modules/system/jobs'), { recursive: true });
+      writeFileSync(join(root, `modules/system/jobs/${file}.ts`), `export class ${name} {\n  static readonly job = '${value}';\n}\n`);
+    }
+    const app = await createApplication({ root, discover: false, providers }, { phase: 'build', env: {} });
+    const warnings: string[] = [];
+    const output = { warn: (text: string) => warnings.push(text) } as never;
+    expect(new ModulesCheckCommand(app).handle({ output, root } as never)).toBe(0);
+    return warnings;
+  }
+
+  it('stays silent about the job of a provider the app lists, and warns about the one nobody lists', async () => {
+    const warnings = await run([JobsProvider]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("UnlistedJob (static job 'system.unlisted') is in no module's jobs");
+  });
+
+  it('warns about both when the app lists no provider', async () => {
+    expect(await run([])).toHaveLength(2);
   });
 });

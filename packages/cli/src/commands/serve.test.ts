@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Application, Logger } from '@marmeon/core';
+import { providerJobs, type Application, type Logger } from '@marmeon/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import type { CommandInput } from '../command.ts';
@@ -10,6 +10,7 @@ import { noPrompt } from '../prompt.ts';
 import { ServeCommand } from './serve.ts';
 
 const migrations = vi.hoisted(() => ({ close: vi.fn(), watch: vi.fn() }));
+const unlisted = vi.hoisted(() => ({ warnUnlisted: vi.fn((..._args: unknown[]) => 0) }));
 const server = vi.hoisted(() => ({ close: vi.fn(async () => {}), lastError: { close: vi.fn(), idle: vi.fn() }, startLastError: vi.fn(), startServer: vi.fn() }));
 
 vi.mock('@marmeon/server', () => ({
@@ -25,12 +26,14 @@ vi.mock('@marmeon/server/internal', () => ({
 }));
 vi.mock('./route-types.ts', () => ({ writeRouteTypes: async () => true, RouteTypesCommand: class {} }));
 vi.mock('../migration-watch.ts', () => ({ watchMigrations: migrations.watch }));
-vi.mock('../unlisted.ts', () => ({ warnUnlisted: () => 0 }));
+vi.mock('../unlisted.ts', () => ({ warnUnlisted: unlisted.warnUnlisted }));
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
+
+let lastApp: Application | undefined;
 
 /** Runs `marmeon serve` for an app that is stubbed, and stops it with SIGINT once the server listens. */
 async function serve(nodeEnv: string, root = '/nowhere', warn: (text: string) => void = () => {}) {
@@ -38,7 +41,8 @@ async function serve(nodeEnv: string, root = '/nowhere', warn: (text: string) =>
   server.startServer.mockImplementation(async () => ({ close: server.close }));
   server.startLastError.mockImplementation(async () => server.lastError);
   migrations.watch.mockImplementation(async () => ({ close: migrations.close }));
-  const app = { container: { has: () => false }, modules: [], shutdownTimeoutMs: 10_000 } as unknown as Application;
+  const app = { container: { has: () => false }, modules: [], providers: [class Provider { static [providerJobs] = []; }], definition: { root }, shutdownTimeoutMs: 10_000 } as unknown as Application;
+  lastApp = app;
   const logger = { info: () => {} } as unknown as Logger;
   const devProcesses = { all: () => [] } as unknown as DevProcesses;
   const command = new ServeCommand(app, logger, {} as RouteTypes, devProcesses);
@@ -61,6 +65,20 @@ describe('marmeon serve and the last-error file', () => {
     await serve('production');
     expect(server.startServer).toHaveBeenCalledTimes(1);
     expect(server.startLastError).not.toHaveBeenCalled();
+  });
+});
+
+describe('marmeon serve and the check for unlisted jobs', () => {
+  it('hands the app, with its providers and its definition, to the check in development', async () => {
+    await serve('development', '/some/root');
+    expect(unlisted.warnUnlisted).toHaveBeenCalledTimes(1);
+    expect(unlisted.warnUnlisted.mock.calls[0]?.[1]).toBe('/some/root');
+    expect(unlisted.warnUnlisted.mock.calls[0]?.[2]).toBe(lastApp);
+  });
+
+  it('does not run it for a production server', async () => {
+    await serve('production');
+    expect(unlisted.warnUnlisted).not.toHaveBeenCalled();
   });
 });
 

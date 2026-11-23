@@ -138,8 +138,10 @@ A command of your own, or of a package, prints its document with `output.json({ 
 - **The scheduler** starts when a module schedules tasks.
 - **`bootstrap/routes.ts`** is written on every start, and again when a view is added or removed. Route names and views are then
   known to the type checker without running `route:types` yourself.
-- **A warning** names every class under `modules/` with a literal `static job` or `static notification` that no module lists. The
-  files are only read, never run, and the registration stays explicit. `marmeon build` prints the same warning.
+- **A warning** names every class under `modules/` with a literal `static job` or `static notification` that no module lists.
+  A job also counts as listed when a provider of your app lists it (its `providers` or a module's), matched by the job's name.
+  A provider that only discovery adds does not count: a class under `modules/` with that package's job name still gets the warning, so give it a job name of its own. A package's provider that you list yourself does count. A job class of a workspace package below `modules/` gets the warning while only a discovered provider lists it: list it in a module, too.
+  The files are only read, never run, and the registration stays explicit. `marmeon build` prints the same warning.
 
 The worker and the scheduler stop and start with the server, so a code change reaches them too. One that ends on its own is
 started again a second later. One that ends right after its start, say with a configuration error, stays down until you save a
@@ -403,6 +405,8 @@ Every class and token the container binds, every class a module lists, such as j
 there by its name: `make(Mailer)` and `jobs.dispatch(SendWelcomeMailJob, …)` need no import. A helper is built on first use, and
 one whose package the app lacks says what to install. A result that is a promise is awaited. Tab completes the helpers, the names,
 `repos.`, `config.` and route names in `url('`. `.ls` lists them all, `.help` the REPL's commands.
+
+Tinker also knows the jobs of every provider by class name. Such a name never takes the place of another name or of a helper. A repository takes its name back once the repositories are loaded, and an input that writes the name out loads them.
 
 The session has one scope from start to end. The log carries no request context.
 

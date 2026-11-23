@@ -449,7 +449,7 @@ pnpm marmeon check
 pnpm marmeon route:list
 ```
 
-`marmeon check` finds what this recipe is built to avoid. `modules` warns about a job class under `modules/` that no module lists:
+`marmeon check` finds what this recipe is built to avoid. `modules` warns about a job class under `modules/` that no module lists and no provider your app lists:
 a job nobody registered would be queued and never run. `throttle` warns about a route that anyone may call to change something
 and nothing limits; the request is not reported because `authenticate()` declares that it only lets signed-in users through. The
 [check](check.md#the-app-checks) page lists the others.
