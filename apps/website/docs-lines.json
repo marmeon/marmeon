@@ -2,9 +2,9 @@
   "format": 1,
   "lines": {
     "1.x": {
-      "version": "1.2.2",
-      "tag": "v1.2.2",
-      "commit": "b46e1ab1c918ee8e405c8873269a7774f7723825"
+      "version": "1.2.3",
+      "tag": "v1.2.3",
+      "commit": "5535cfca79559319aaab85ccbb9a2179508081bb"
     }
   }
 }
