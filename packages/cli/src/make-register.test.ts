@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { BUILT_IN } from './built-in.ts';
 import { CommandArgumentsError, CommandRegistry, type CommandClass } from './command.ts';
@@ -597,5 +597,78 @@ describe('make:command and make:seeder register themselves', () => {
     expect(() => command(root, ['prune-invoices'])).toThrow(CommandArgumentsError);
     expect(() => seeder(root, ['invoice'])).toThrow(CommandArgumentsError);
     expect(() => readFileSync(join(root, 'modules/billing/seeders/invoiceSeeder.ts'))).toThrow();
+  });
+});
+
+describe('make:migration stamps behind the migrations of every module', () => {
+  const other = (root: string, name: string) => {
+    mkdirSync(join(root, 'modules/sales/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/sales/migrations', name), '');
+  };
+  const written = (root: string) => readdirSync(join(root, 'modules/billing/migrations'));
+  beforeEach(() => vi.useFakeTimers({ now: new Date('2026-11-23T10:00:00Z'), toFake: ['Date'] }));
+  afterEach(() => vi.useRealTimers());
+
+  it('gives the file the second after a migration of another module that is ahead', () => {
+    const { root } = app();
+    other(root, '2099_06_01_120000_create_orders_table.ts');
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(written(root)).toEqual(['2099_06_01_120001_create_invoices_table.ts']);
+    expect(lines.some((line) => line.startsWith('! '))).toBe(false);
+  });
+
+  it('warns about a newer stamp that is no date, writes the file with the stamp of today and exits 0', () => {
+    const { root } = app();
+    other(root, '2099_13_45_990000_create_orders_table.ts');
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('! '))).toEqual([
+      '! modules/sales/migrations/2099_13_45_990000_create_orders_table.ts has a timestamp that is no date, so a new migration cannot be put behind it — rename it with a valid one.',
+    ]);
+    expect(written(root)).toEqual(['2026_11_23_100000_create_invoices_table.ts']);
+    expect(lines.some((line) => line.startsWith('✓ Created modules/billing/migrations/'))).toBe(true);
+  });
+
+  it('keeps the file behind its own module when a stamp of another module is no date', () => {
+    const { root } = app();
+    mkdirSync(join(root, 'modules/billing/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/billing/migrations/2099_01_01_000000_create_lines_table.ts'), '');
+    other(root, '2099_13_45_990000_create_orders_table.ts');
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('! '))).toHaveLength(1);
+    expect(written(root)).toEqual(['2099_01_01_000000_create_lines_table.ts', '2099_01_01_000001_create_invoices_table.ts']);
+  });
+
+  it('stamps with now and still writes the file when its own module has no room behind its newest', () => {
+    const { root } = app();
+    mkdirSync(join(root, 'modules/billing/migrations'), { recursive: true });
+    writeFileSync(join(root, 'modules/billing/migrations/9999_12_31_235959_create_lines_table.ts'), '');
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('! '))).toEqual(['! modules/billing/migrations/9999_12_31_235959_create_lines_table.ts has a timestamp that leaves no room behind it — rename it with an earlier one.']);
+    expect(written(root)).toEqual(['2026_11_23_100000_create_invoices_table.ts', '9999_12_31_235959_create_lines_table.ts']);
+  });
+
+  it('ignores a migrations entry of another module that is a file', () => {
+    const { root } = app();
+    mkdirSync(join(root, 'modules/sales'), { recursive: true });
+    writeFileSync(join(root, 'modules/sales/migrations'), '');
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(lines.some((line) => line.startsWith('! '))).toBe(false);
+    expect(written(root)).toEqual(['2026_11_23_100000_create_invoices_table.ts']);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('warns about a migrations folder of another module that cannot be read, and stamps behind its own module', ({ onTestFinished }) => {
+    const { root } = app();
+    mkdirSync(join(root, 'modules/sales/migrations'), { recursive: true });
+    chmodSync(join(root, 'modules/sales/migrations'), 0o000);
+    onTestFinished(() => chmodSync(join(root, 'modules/sales/migrations'), 0o755));
+    const { code, lines } = migration(root);
+    expect(code).toBe(0);
+    expect(lines.filter((line) => line.startsWith('! '))).toEqual(['! modules/sales/migrations cannot be read, so a new migration is stamped behind its own module only.']);
+    expect(written(root)).toEqual(['2026_11_23_100000_create_invoices_table.ts']);
   });
 });

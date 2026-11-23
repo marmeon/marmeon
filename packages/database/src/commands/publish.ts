@@ -2,12 +2,12 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'n
 import { basename, dirname, join, posix, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Application, CommandArgumentsError, type ServiceProviderClass } from '@marmeon/core';
-import { escapesRoot, findPackage, printable, withCode, readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
+import { escapesRoot, findPackage, newestMigration, printable, stampsBehind, withCode, readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { assignMigrations, migrationDeclarations, type PackageMigrationFile, type PackageMigrations, show } from '../package-migrations.ts';
 import { installRoot } from '../workspace.ts';
 import { describeLang, langState, noLang, readLangPackages, writeLang, type Installed } from './publish-lang.ts';
-import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE, timestamp } from './publish-migration.ts';
+import { appMigrations, findMigration, publishMigration, SYSTEM_MODULE } from './publish-migration.ts';
 
 const KEBAB = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 /** A valid npm package name: never a path. */
@@ -561,28 +561,6 @@ function safe(output: CommandInput['output']): CommandInput['output'] {
   } as unknown as CommandInput['output'];
 }
 
-/** The timestamps for `count` new files, a second apart and behind `newest`, or why that cannot be. */
-function stamps(count: number, newest: string | undefined, newestPath: string | undefined, root: string): { stamps: Date[] } | { error: string } {
-  const now = Math.floor(Date.now() / 1000) * 1000;
-  let start = now;
-  if (newest !== undefined && newest >= timestamp(new Date(now))) {
-    const match = /^(\d{4})_(\d{2})_(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(newest);
-    const [year, month, day, hour, minute, second] = (match?.slice(1) ?? []).map(Number) as number[];
-    if (!match || month! < 1 || month! > 12 || day! < 1 || day! > 31 || hour! > 23 || minute! > 59 || second! > 59) {
-      return { error: `${relative(root, newestPath!)} has a timestamp that is no date, so a copy cannot be put behind it — rename it with a valid one.` };
-    }
-    start = Date.UTC(year!, month! - 1, day!, hour, minute, second) + 1000;
-  }
-  const dates = Array.from({ length: count }, (_, index) => new Date(start + index * 1000));
-  for (const date of dates) {
-    const stamp = timestamp(date);
-    if (!/^\d{4}_/.test(stamp) || (newest !== undefined && stamp <= newest)) {
-      return { error: `${relative(root, newestPath!)} has a timestamp that leaves no room behind it — rename it with an earlier one.` };
-    }
-  }
-  return { stamps: dates };
-}
-
 const KINDS = ['migrations', 'lang'] as const;
 type Kind = (typeof KINDS)[number];
 
@@ -904,7 +882,7 @@ function write(input: CommandInput, packages: readonly string[], plans: readonly
   const before = appMigrations(modules);
   const count = plans.reduce((sum, plan) => sum + plan.missing.length, 0);
   // One clock for the run, a second apart, behind every migration the app has: a copy can never sort before one that ran.
-  const timed = stamps(count, before.newest, before.newestPath, input.root);
+  const timed = stampsBehind(newestMigration(modules), count, input.root);
   if ('error' in timed) {
     output.error(timed.error);
     return 1;

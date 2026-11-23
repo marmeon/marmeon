@@ -4,7 +4,7 @@ import { CommandArgumentsError, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import { leavesProject } from '../write-guard.ts';
 import { writeProjectFile } from '@marmeon/core/internal';
-import { dependsOn, KEBAB, migrationStamp, PASCAL, registerModule } from './make.ts';
+import { dependsOn, KEBAB, nextStamp, PASCAL, registerModule } from './make.ts';
 import { resourceFiles, type ResourceNames } from './make-resource-templates.ts';
 
 /**
@@ -113,7 +113,7 @@ export class MakeResourceCommand {
       pluralWords: pluralWords.join(' '),
       layout,
     };
-    const files = resourceFiles(names, migrationStamp(join(dir, 'migrations')));
+    const files = resourceFiles(names, nextStamp(input, dir));
     if (leavesProject(input, [...files.keys()].map((path) => join(dir, path)).concat(join(input.root, 'bootstrap/app.ts')))) return 1;
     for (const [path, contents] of files) {
       const file = join(dir, path);

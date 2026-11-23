@@ -14,6 +14,7 @@ export { withCode, withoutCode } from './error-codes.ts';
 export { describeError, maskUrlPasswords, REDACTED_KEYS, redactorFor } from './redact.ts';
 export { collectDrivers } from './drivers.ts';
 export { bindingNameOf } from './definition-edit.ts';
+export { migrationTimestamp, newestMigration, stampsBehind } from './migration-stamps.ts';
 export { loadDiscoveredPackages, writeManifest } from './discovery/discover.ts';
 export { packageServerEntries, packageSurfaces, packageTexts } from './discovery/discover.ts';
 export { isNamespace, isViewName } from './discovery/surface.ts';

@@ -42,8 +42,10 @@ The name decides what the file starts with. `create_…_table` creates a table w
 `_to_…_table`, `_from_…_table` or `_in_…_table` changes that table. Any other name gives an empty migration. The name must be
 snake_case, and `--module` must name a module that exists.
 
-The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the module's latest
-migration. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
+The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the latest migration of every
+module under `modules/*/migrations`: the later of now and one second after the newest file name there. Only a newest stamp in the future
+that is no date, or that leaves no room behind it, and a `migrations` folder of another module that cannot be read, are printed as a
+warning. The file is then stamped behind its own module's migrations whose stamps are dates, or with now if even that leaves no room. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
 line when the file has another shape or you pass `--no-register`):
 
 ```ts title="modules/notes/index.ts"
@@ -57,17 +59,16 @@ export default defineModule({
 });
 ```
 
-Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. The
-"after the module's latest migration" above holds within one module only: `make:migration` looks at the folder it writes
-to. A foreign key from one module's table to another's (`bookings.room_id` to `rooms`) therefore needs the referenced table
-to be created first, in time. Generate the migration of the referenced module first (`make:migration create_rooms_table --module=rooms`,
-then `make:migration create_bookings_table --module=bookings`), or rename the file of the later one so that its timestamp is the
-larger, and check that its timestamp is the smaller one for the referenced table: two commands in the same second get the same
-timestamp. On Postgres a file that runs too early stops with the database's error for a missing table. SQLite accepts the
-reference and only checks it when rows are written, so check the order with `migrate:status` before you deploy. Rename a file only before it has run. The starter kit's migrations start
-with `0001_01_01_` and come before any you write. A `.ts` or `.js` file in the folder whose name does not fit the pattern stops
-every migration command with the name it expects, and so do two migrations with the same name and a module whose `migrations`
-folder does not exist.
+Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. A new file
+sorts behind every migration the app has, so a foreign key from one module's table to another's (`bookings.room_id` to `rooms`)
+finds the referenced table already created when the migration of the other module is generated later. The rule reads the file names
+under `modules/*/migrations`, as `marmeon publish` does; a migrations folder registered anywhere else is seen only by a booted
+`migrate`. Two files that two branches generate in the same second get the same stamp, and a branch merged late can bring a file
+that sorts before one that has already run: check the order with `migrate:status` before you deploy. On Postgres a file that runs
+too early stops with the database's error for a missing table. SQLite accepts the reference and only checks it when rows are written.
+Rename a file only before it has run. The starter kit's migrations start with `0001_01_01_` and come before any you write. A `.ts`
+or `.js` file in the folder whose name does not fit the pattern stops every migration command with the name it expects, and so do
+two migrations with the same name and a module whose `migrations` folder does not exist.
 
 ## Migration structure
 

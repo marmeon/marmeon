@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { editDefinition, editDefinitionFile, importedBindings, type DefinitionEdit } from '@marmeon/core';
-import { bindingNameOf, parseSync, writeProjectFile } from '@marmeon/core/internal';
+import { bindingNameOf, migrationTimestamp, newestMigration, parseSync, stampsBehind, writeProjectFile } from '@marmeon/core/internal';
 import { CommandArgumentsError, CommandRegistry, isReservedCommand, RESERVED_COMMANDS, type CommandInput } from '../command.ts';
 import { style } from '../output.ts';
 import { leavesProject, refusesOverwrite } from '../write-guard.ts';
@@ -762,7 +762,7 @@ export class MakeMigrationCommand {
     }
     const dir = moduleDir(input);
     if (!dir) return 1;
-    const stamp = migrationStamp(join(dir, 'migrations'));
+    const stamp = nextStamp(input, dir);
     const create = /^create_(\w+?)_table$/.exec(name)?.[1];
     const alter = /_(?:to|from|in)_(\w+?)_table$/.exec(name)?.[1];
     const contents = create ? CREATE_MIGRATION(create) : alter ? ALTER_MIGRATION(alter) : BLANK_MIGRATION;
@@ -1290,10 +1290,38 @@ export class ${name} {
 `;
 
 /**
+ * The stamp of the migration a command writes next: behind the migrations of every module. A newest stamp in the future that is no
+ * date or leaves no room, or a `migrations` folder of another module that is not readable (EACCES, EPERM), is printed as a warning
+ * and the file is stamped behind its own module's migrations whose stamps are dates, so a generator still writes its file when a
+ * foreign stamp or folder is broken. Any other filesystem error is not caught.
+ */
+export function nextStamp(input: CommandInput, dir: string): string {
+  let newest: ReturnType<typeof newestMigration>;
+  try {
+    newest = newestMigration(join(input.root, 'modules'));
+  } catch (error) {
+    const { code, path } = error as NodeJS.ErrnoException;
+    if (code !== 'EACCES' && code !== 'EPERM') throw error;
+    input.output.warn(`${path === undefined ? 'A migrations folder' : relative(input.root, path)} cannot be read, so a new migration is stamped behind its own module only.`);
+    return ownStamp(dir);
+  }
+  const next = stampsBehind(newest, 1, input.root, 'a new migration');
+  if (!('error' in next)) return migrationTimestamp(next.stamps[0]!);
+  input.output.warn(next.error);
+  return ownStamp(dir);
+}
+
+function ownStamp(dir: string): string {
+  const own = migrationStamp(join(dir, 'migrations'));
+  // The module's own newest may leave no room either: a year beyond four digits is no name the migrator reads.
+  return /^\d{4}_\d\d_\d\d_\d{6}$/.test(own) ? own : migrationTimestamp(new Date());
+}
+
+/**
  * `YYYY_MM_DD_HHMMSS` now — but always after the module's latest migration: two generated in the
  * same second would otherwise sort by name, and `add_…_to_invoices` could run before `create_invoices`.
  */
-export function migrationStamp(directory: string): string {
+function migrationStamp(directory: string): string {
   const format = (date: Date) => date.toISOString().replace(/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d).*$/, '$1_$2_$3_$4$5$6');
   const latest = existsSync(directory)
     ? readdirSync(directory)

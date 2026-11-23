@@ -11,6 +11,7 @@ export { token } from './token.ts';
 export type { Concrete, Constructor, InjectCheck, Key, Resolve, Token } from './token.ts';
 export { editDefinition, editDefinitionFile, importedBindings } from './definition-edit.ts';
 export type { DefinitionEdit, DefinitionEditOutcome, DefinitionImport, ImportedBinding } from './definition-edit.ts';
+export { nextMigrationStamp } from './migration-stamps.ts';
 export { Application, createApplication, defineApplication } from './application.ts';
 export type { ApplicationDefinition, ApplicationPhase, CreateApplicationOptions } from './application.ts';
 export { defineModule } from './module.ts';
