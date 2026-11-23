@@ -212,6 +212,42 @@ The start fails when a private local disk shares a directory with a public one, 
 through a symlink: its files would be served as public. So does a private disk with a `url`, and on S3 a private and a public
 disk in one bucket whose prefixes overlap.
 
+### Ranges and video
+
+The routes above answer a `Range` request of a GET, which a browser sends to play or seek in a video or an audio file, and to
+resume a download. A request for bytes `2-4` gets `206 Partial Content` with `Content-Range: bytes 2-4/10` and only those bytes.
+A range that starts at or after the file's end gets `416` with `Content-Range: bytes */10`, no body and `Cache-Control: no-store`,
+and so does `bytes=-0`. A file that supports ranges announces `Accept-Ranges: bytes`, also on a plain `200`, on `304` and on
+`HEAD`. `HEAD` ignores `Range`.
+
+With `ranges: true`, `serveFile()` understands one range of the unit `bytes`: `bytes=2-4`, `bytes=2-` or `bytes=-4`, the last four bytes. Any other
+`Range` header gets the whole file with `200`: another unit, a malformed value, an end before its start, or several ranges such as
+`bytes=0-1,4-5`. An end past the file's last byte is cut to it, and a suffix longer than the file gets the whole file as `206`. A
+number beyond `Number.MAX_SAFE_INTEGER` counts as that number. In an empty file every range that names a start gets `416` with
+`Content-Range: bytes */0`, and `bytes=-4` gets the empty file with `200`.
+
+- **Every answer keeps the safe headers.** `nosniff`, the sandbox, the disposition and the type are the ones of a whole file. A `206`
+  keeps the route's `Cache-Control`, so a public file stays `max-age=0, must-revalidate`.
+- **`If-Modified-Since` comes first.** A file that did not change is a `304` before any range is looked at. `If-Range` with the exact
+  `Last-Modified` text of a file at least a second old answers the range; any other `If-Range`, an entity tag included, gets the
+  whole file. No `ETag` is sent.
+- **Only the slice leaves the disk.** The route asks the disk for those bytes alone.
+- **Only a disk from `Storage` answers a range.** A disk object of your own, or a wrapper around any disk, one from `Storage` included, gets the whole file. A route
+  that changes the bytes `serveFile()` returns leaves `ranges` off. A wrapper that changes no bytes, such as a key prefix or
+  logging, is not needed: map the key in the route and pass the disk from `Storage`.
+- **A signed link must cover the playback.** Every range request checks the signature and the expiry again, so `expiresIn` has to last
+  as long as someone watches, pauses and resumes. A signed link's `206` is `private, no-store`.
+- **Replace a file under a new key.** The bytes of two requests come from two looks at the file. A file that `put()` replaces under
+  the same key between two requests can reach a player as a mix of two versions, and a replacement within the second of the
+  file's `Last-Modified` goes unseen by `If-Range`.
+- **A middleware that tests for `status === 200` sees `206` and `416`.** A global middleware or proxy that changes the bytes of
+  a response, compresses it say, leaves `206` alone. The framework compresses no disk response. A throttle or a counter sees one
+  request per seek, so count a download in your own route, as [responses](responses.md#downloads) shows.
+- **A `<video src>` plays, the address bar downloads.** The video element needs ranges and the right type, and both come with the route.
+  Opening the URL in a tab still downloads the file, because everything but a raster image goes out as an attachment. The type
+  comes from the key's extension on a local disk (`.mp4`, `.webm` and `.ogv` are known, `.mov` and `.m4v` are not): a video under
+  a key without one is `application/octet-stream`, and a browser may refuse it.
+
 ## Keys
 
 A key is a relative path of `/`-separated segments, such as `avatars/7.webp`. Two measures keep a key inside its disk:

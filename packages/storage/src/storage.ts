@@ -5,6 +5,7 @@ import type { CheckDiskName, DefaultDiskName, DiskDriverFactory, DiskFor, DiskNa
 import type { Disk, DiskDriver, FileContents, ListOptions, OpenedFile, OpenOptions, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
 import { forDriver } from './contents.ts';
 import { normalizeDirectory, normalizeKey } from './keys.ts';
+import { frameworkDisk } from './framework-disks.ts';
 import { checkRange, confirmedRange, wholeFile, withoutRange } from './ranges.ts';
 import { LocalDisk } from './drivers/local.ts';
 import { MemoryDisk } from './drivers/memory.ts';
@@ -284,7 +285,7 @@ export class StorageManager implements Storage {
   named(name: string): Disk {
     let disk = this.#disks.get(name);
     if (!disk) {
-      disk = this.build(name, this.options(name));
+      disk = frameworkDisk(this.build(name, this.options(name)));
       this.#disks.set(name, disk);
     }
     return disk;

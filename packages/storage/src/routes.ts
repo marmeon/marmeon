@@ -40,7 +40,7 @@ export function registerStorageRoutes(http: Http, container: Container, options:
       Route.get(`${path}/:path{.+}`, async (ctx) => {
         const key = keyFromPath(new URL(ctx.request.url).pathname, path);
         if (key === undefined) return notFound();
-        return serveFile(storage().named(name), key, ctx.request, { cacheControl: 'public, max-age=0, must-revalidate' });
+        return serveFile(storage().named(name), key, ctx.request, { cacheControl: 'public, max-age=0, must-revalidate', ranges: true });
       });
     }
   });
@@ -65,6 +65,7 @@ export function registerStorageRoutes(http: Http, container: Container, options:
       if (key === undefined) return notFound();
       return serveFile(storage().named(disk), key, ctx.request, {
         cacheControl: 'private, no-store',
+        ranges: true,
         filename: url.searchParams.get('filename') ?? undefined,
       });
     });

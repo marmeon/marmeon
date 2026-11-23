@@ -29,6 +29,34 @@ export function checkRange(range: ByteRange): ByteRange {
   return Object.freeze({ start, end });
 }
 
+/** One byte-range request: the unit, then exactly one `first-last`, `first-` or `-count`, digits only. */
+const RANGE_HEADER = /^bytes=(\d*)-(\d*)$/i;
+
+/** The number a run of digits stands for, saturated at `Number.MAX_SAFE_INTEGER` so no later sum or comparison loses precision. */
+const saturated = (digits: string) => Math.min(Number(digits), Number.MAX_SAFE_INTEGER);
+
+/** Whether the number written `a` is below the one written `b`, digit by digit: two numbers beyond the safe range keep their order. */
+function isBefore(a: string, b: string): boolean {
+  const x = a.replace(/^0+/, '');
+  const y = b.replace(/^0+/, '');
+  return x.length !== y.length ? x.length < y.length : x < y;
+}
+
+/**
+ * The range a `Range` header asks for, or `undefined` when it is to be ignored and the whole file answered: no header, another
+ * unit, invalid syntax, an end before its start, or more than one range. Numbers beyond `Number.MAX_SAFE_INTEGER` are cut
+ * to it. See docs/storage.md#ranges-and-video.
+ */
+export function parseRange(header: string | null): ByteRange | undefined {
+  const match = header === null ? null : RANGE_HEADER.exec(header);
+  if (match === null) return undefined;
+  const [, first = '', last = ''] = match;
+  if (first === '') return last === '' ? undefined : Object.freeze({ last: saturated(last) });
+  if (last === '') return Object.freeze({ start: saturated(first) });
+  if (isBefore(last, first)) return undefined;
+  return Object.freeze({ start: saturated(first), end: saturated(last) });
+}
+
 /**
  * The bytes of a checked range in a file of `size` bytes: the first and last byte (inclusive, `end` cut to the file), or
  * `'unsatisfiable'` when it starts at or after the end or asks for the last 0 bytes. `undefined`: the file is empty and the range

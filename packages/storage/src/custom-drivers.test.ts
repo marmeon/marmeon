@@ -11,6 +11,7 @@ import { MemoryDisk } from './drivers/memory.ts';
 import { StorageFake } from './fake.ts';
 import { InvalidKeyError, Storage, StorageError, StorageServiceProvider, StorageSetupError } from './index.ts';
 import { servedPublicDisks } from './routes.ts';
+import { serveFile } from './serve.ts';
 
 declare module './config.ts' {
   interface DiskDrivers {
@@ -335,6 +336,23 @@ describe('open() with a range on the disk of a driver', () => {
     const opted = await diskOf(flagged(true));
     expect((await opted.open('digits.txt', { range: { start: 1 } })).contentType).toBe('x/flagged');
     expect(seen).toEqual([['digits.txt', { range: { start: 1 } }]]);
+  });
+
+  it('serveFile with ranges: true on a driver that did not opt in: 200, the whole file, no Accept-Ranges, the driver sees the key alone', async () => {
+    const seen: unknown[][] = [];
+    const flagged = opening(async (inner, key, flag = false) => (seen.push([key, flag]), flag ? { ...(await inner.open(key as string)), contentType: 'x/flagged' } : inner.open(key as string)));
+    const disk = await diskOf(flagged);
+    const request = new Request('http://localhost/a', { headers: { range: 'bytes=2-4' } });
+    const response = await serveFile(disk, 'digits.txt', request, { cacheControl: 'private', ranges: true });
+    expect([response.status, response.headers.get('accept-ranges'), response.headers.get('content-range'), response.headers.get('content-length'), await response.text()]).toEqual([200, null, null, '10', '0123456789']);
+    expect(seen).toEqual([['digits.txt', false]]);
+  });
+
+  it('serveFile with ranges: true on a driver that opted in: 206 with the slice and Accept-Ranges', async () => {
+    const disk = await diskOf(opening((inner, ...args) => inner.open(args[0] as string, args[1] as never), true));
+    const request = new Request('http://localhost/a', { headers: { range: 'bytes=2-4' } });
+    const response = await serveFile(disk, 'digits.txt', request, { cacheControl: 'private', ranges: true });
+    expect([response.status, response.headers.get('accept-ranges'), response.headers.get('content-range'), await response.text()]).toEqual([206, 'bytes', 'bytes 2-4/10', '234']);
   });
 
   it('a driver that did not opt in has a range it made up dropped when one was asked', async () => {

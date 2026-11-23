@@ -476,7 +476,11 @@ export class DownloadAttachmentController extends Controller {
 
   handle(ctx: HttpContext<Authenticated, { attachment: Row<'attachments'> }>) {
     const { attachment } = ctx.params;
-    return serveFile(this.#storage.disk('local'), attachment.path, ctx.request, { cacheControl: 'private, no-store', filename: attachment.name });
+    return serveFile(this.#storage.disk('local'), attachment.path, ctx.request, {
+      cacheControl: 'private, no-store',
+      filename: attachment.name,
+      ranges: true,
+    });
   }
 }
 ```
@@ -484,6 +488,19 @@ export class DownloadAttachmentController extends Controller {
 The file streams from the disk with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. Everything but
 raster images goes out as an attachment, so HTML, SVG or a PDF is downloaded instead of shown on your app's origin. A missing file
 is a 404. The route's middleware and policy decide who may download: check them as for any other route.
+
+A player seeks in a video by asking for parts of it. `ranges: true` makes `serveFile()` answer a `Range` request of a GET with
+`206 Partial Content`, or with `416` when the range starts at or after the file's end or asks for the last 0 bytes, and ask the
+disk for those bytes only, as the controller above does.
+
+Only a disk from `Storage` that honours ranges (local, memory, S3, or a driver with `acceptsRanges: true`) answers a range. A disk
+object of your own, or a wrapper around any disk, one from `Storage` included, gets the whole file. A route that changes the bytes `serveFile()` returns leaves
+`ranges` off. A wrapper that changes no bytes, such as a key prefix or logging, is not needed: map the key in the route and pass
+the disk from `Storage`.
+
+Without the option every request gets the whole file. Leave it off where one request must be one download: a route that counts
+downloads, spends a one-time link or throttles by bytes would see one request per seek. The
+[file storage](storage.md#ranges-and-video) page lists what a `206` keeps and what a route in front of it sees.
 
 A file your code makes, a JSON export say, goes out as a `Response` of its own. `contentDisposition()` of
 `@marmeon/http` names it (`@marmeon/storage` exports the same function): the encoder `serveFile()` and the table exports use, safe for any name, even one made from what a person typed.
