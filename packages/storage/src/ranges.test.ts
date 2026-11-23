@@ -2,7 +2,7 @@ import { inspect } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import type { ByteRange, OpenedFile } from './disk.ts';
 import { StorageError } from './errors.ts';
-import { checkRange, confirmedRange, resolveRange } from './ranges.ts';
+import { checkRange, confirmedRange, parseRange, resolveRange } from './ranges.ts';
 
 describe('resolveRange', () => {
   const cases: readonly (readonly [string, ByteRange, number, unknown])[] = [
@@ -93,6 +93,75 @@ describe('confirmedRange', () => {
       const { file, cancelled } = opened(extra);
       await expect(confirmedRange(requested, file), JSON.stringify([requested, extra])).rejects.toThrow(StorageError);
       expect(cancelled()).toBe(1);
+    }
+  });
+});
+
+describe('parseRange', () => {
+  const MAX = Number.MAX_SAFE_INTEGER;
+  const asked: readonly (readonly [string, string, ByteRange])[] = [
+    ['first and last', 'bytes=2-4', { start: 2, end: 4 }],
+    ['one byte', 'bytes=0-0', { start: 0, end: 0 }],
+    ['a first, no last', 'bytes=2-', { start: 2 }],
+    ['a suffix', 'bytes=-3', { last: 3 }],
+    ['the last 0 bytes', 'bytes=-0', { last: 0 }],
+    ['the unit in capitals', 'BYTES=2-4', { start: 2, end: 4 }],
+    ['the unit in mixed case', 'Bytes=-3', { last: 3 }],
+    ['leading zeros', 'bytes=007-0009', { start: 7, end: 9 }],
+    ['a huge start is cut to the largest safe number', `bytes=${'9'.repeat(10_000)}-`, { start: MAX }],
+    ['a huge end is cut to the largest safe number', `bytes=5-${'9'.repeat(10_000)}`, { start: 5, end: MAX }],
+    ['a huge suffix is cut to the largest safe number', `bytes=-${'9'.repeat(10_000)}`, { last: MAX }],
+    ['a number just beyond the safe range', `bytes=0-${MAX + 2}`, { start: 0, end: MAX }],
+    ['the largest safe number as written', `bytes=0-${MAX}`, { start: 0, end: MAX }],
+  ];
+  it.each(asked)('%s', (_name, header, expected) => {
+    expect(parseRange(header)).toEqual(expected);
+  });
+
+  const ignored: readonly (readonly [string, string | null])[] = [
+    ['no header', null],
+    ['an empty header', ''],
+    ['another unit', 'items=0-1'],
+    ['no unit', '0-1'],
+    ['no equals sign', 'bytes 0-1'],
+    ['a dash alone', 'bytes=-'],
+    ['no spec', 'bytes='],
+    ['letters', 'bytes=a-b'],
+    ['a sign', 'bytes=+1-2'],
+    ['a negative start', 'bytes=-1-2'],
+    ['a decimal', 'bytes=1.5-3'],
+    ['an exponent', 'bytes=1e2-3e2'],
+    ['hex', 'bytes=0x1-0x2'],
+    ['a last before its first', 'bytes=5-2'],
+    ['a last before its first, with fewer digits', 'bytes=10-9'],
+    ['a last before its first, with leading zeros', 'bytes=0005-03'],
+    ['a last before its first, both huge', `bytes=${'9'.repeat(10_000)}-${'8'.repeat(10_000)}`],
+    ['two ranges', 'bytes=0-1,3-4'],
+    ['two ranges with a space', 'bytes=0-1, 3-4'],
+    ['a range and a suffix', 'bytes=0-1,-2'],
+    ['a trailing comma', 'bytes=0-1,'],
+    ['a duplicated header, joined by a comma', 'bytes=0-1, bytes=2-3'],
+    ['a space inside', 'bytes=0 -1'],
+    ['text after the range', 'bytes=0-1x'],
+    ['a line break', 'bytes=0-1\n'],
+  ];
+  it.each(ignored)('ignores %s', (_name, header) => {
+    expect(parseRange(header)).toBeUndefined();
+  });
+
+  it('a header of 16 KB is read at once, and ignored', () => {
+    const header = `bytes=${Array.from({ length: 2000 }, (_, index) => `${index}-${index}`).join(',')}`;
+    expect(header.length).toBeGreaterThan(8000);
+    expect(parseRange(header)).toBeUndefined();
+    expect(parseRange(`bytes=0-${'0'.repeat(16_384)}1`)).toEqual({ start: 0, end: 1 });
+    expect(parseRange(`bytes=${' '.repeat(16_384)}0-1`)).toBeUndefined();
+  });
+
+  it('gives a range checkRange accepts, which no one can change', () => {
+    for (const [, header] of asked) {
+      const range = parseRange(header)!;
+      expect(checkRange(range)).toEqual(range);
+      expect(Object.isFrozen(range), header).toBe(true);
     }
   });
 });

@@ -16,6 +16,7 @@ import { S3Disk } from './drivers/s3.ts';
 import { FakeS3 } from './__fixtures__/s3-fake.ts';
 import { TestClock } from '@marmeon/core/testing';
 import { serveFile } from './serve.ts';
+import { frameworkDisk } from './test-helpers/framework-disk.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 // What a disk opened. Holding a handle does not hold its stream.
@@ -54,7 +55,7 @@ async function serve(disk: Disk) {
     override: (container) =>
       container.make(Router).load(openRoutes((Route) => {
         Route.get('/own', async () => new Response(await disk.stream('a.txt')));
-        Route.get('/file', (ctx) => serveFile(disk, 'a.txt', ctx.request, { cacheControl: 'no-store' }));
+        Route.get('/file', (ctx) => serveFile(disk, 'a.txt', ctx.request, { cacheControl: 'no-store', ranges: true }));
         // It holds its place until the file's response was destroyed: so that one is queued, whatever the timing.
         Route.get('/first', () => fileClosed.then(() => 'FIRST'));
         Route.get('/second', () => 'SECOND');
@@ -175,6 +176,31 @@ describe('serveFile on startServer', () => {
     while (!client.received().includes('SECOND')) await new Promise((resolve) => client.socket.once('data', resolve));
     expect(client.received()).not.toContain('SURPLUS');
     expect(client.received()).toContain('\r\n\r\nhelloHTTP/1.1 200');
+  });
+});
+
+describe('a ranged answer on startServer', () => {
+  const answering = (range: unknown, text: string) =>
+    frameworkDisk(async () => ({ body: new Response(text).body!, size: 10, lastModified: new Date(0), contentType: 'text/plain', range }));
+  const asking = (range: string) => `GET /file HTTP/1.1\r\nhost: app.example\r\nrange: ${range}\r\n\r\n`;
+
+  it('a slice longer than its range is cut to the announced length, and the connection serves the next request', async () => {
+    const client = await serve(answering({ start: 2, end: 4 }, 'cdefghi'));
+    client.socket.write(asking('bytes=2-4') + get('/second'));
+    while (!client.received().includes('SECOND')) await new Promise((resolve) => client.socket.once('data', resolve));
+    expect(client.received()).toMatch(/^HTTP\/1\.1 206 /);
+    expect(client.received()).toContain('content-range: bytes 2-4/10');
+    expect(client.received()).toContain('\r\n\r\ncdeHTTP/1.1 200');
+    expect(client.received()).not.toContain('fghi');
+  });
+
+  it('a 416 has no body, and the connection serves the next request', async () => {
+    const client = await serve(answering('unsatisfiable', ''));
+    client.socket.write(asking('bytes=50-') + get('/second'));
+    while (!client.received().includes('SECOND')) await new Promise((resolve) => client.socket.once('data', resolve));
+    expect(client.received()).toMatch(/^HTTP\/1\.1 416 /);
+    expect(client.received()).toContain('content-range: bytes */10');
+    expect(client.received()).toMatch(/content-length: 0\r\n[^]*\r\n\r\nHTTP\/1\.1 200/i);
   });
 });
 

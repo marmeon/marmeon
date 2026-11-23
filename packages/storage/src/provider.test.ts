@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Clock, createApplication, defineModule, env, type ConfigDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
@@ -7,7 +7,7 @@ import { HttpServiceProvider, UrlSigner } from '@marmeon/http';
 import { Router } from '@marmeon/router';
 import { accessLabel, routeAccess } from '@marmeon/router/internal';
 import { createHttpKernel } from '@marmeon/server';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage } from './config.ts';
@@ -531,5 +531,141 @@ describe('public disks under the framework prefix', () => {
     const base = freshDirectory();
     const config = defineStorage({ default: 'local', disks: { local: { driver: 'local', root: join(base, 'private'), visibility: 'public', url } } });
     await expect(boot(config)).rejects.toThrow(/GET \/_marmeon\S*: paths under \/_marmeon\/ belong to the framework/i);
+  });
+});
+
+describe('ranges on the routes that serve disks', () => {
+  const MP4 = '0123456789'; // ten bytes under a ".mp4" key: a download by type, still played by a <video>
+  const OLD_TIME = new Date('2025-01-02T03:04:05Z');
+  const range = (value: string, headers: Record<string, string> = {}) => ({ headers: { range: value, ...headers } });
+
+  /** Both routes' URLs of one file: the public path and a signed temporary one. */
+  async function served(options?: { fake?: boolean }) {
+    const base = freshDirectory();
+    const booted = await boot(storageConfig(base), options);
+    const { storage } = booted;
+    await storage.disk('public').put('clips/a.mp4', MP4);
+    await storage.disk('local').put('clips/a.mp4', MP4);
+    // Old files, so that an If-Range with their Last-Modified is a validator that holds.
+    if (!options?.fake) for (const side of ['public', 'private']) utimesSync(join(base, side, 'clips/a.mp4'), OLD_TIME, OLD_TIME);
+    const signed = (disk = 'local', key = 'clips/a.mp4') => storage.disk(disk as 'local').temporaryUrl(key, { expiresIn: 600 });
+    return { ...booted, signed, publicUrl: storage.disk('public').url('clips/a.mp4') };
+  }
+
+  const expectations = {
+    public: 'public, max-age=0, must-revalidate',
+    signed: 'private, no-store',
+  };
+
+  it.each(['public', 'signed'] as const)('the %s route answers GET with 206 and 416, HEAD and a conditional GET unchanged, all with the same safe headers', async (route) => {
+    const { kernel, signed, publicUrl } = await served();
+    const url = route === 'public' ? publicUrl : await signed();
+    const cache = expectations[route];
+    const safe = { 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox', 'content-type': 'video/mp4', 'content-disposition': expect.stringMatching(/^attachment; filename="a\.mp4"/) };
+
+    const whole = await kernel!.request(url);
+    expect([whole.status, whole.headers.get('accept-ranges'), whole.headers.get('content-length'), whole.headers.get('cache-control')]).toEqual([200, 'bytes', '10', cache]);
+    expect(Object.fromEntries(whole.headers)).toMatchObject(safe);
+    const modified = whole.headers.get('last-modified')!;
+
+    const part = await kernel!.request(url, range('bytes=2-4'));
+    expect([part.status, part.headers.get('content-range'), part.headers.get('content-length'), part.headers.get('accept-ranges'), part.headers.get('cache-control'), await part.text()]).toEqual([206, 'bytes 2-4/10', '3', 'bytes', cache, '234']);
+    expect(Object.fromEntries(part.headers)).toMatchObject(safe);
+
+    const tail = await kernel!.request(url, range('bytes=-3'));
+    expect([tail.status, tail.headers.get('content-range'), await tail.text()]).toEqual([206, 'bytes 7-9/10', '789']);
+
+    const beyond = await kernel!.request(url, range('bytes=10-'));
+    expect([beyond.status, beyond.headers.get('content-range'), beyond.headers.get('content-length'), beyond.headers.get('cache-control'), beyond.headers.get('accept-ranges'), await beyond.text()]).toEqual([416, 'bytes */10', '0', 'no-store', 'bytes', '']);
+    expect(Object.fromEntries(beyond.headers)).toMatchObject(safe);
+
+    const head = await kernel!.request(url, { method: 'HEAD', ...range('bytes=2-4') });
+    expect([head.status, head.headers.get('content-length'), head.headers.get('content-range'), head.headers.get('accept-ranges'), head.headers.get('cache-control'), await head.text()]).toEqual([200, '10', null, 'bytes', cache, '']);
+
+    expect(Object.fromEntries(head.headers)).toMatchObject(safe);
+
+    for (const header of ['bytes=2-4', 'bytes=50-']) {
+      const unchanged = await kernel!.request(url, range(header, { 'if-modified-since': modified }));
+      expect([unchanged.status, unchanged.headers.get('accept-ranges'), unchanged.headers.get('cache-control'), await unchanged.text()], header).toEqual([304, 'bytes', cache, '']);
+      expect(Object.fromEntries(unchanged.headers), header).toMatchObject(safe);
+    }
+
+    // If-Range: the exact date of an old file answers the range, any other date the whole file.
+    const fresh = await kernel!.request(url, range('bytes=2-4', { 'if-range': modified }));
+    expect([fresh.status, await fresh.text()]).toEqual([206, '234']);
+    const stale = await kernel!.request(url, range('bytes=2-4', { 'if-range': new Date(OLD_TIME.getTime() - 86_400_000).toUTCString() }));
+    expect([stale.status, stale.headers.get('content-range'), stale.headers.get('content-length'), await stale.text()]).toEqual([200, null, '10', MP4]);
+  });
+
+  it('the signed route with a file name and a Range keeps the name on the 206', async () => {
+    const { kernel, storage } = await served();
+    const url = await storage.disk('local').temporaryUrl('clips/a.mp4', { expiresIn: 600, filename: 'my clip.mp4' });
+    const part = await kernel!.request(url, range('bytes=0-1'));
+    expect([part.status, part.headers.get('content-range'), part.headers.get('content-disposition'), await part.text()]).toEqual([206, 'bytes 0-1/10', `attachment; filename="my clip.mp4"; filename*=UTF-8''my%20clip.mp4`, '01']);
+  });
+
+  it('a disk that answers another range than the one asked is a 500 with no 206 headers, and its body is cancelled', async () => {
+    const { kernel, storage, publicUrl } = await served();
+    let cancelled = 0;
+    const body = new ReadableStream<Uint8Array>({ cancel: () => void cancelled++ });
+    vi.spyOn(storage.named('public'), 'open').mockResolvedValue({ body, size: 10, lastModified: OLD_TIME, contentType: 'video/mp4', range: { start: 0, end: 9 } });
+    const response = await kernel!.request(publicUrl, range('bytes=2-4'));
+    expect(response.status).toBe(500);
+    expect([response.headers.get('content-range'), response.headers.get('accept-ranges')]).toEqual([null, null]);
+    expect(cancelled).toBe(1);
+  });
+
+  it('asks the disk for the slice, not the whole file', async () => {
+    const { kernel, storage, signed, publicUrl } = await served();
+    const open = vi.spyOn(storage.named('public'), 'open');
+    const openPrivate = vi.spyOn(storage.named('local'), 'open');
+    await (await kernel!.request(publicUrl, range('bytes=2-4'))).arrayBuffer();
+    await (await kernel!.request(await signed(), range('bytes=-3'))).arrayBuffer();
+    await (await kernel!.request(publicUrl)).arrayBuffer();
+    expect(open.mock.calls).toEqual([
+      ['clips/a.mp4', { range: { start: 2, end: 4 } }],
+      ['clips/a.mp4'],
+    ]);
+    expect(openPrivate.mock.calls).toEqual([['clips/a.mp4', { range: { last: 3 } }]]);
+  });
+
+  it('a bad, missing and expired signature is 403 before the disk is opened, for a range that fits and one that does not', async () => {
+    const { kernel, storage, signed, clock } = await served();
+    const open = vi.spyOn(storage.named('local'), 'open');
+    const good = new URL(await signed(), 'http://localhost');
+    const wrong = new URL(good);
+    wrong.searchParams.set('signature', '0'.repeat(64));
+    const missing = new URL(good);
+    missing.searchParams.delete('signature');
+    const another = new URL(good);
+    another.pathname = another.pathname.replace('a.mp4', 'b.mp4');
+    const urls = [wrong, missing, another].map((url) => url.pathname + url.search);
+    for (const header of ['bytes=2-4', 'bytes=50-', 'bytes=-0']) {
+      for (const url of urls) expect((await kernel!.request(url, range(header))).status, `${header} ${url}`).toBe(403);
+    }
+    clock.travel({ minutes: 11 });
+    for (const header of ['bytes=2-4', 'bytes=50-']) expect((await kernel!.request(good.pathname + good.search, range(header))).status, header).toBe(403);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('a private disk on the public path is 404, and so is a refused key, with a range; neither opens a file', async () => {
+    const { kernel, storage } = await served();
+    await storage.disk('local').put('only-private.mp4', MP4);
+    const openPublic = vi.spyOn(storage.named('public'), 'open');
+    const openPrivate = vi.spyOn(storage.named('local'), 'open');
+    for (const path of ['/storage/only-private.mp4', '/local/clips/a.mp4', '/storage/..%2fprivate%2fclips%2fa.mp4', '/storage/clips/a.mp4%00.png']) {
+      for (const header of ['bytes=2-4', 'bytes=50-']) expect((await kernel!.request(path, range(header))).status, `${header} ${path}`).toBe(404);
+    }
+    expect(openPrivate).not.toHaveBeenCalled();
+    expect(openPublic.mock.calls.every((call) => call[0] === 'only-private.mp4')).toBe(true);
+  });
+
+  it('serves ranges of the test fake\'s in-memory disks too', async () => {
+    const { kernel, signed, publicUrl } = await served({ fake: true });
+    const part = await kernel!.request(publicUrl, range('bytes=2-4'));
+    expect([part.status, part.headers.get('content-range'), await part.text()]).toEqual([206, 'bytes 2-4/10', '234']);
+    const private_ = await kernel!.request(await signed(), range('bytes=-3'));
+    expect([private_.status, private_.headers.get('content-range'), await private_.text()]).toEqual([206, 'bytes 7-9/10', '789']);
+    expect((await kernel!.request(publicUrl, range('bytes=10-'))).status).toBe(416);
   });
 });

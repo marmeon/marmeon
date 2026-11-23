@@ -193,6 +193,7 @@ export interface S3DiskOptions extends DiskBase {
 export interface ServeFileOptions {
     readonly cacheControl: string;
     readonly filename?: string | undefined;
+    readonly ranges?: boolean | undefined;
 }
 // StagedUploads
 export declare class StagedUploads {
