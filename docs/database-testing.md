@@ -480,14 +480,13 @@ export default defineMigration({
 `;
 
 it('fills the slug of the notes that exist, and takes the column away again', async () => {
-  const file = join(application.root, 'storage/framework/testing/generated.sqlite');
   const directory = join(application.root, 'storage/framework/testing/add-slug');
-  const env = { DB_DRIVER: 'sqlite', DB_DATABASE: file };
-  // What the test makes goes away with it.
-  onTestFinished(() => {
-    rmSync(file, { force: true });
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const migrations = join(directory, 'migrations');
+  const env = { DB_DRIVER: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite') };
+  // The directory exists before the first app boots: the app refuses a SQLite file whose directory is missing.
+  mkdirSync(migrations, { recursive: true });
+  // What the test makes, the database included, goes away with it.
+  onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
   // The app as it is: migrated, with the rows the generated migration will meet.
   {
     await using app = await createTestApp(application, { env });
@@ -495,9 +494,7 @@ it('fills the slug of the notes that exist, and takes the column away again', as
     await app.make(Connections).get().insertInto('notes').values({ title: 'First' }).execute();
   }
 
-  // What the generator writes, into a directory of its own below the app.
-  const migrations = join(directory, 'migrations');
-  mkdirSync(migrations, { recursive: true });
+  // What the generator writes, into the test's directory below the app.
   writeFileSync(join(migrations, `${nextMigrationStamp(application.root)}_add_slug_to_notes_table.ts`), generatedSource);
   const generated = defineModule({ name: 'add-slug', migrations: pathToFileURL(`${migrations}/`) });
 
@@ -516,7 +513,8 @@ it('fills the slug of the notes that exist, and takes the column away again', as
 
 - **Its own database.** The test app has no `database` option, so it works on the database its environment names, and a `migrate`
   commits. Point it at a file or database of its own, as above (`:memory:` lives as long as one app, so it cannot carry rows from
-  the first app to the second).
+  the first app to the second). The directory of a SQLite file has to exist before the first app boots, or it refuses with
+  `[marmeon:D11]`.
 - **Rows to rewrite.** To test a migration that rewrites data, migrate the app, seed or insert the rows, close that app, then boot
   with the generated module and run `migrate`. The data step then meets what a deployed database holds.
 - **A failing `down`.** `app.command('migrate:rollback', …)` resolves with `code: 1` and the error among `lines`; it does not throw.
