@@ -3,11 +3,12 @@ import { constants, createWriteStream, mkdirSync, realpathSync } from 'node:fs';
 import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink, type FileHandle } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import type { Disk, FileContents, ListOptions, OpenedFile, TemporaryUrlOptions, Visibility } from '../disk.ts';
+import type { Disk, FileContents, ListOptions, OpenedFile, OpenOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import { forDriver, releasable, toReadable } from '../contents.ts';
 import { FileNotFoundError, InvalidKeyError, StorageError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { mimeTypeOf } from '../mime.ts';
+import { checkRange, resolveRange } from '../ranges.ts';
 import type { TemporaryUrls } from '../temporary.ts';
 
 /** Temporary files of a write in progress — renamed into place when complete, never listed. */
@@ -27,8 +28,14 @@ const CHUNK_BYTES = 64 * 1024;
 /** Closes the file of a body nobody holds any more and nobody cancelled, such as a wrapped one that HEAD dropped. */
 const abandoned = new FinalizationRegistry<FileHandle>((handle) => void handle.close().catch(() => {}));
 
-/** The file as a stream. The handle refers to nothing of the stream, so a stream that was dropped can be collected. */
-function fileBody(handle: FileHandle): ReadableStream<Uint8Array> {
+/**
+ * The file as a stream, or with `bytes` only those: read at their offset, never past `end`, and an error rather than a clean
+ * end when the file is shorter than it was. The handle refers to nothing of the stream, so a stream that was dropped can be
+ * collected.
+ */
+function fileBody(handle: FileHandle, bytes?: { readonly start: number; readonly end: number }): ReadableStream<Uint8Array> {
+  let position = bytes?.start;
+  const last = bytes?.end;
   const release = () => {
     abandoned.unregister(handle);
     return handle.close();
@@ -36,10 +43,15 @@ function fileBody(handle: FileHandle): ReadableStream<Uint8Array> {
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
-        const chunk = new Uint8Array(CHUNK_BYTES);
-        const { bytesRead } = await handle.read(chunk, 0, CHUNK_BYTES, null);
-        // A short read is copied: a chunk's buffer holds that chunk alone.
-        if (bytesRead > 0) return controller.enqueue(bytesRead < CHUNK_BYTES ? chunk.slice(0, bytesRead) : chunk);
+        const wanted = position === undefined || last === undefined ? CHUNK_BYTES : Math.min(CHUNK_BYTES, last - position + 1);
+        if (wanted > 0) {
+          const chunk = new Uint8Array(wanted);
+          const { bytesRead } = await handle.read(chunk, 0, wanted, position ?? null);
+          if (position !== undefined && bytesRead === 0) throw new StorageError('The file became shorter while it was read.');
+          if (position !== undefined) position += bytesRead;
+          // A short read is copied: a chunk's buffer holds that chunk alone.
+          if (bytesRead > 0) return controller.enqueue(bytesRead < wanted ? chunk.slice(0, bytesRead) : chunk);
+        }
       } catch (error) {
         await release().catch(() => {});
         throw error;
@@ -124,12 +136,21 @@ export class LocalDisk implements Disk {
     return (await this.open(key)).body;
   }
 
-  async open(key: string): Promise<OpenedFile> {
+  async open(key: string, options: OpenOptions = {}): Promise<OpenedFile> {
+    const range = options.range === undefined ? undefined : checkRange(options.range);
     const handle = await this.#openFile(key);
     try {
       const stats = await handle.stat();
-      const body = fileBody(handle);
-      return { body, size: stats.size, lastModified: stats.mtime, contentType: mimeTypeOf(key) };
+      const found = { size: stats.size, lastModified: stats.mtime, contentType: mimeTypeOf(key), acceptsRanges: true };
+      const resolved = range === undefined ? undefined : resolveRange(range, stats.size);
+      // An empty file with a range asked: nothing to read, and nothing a later append may add to the body.
+      if (range !== undefined && (resolved === 'unsatisfiable' || resolved === undefined)) {
+        await handle.close();
+        const empty = new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
+        return resolved === undefined ? { ...found, body: empty } : { ...found, body: empty, range: resolved };
+      }
+      const body = fileBody(handle, typeof resolved === 'object' ? resolved : undefined);
+      return typeof resolved === 'object' ? { ...found, body, range: resolved } : { ...found, body };
     } catch (error) {
       await handle.close();
       throw error;
@@ -294,10 +315,11 @@ export class LocalDisk implements Disk {
       if (code === 'ELOOP' || code === 'EMLINK') throw new InvalidKeyError(key, 'it became a symlink while it was opened');
       throw error;
     }
-    const stats = await handle.stat();
-    if (!stats.isFile()) {
+    try {
+      if (!(await handle.stat()).isFile()) throw new FileNotFoundError(this.name, key);
+    } catch (error) {
       await handle.close();
-      throw new FileNotFoundError(this.name, key);
+      throw error;
     }
     return handle;
   }

@@ -112,7 +112,7 @@ how to keep it.
 | `get(key)` | The file's bytes. |
 | `text(key)` | The file as UTF-8 text. |
 | `stream(key)` | The file as a stream, for large files. |
-| `open(key)` | A stream with the file's size, time and content type. |
+| `open(key, { range }?)` | A stream with the file's size, time and content type. With `range`, only those bytes: `{ start }`, `{ start, end }` (both included) or `{ last }` (the last bytes). A disk that cannot, such as S3, returns the whole file. See [opening a range](#opening-a-range). |
 | `exists(key)` | Whether there is a file. |
 | `delete(key)` | Removes the file, and says whether there was one. |
 | `move(from, to)`, `copy(from, to)` | On the same disk, replacing the target. |
@@ -126,6 +126,31 @@ A `Disk` is given to your code by `storage.disk()`; it is not meant to be implem
 A missing file throws `FileNotFoundError`. A reader never sees half a file: the local driver writes to a temporary file and
 renames it into place. The content type comes from the key's extension on a local disk, and from what was stored on S3 and in
 memory: `put()`'s `contentType` counts there only.
+
+### Opening a range
+
+`open(key, { range })` opens some of a file's bytes. The result's `size` is always the whole file's, and `range` says which bytes the
+`body` holds:
+
+```ts
+const file = await disk.open('exports/report.csv', { range: { start: 100, end: 199 } });
+// file.range is { start: 100, end: 199 }; file.size is the whole file's size
+```
+
+- `{ start }` reads to the end of the file, `{ start, end }` through byte `end` (included), and `{ last: 500 }` reads the last 500
+  bytes. An `end` past the file's end is cut to it, and a `last` bigger than the file gives the whole file.
+- A range that starts at or after the file's end, or asks for the last 0 bytes, has `range: 'unsatisfiable'` and an empty body.
+  A `last` on an empty file gives that file, with no `range`.
+- Anything that is not `{ start, end? }` or `{ last }` throws a `RangeError`, and so do a number that is not whole or is below 0,
+  an `end` before its `start`, and a `last` together with a `start` or an `end`. The check runs before the file is looked at, on every disk.
+- `acceptsRanges: true` says the disk honours the option. The local and memory disks do. The S3 disk checks the range and returns
+  the whole file and no `range`: check `range` before you treat the body as a slice.
+- `size`, `lastModified` and the bytes come from one look at the file. A file that `put()` replaces afterwards keeps its old bytes
+  for a body you hold, and a second `open()` sees the new file, so two reads can come from two versions. Store a changed file under
+  a new key instead of replacing it under the same one. A file that grows after the open is read no further than the range's last
+  byte. A local file that gets shorter while you read a range of it makes the body fail with a `StorageError`.
+
+`get()`, `stream()` and `copy()` always take the whole file.
 
 ## Public and private files
 
@@ -665,4 +690,5 @@ it('writes the notes to the private disk', async () => {
 ```
 
 `assertMissing(key)` and a check of the file's bytes complete the assertions, and `app.upload()` sends an upload through the real
-target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md#storage) page covers them.
+target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md#storage) page covers them. The
+fake's disks honour `range` even where the configured driver does not, so test the whole-file answer with `storage: 'real'`.

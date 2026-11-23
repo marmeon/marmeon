@@ -178,12 +178,15 @@ describe('serveFile on startServer', () => {
   });
 });
 
-describe('the body of a local disk', () => {
+describe.each([
+  ['the whole file', undefined, 'hello'],
+  ['a range of it', { range: { start: 1, end: 3 } }, 'ell'],
+] as const)('the body of a local disk: %s', (name, options, expected) => {
   it('closes its file when it was dropped without a cancel', async () => {
     const path = join(root, 'files', 'a.txt');
     writeFileSync(path, 'hello');
     opened.length = 0;
-    await (async () => void (await local().open('a.txt')))();
+    await (async () => void (await local().open('a.txt', options)))();
     setFlagsFromString('--expose-gc');
     const collect = runInNewContext('gc') as () => void;
     await vi.waitFor(() => {
@@ -195,13 +198,13 @@ describe('the body of a local disk', () => {
   it('closes its file when a read fails', async () => {
     writeFileSync(join(root, 'files', 'a.txt'), 'hello');
     opened.length = 0;
-    const file = await local().open('a.txt');
+    const file = await local().open('a.txt', options);
     vi.spyOn(opened[0]!, 'read').mockRejectedValue(new Error('EIO'));
     await expect(file.body.getReader().read()).rejects.toThrow('EIO');
     expect(opened[0]!.fd).toBe(-1);
   });
 
-  it('takes a cancel during a read', async () => {
+  it.skipIf(name !== 'the whole file')('takes a cancel during a read', async () => {
     writeFileSync(join(root, 'files', 'a.txt'), 'hello');
     const reader = (await local().open('a.txt')).body.getReader();
     const read = reader.read();
@@ -211,7 +214,7 @@ describe('the body of a local disk', () => {
 
   it("gives a chunk whose buffer holds the file's bytes alone", async () => {
     writeFileSync(join(root, 'files', 'a.txt'), 'hello');
-    const { value } = await (await local().open('a.txt')).body.getReader().read();
-    expect(new TextDecoder().decode(value!.buffer)).toBe('hello');
+    const { value } = await (await local().open('a.txt', options)).body.getReader().read();
+    expect(new TextDecoder().decode(value!.buffer)).toBe(expected);
   });
 });

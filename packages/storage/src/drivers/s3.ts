@@ -5,12 +5,13 @@ import type * as S3 from '@aws-sdk/client-s3';
 import type * as Presigner from '@aws-sdk/s3-request-presigner';
 import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
 import type { Clock, Duration } from '@marmeon/core';
-import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
+import type { Disk, FileContents, ListOptions, OpenedFile, OpenOptions, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import type { S3DiskOptions, StorageOptions } from '../config.ts';
 import { releasable, secondsOf, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError, StorageSetupError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from '../mime.ts';
+import { checkRange } from '../ranges.ts';
 import { unknownSize } from '../size.ts';
 import { withCode } from '@marmeon/core/internal';
 
@@ -221,7 +222,8 @@ export class S3Disk implements Disk {
     return (await this.open(key)).body;
   }
 
-  async open(key: string): Promise<OpenedFile> {
+  async open(key: string, options: OpenOptions = {}): Promise<OpenedFile> {
+    if (options.range !== undefined) checkRange(options.range);
     const object = await this.#getObject(key);
     const stream = releasable(object.Body!.transformToWebStream() as ReadableStream<Uint8Array>);
     return {

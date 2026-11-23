@@ -123,7 +123,7 @@ The promise of a version covers the public API. These are part of it:
   version and never has a default. `UserProvider` and `Hasher` are interfaces: a security-relevant member is added the same way; any
   other member is optional.
 - Other interfaces an app implements itself, such as the drivers of cache, queue and storage: a new required member is a break. An
-  extension arrives as an optional member.
+  extension arrives as an optional member, or as an optional argument a driver may ignore.
 - Interfaces your code is given but does not implement: `Disk`, `Storage`, `Broadcaster`, `HttpKernel`, `Prompt`, `Output`,
   `CommandInput` and `DevtoolsStore`. A later release may add a member to them. A disk of your own implements `DiskDriver`.
 - A class you extend (`Repository`, `Controller` …) may gain members in a minor release. A member of your subclass

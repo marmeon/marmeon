@@ -9,6 +9,16 @@ Types from other packages: none
 ### Stable
 
 ```ts
+// ByteRange
+export type ByteRange = {
+    readonly start: number;
+    readonly end?: number | undefined;
+    readonly last?: undefined;
+} | {
+    readonly last: number;
+    readonly start?: undefined;
+    readonly end?: undefined;
+};
 // CheckDimensionMime
 export type CheckDimensionMime<M extends string> = M extends DimensionMime ? M : M extends 'image/avif' ? `'image/avif' is not measured — its header holds the container's size, not the decoded image's (dimensions takes ${JoinNames<DimensionMime>})` : M extends UploadMime ? `'${M}' has no pixel size to check — dimensions takes ${JoinNames<DimensionMime>}` : CheckUploadMime<M>;
 // CheckDiskName
@@ -29,7 +39,7 @@ export interface Disk {
     get(key: string): Promise<Uint8Array>;
     text(key: string): Promise<string>;
     stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
+    open(key: string, options?: OpenOptions): Promise<OpenedFile>;
     exists(key: string): Promise<boolean>;
     delete(key: string): Promise<boolean>;
     move(from: string, to: string): Promise<void>;
@@ -46,11 +56,12 @@ export interface Disk {
 export interface DiskDriver {
     readonly name: string;
     readonly visibility: Visibility;
+    readonly acceptsRanges?: boolean | undefined;
     put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
     get(key: string): Promise<Uint8Array>;
     text(key: string): Promise<string>;
     stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
+    open(key: string, options?: unknown): Promise<OpenedFile>;
     exists(key: string): Promise<boolean>;
     delete(key: string): Promise<boolean>;
     move(from: string, to: string): Promise<void>;
@@ -137,12 +148,21 @@ export interface MemoryDiskOptions extends DiskBase {
     readonly driver: 'memory';
     readonly url?: string;
 }
+// OpenOptions
+export interface OpenOptions {
+    readonly range?: ByteRange | undefined;
+}
 // OpenedFile
 export interface OpenedFile {
     readonly body: ReadableStream<Uint8Array>;
     readonly size: number;
     readonly lastModified: Date;
     readonly contentType: string;
+    readonly range?: {
+        readonly start: number;
+        readonly end: number;
+    } | 'unsatisfiable' | undefined;
+    readonly acceptsRanges?: boolean | undefined;
 }
 // PrivateDisk
 export type PrivateDisk = Omit<Disk, 'url'> & {
@@ -408,6 +428,16 @@ export declare class StorageFake implements Storage {
 ### Referenced, not exported
 
 ```ts
+// ByteRange
+export type ByteRange = {
+    readonly start: number;
+    readonly end?: number | undefined;
+    readonly last?: undefined;
+} | {
+    readonly last: number;
+    readonly start?: undefined;
+    readonly end?: undefined;
+};
 // CheckDiskName
 export type CheckDiskName<N extends string> = string extends DiskName ? N : string extends N ? DiskName : N extends DiskName ? N : [Near<N>] extends [never] ? `'${N}' is not a disk of this app — its disks: ${Join<DiskName>}` : `'${N}' is not a disk of this app — did you mean ${Join<Near<N>>}?`;
 // Configured
@@ -429,7 +459,7 @@ export interface Disk {
     get(key: string): Promise<Uint8Array>;
     text(key: string): Promise<string>;
     stream(key: string): Promise<ReadableStream<Uint8Array>>;
-    open(key: string): Promise<OpenedFile>;
+    open(key: string, options?: OpenOptions): Promise<OpenedFile>;
     exists(key: string): Promise<boolean>;
     delete(key: string): Promise<boolean>;
     move(from: string, to: string): Promise<void>;
@@ -494,12 +524,21 @@ export interface MemoryDiskOptions extends DiskBase {
 }
 // Near
 type Near<N extends string> = N extends `${infer First}${string}` ? Extract<DiskName, `${First}${string}`> : never;
+// OpenOptions
+export interface OpenOptions {
+    readonly range?: ByteRange | undefined;
+}
 // OpenedFile
 export interface OpenedFile {
     readonly body: ReadableStream<Uint8Array>;
     readonly size: number;
     readonly lastModified: Date;
     readonly contentType: string;
+    readonly range?: {
+        readonly start: number;
+        readonly end: number;
+    } | 'unsatisfiable' | undefined;
+    readonly acceptsRanges?: boolean | undefined;
 }
 // PrivateDisk
 export type PrivateDisk = Omit<Disk, 'url'> & {

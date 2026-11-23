@@ -2,9 +2,10 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { basename, dirname, resolve, sep } from 'node:path';
 import { token, type Clock, type Resolver } from '@marmeon/core';
 import type { CheckDiskName, DefaultDiskName, DiskDriverFactory, DiskFor, DiskNameInput, DiskOptions, StorageOptions } from './config.ts';
-import type { Disk, DiskDriver, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
+import type { Disk, DiskDriver, FileContents, ListOptions, OpenedFile, OpenOptions, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
 import { forDriver } from './contents.ts';
 import { normalizeDirectory, normalizeKey } from './keys.ts';
+import { checkRange, confirmedRange, wholeFile, withoutRange } from './ranges.ts';
 import { LocalDisk } from './drivers/local.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { S3Disk, s3BaseUrl } from './drivers/s3.ts';
@@ -43,7 +44,7 @@ export const BUILT_IN_DISK_DRIVERS = ['local', 's3', 'memory'] as const;
 const DISK_MEMBERS = Object.keys({
   put: true, get: true, text: true, stream: true, open: true, exists: true, delete: true, move: true, copy: true,
   size: true, mimeType: true, lastModified: true, list: true, url: true, temporaryUrl: true,
-} satisfies Record<Exclude<keyof DiskDriver, 'name' | 'visibility' | 'close'>, true>) as readonly (keyof DiskDriver)[];
+} satisfies Record<Exclude<keyof DiskDriver, 'name' | 'visibility' | 'close' | 'acceptsRanges'>, true>) as readonly (keyof DiskDriver)[];
 
 /**
  * A disk of a provider's driver, as the app gets it: every key is checked here ({@link normalizeKey}) before the driver sees it,
@@ -56,6 +57,7 @@ class GuardedDisk implements Disk {
   readonly #name: string;
   readonly #visibility: Visibility;
   readonly #disk: DiskDriver;
+  readonly #ranges: boolean;
 
   get name(): string {
     return this.#name;
@@ -80,6 +82,7 @@ class GuardedDisk implements Disk {
     this.#name = name;
     this.#visibility = visibility;
     this.#disk = disk as unknown as DiskDriver;
+    this.#ranges = disk.acceptsRanges === true;
   }
 
   async put(key: string, contents: FileContents, options?: PutOptions): Promise<void> {
@@ -94,8 +97,14 @@ class GuardedDisk implements Disk {
   async stream(key: string): Promise<ReadableStream<Uint8Array>> {
     return this.#disk.stream(normalizeKey(key));
   }
-  async open(key: string): Promise<OpenedFile> {
-    return this.#disk.open(normalizeKey(key));
+  async open(key: string, options?: OpenOptions): Promise<OpenedFile> {
+    const checked = normalizeKey(key);
+    const asked = options?.range;
+    const range = asked === undefined ? undefined : checkRange(asked);
+    // A driver that did not opt in never gets the argument, whatever its own second parameter means.
+    if (!this.#ranges) return withoutRange(await this.#disk.open(checked));
+    if (range === undefined) return wholeFile(await this.#disk.open(checked));
+    return confirmedRange(range, await this.#disk.open(checked, { range }));
   }
   async exists(key: string): Promise<boolean> {
     return this.#disk.exists(normalizeKey(key));

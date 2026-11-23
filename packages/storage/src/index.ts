@@ -39,7 +39,7 @@ export type {
   StorageOptions,
   StorageTypes,
 } from './config.ts';
-export type { Disk, DiskDriver, DiskDriverTemporaryUrlOptions, FileContents, ListOptions, OpenedFile, PrivateDisk, PublicDisk, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
+export type { ByteRange, Disk, DiskDriver, DiskDriverTemporaryUrlOptions, FileContents, ListOptions, OpenedFile, OpenOptions, PrivateDisk, PublicDisk, PutOptions, TemporaryUrlOptions, Visibility } from './disk.ts';
 export { FileNotFoundError, InvalidKeyError, StorageError, StorageSetupError } from './errors.ts';
 export { Storage } from './storage.ts';
 export { serveFile } from './serve.ts';
