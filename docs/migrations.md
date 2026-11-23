@@ -183,6 +183,53 @@ This is a guard against mistakes, not a sandbox. A connection taken from `db` wi
 is not looked into, and a raw statement is read by its words, not parsed. Keep to the query
 builder in a data step.
 
+### A data step a generator writes
+
+A generator that writes a migration with a `schema.data()` step writes the whole step into the file: the function that does the work
+and the data as they are when the file is generated. The file is what Marmeon records (a checksum of its bytes, [see below](#how-the-migrator-keeps-track)).
+It is also what a review reads; what it imports is neither. A helper the step takes from a package,
+or data it reads from one when it runs, can change with an update, and a database that is migrated later gets other data than the
+one before it, with nothing in the history to say so. The example is the file such a generator writes:
+
+```ts title="modules/notes/migrations/2026_10_05_090000_create_labels_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+function tidy(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+const labels: Record<string, string> = JSON.parse('{"__proto__":"  Hidden  ","draft":"Not   published"}');
+
+export default defineMigration({
+  up: (schema) => {
+    schema.create('labels', (table) => {
+      table.id();
+      table.string('name').unique();
+      table.string('text');
+    });
+    schema.data(async (db) => {
+      const rows = Object.entries(labels).map(([name, text]) => ({ name, text: tidy(text) }));
+      await db.insertInto('labels').values(rows).execute();
+    });
+  },
+  down: (schema) => schema.drop('labels'),
+});
+```
+
+- **A helper is written out as source**, here `tidy`. `fn.toString()` is not a way to get it: it loses the variables the function
+  closes over and the types, and a compiler or minifier may have changed the text. If the step needs a helper of a package, the
+  generator copies its source into the file.
+- **Data is `JSON.parse` of JSON text, not an object literal.** Write the text with `JSON.stringify(JSON.stringify(data))`, which gives
+  a quoted string that is valid in the file. In an object literal `{ "__proto__": … }` does not become a key, so a key of that name is
+  dropped; `JSON.parse` keeps it as a key of its own. Build `data` in the generator with `JSON.parse` or `Object.fromEntries` too: data built
+  with an object literal has lost the key before `JSON.stringify` runs. This matters most for content people typed, where a key or a
+  field named `__proto__` is a value like any other.
+- **It runs on SQLite and Postgres, and on MySQL once it can be selected.** The callback gets the connection and, as its second
+  argument, `{ driver }` (`'sqlite'`, `'pgsql'` or `'mysql'`), for a statement that differs. On MySQL the step is a transaction of its own, see [MySQL](#mysql).
+- **D20 looks at the directory, not at the imports.** A file in a module's `migrations` folder and everything below it has to lie in
+  your app or its workspace ([migrations from a package](#migrations-from-a-package)). An `import` of a helper that lies somewhere
+  else is not followed, so a migration that imports its content passes the check and still changes with the package. Put the content into the file.
+
 ### Raw SQL
 
 `schema.raw()` adds a statement for what the blueprint cannot express, such as an extension or an index over an expression:

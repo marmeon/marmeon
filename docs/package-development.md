@@ -287,6 +287,8 @@ const stamp = nextMigrationStamp(root);
 writeFileSync(join(root, 'modules', 'billing', 'migrations', `${stamp}_create_invoices_table.ts`), contents);
 ```
 
+A migration with a `schema.data()` step should hold its function and its data itself, as source and as `JSON.parse` of JSON text: see [a data step a generator writes](migrations.md#a-data-step-a-generator-writes).
+
 ## Checks
 
 A package adds checks to [`marmeon check`](check.md) as `static checks` on its provider, a module as `checks` in its definition.
