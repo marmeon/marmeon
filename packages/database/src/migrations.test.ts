@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
@@ -813,4 +813,62 @@ describe.each(drivers)('names Postgres cuts (%s)', (driver) => {
     },
     'sqlite',
   );
+});
+
+describe.each(drivers)('the data step a generator writes (%s)', (driver) => {
+  const root = workspaceTempDir('marmeon-generated-data-');
+  // The example of docs/migrations.md as the page has it; only the package name becomes this checkout's source, which the temporary directory cannot resolve.
+  const page = readFileSync(new URL('../../../docs/migrations.md', import.meta.url), 'utf8');
+  const example = /```ts title="modules\/notes\/migrations\/(2026_10_05_090000_create_labels_table\.ts)"\n([\s\S]*?)\n```/.exec(page);
+  let connections: Connections;
+  let close: () => Promise<void>;
+  beforeAll(async () => ({ connections, close } = await freshConnections(driver)));
+  afterAll(() => close());
+
+  const rewritten = (source: string) => {
+    expect(source).toContain("from '@marmeon/database'");
+    // A function replacer: the path may hold `$&` or `$1`.
+    return `${source.replace("from '@marmeon/database'", () => `from '${new URL('./index.ts', import.meta.url).href}'`)}\n`;
+  };
+  const labels = async () => (await connections.get<any>().selectFrom('labels').select(['name', 'text']).orderBy('name').execute()) as { name: string; text: string }[];
+
+  it('runs the example of the page: a __proto__ key of its data reaches the table, and down drops the table again', async () => {
+    expect(example).not.toBeNull();
+    const [, file, source] = example!;
+    expect(source).toContain("JSON.parse('");
+    const dir = mkdtempSync(join(root, 'm-'));
+    writeFileSync(join(dir, file!), rewritten(source!));
+    const run = migrator(connections, { name: 'notes', migrations: dir });
+    await run.migrate();
+    expect(await labels()).toEqual([
+      { name: '__proto__', text: 'Hidden' },
+      { name: 'draft', text: 'Not published' },
+    ]);
+    await run.rollback();
+    expect((await connections.get<any>().introspection.getTables()).map((table: { name: string }) => table.name)).not.toContain('labels');
+  });
+
+  it('keeps what the recipe of the page writes: JSON.stringify of the JSON text, with a __proto__ key, quotes and backslashes', async () => {
+    const [, file, source] = example!;
+    // Data as a generator holds it: an own `__proto__` key, which only JSON.parse or Object.fromEntries gives.
+    const data: Record<string, string> = Object.fromEntries([
+      ['__proto__', "  it's  "],
+      ['back\\slash', 'a \\ b'],
+      ['draft', ' "quoted" '],
+    ]);
+    expect(Object.keys(data)).toContain('__proto__');
+    const line = /^const labels: .*$/m;
+    expect(source).toMatch(line);
+    const generated = source!.replace(line, () => `const labels: Record<string, string> = JSON.parse(${JSON.stringify(JSON.stringify(data))});`);
+    const dir = mkdtempSync(join(root, 'm-'));
+    writeFileSync(join(dir, file!), rewritten(generated));
+    const run = migrator(connections, { name: 'notes', migrations: dir });
+    await run.migrate();
+    expect(await labels()).toEqual([
+      { name: '__proto__', text: "it's" },
+      { name: 'back\\slash', text: 'a \\ b' },
+      { name: 'draft', text: '"quoted"' },
+    ]);
+    await run.rollback();
+  });
 });
