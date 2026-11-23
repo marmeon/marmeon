@@ -218,7 +218,7 @@ no server code reaches the browser.
 | `this.json(data)` | JSON, typed for the action that calls it. |
 | `this.island(name, props)` | A part of a page that loads by itself. `GET` routes only. |
 | `this.closeLayer()` | Closes the dialog the request came from. |
-| A `Response` | Goes out as it is. |
+| A `Response` made by your code | Goes out as it is. |
 | A string, an `html` template, an object, `null` | Text, HTML, JSON, or an empty 204. |
 
 The [responses](responses.md) page covers each of them, with headers, cookies, flash messages and downloads. A save that went stale is a

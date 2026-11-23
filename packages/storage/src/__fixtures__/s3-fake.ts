@@ -24,6 +24,10 @@ export class FakeS3 {
   beforeGet: (() => void) | undefined;
   /** Answers `HeadObject` without an ETag. */
   headWithoutEtag = false;
+  /** Answers `GetObject` and `HeadObject` without a `ContentLength` (a store or proxy that sends none). */
+  withoutLength = false;
+  /** Cancels of the bodies handed out by `GetObject`. */
+  cancelled = 0;
   readonly load: ImportS3;
   #writes = 0;
 
@@ -77,7 +81,7 @@ export class FakeS3 {
     switch (command) {
       case 'HeadObject': {
         const object = this.#find(id, undefined);
-        return { ETag: this.headWithoutEtag ? undefined : object.etag, ContentLength: object.bytes.byteLength, ContentType: object.contentType, LastModified: object.modified };
+        return { ETag: this.headWithoutEtag ? undefined : object.etag, ContentLength: this.withoutLength ? undefined : object.bytes.byteLength, ContentType: object.contentType, LastModified: object.modified };
       }
       case 'GetObject': {
         this.beforeGet?.();
@@ -90,11 +94,14 @@ export class FakeS3 {
               for (let at = 0; at < bytes.byteLength; at += CHUNK) controller.enqueue(bytes.subarray(at, at + CHUNK));
               controller.close();
             },
+            cancel: () => {
+              this.cancelled++;
+            },
           });
         return {
           Body: { transformToWebStream: stream, transformToByteArray: async () => new Uint8Array(bytes) },
           ETag: object.etag,
-          ContentLength: bytes.byteLength,
+          ContentLength: this.withoutLength ? undefined : bytes.byteLength,
           ContentType: object.contentType,
           LastModified: object.modified,
         };

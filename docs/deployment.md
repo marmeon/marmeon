@@ -440,6 +440,12 @@ A value that is no address, range or `*` stops the start, and so does a range of
 > Never set `SERVER_TRUSTED_PROXIES=*` on a port anybody can reach: every client would then be the trusted proxy, and could choose its
 > own address and the URL the app sees. Let the proxy set the forwarded headers rather than pass on a client's.
 
+### Bodies and connections
+
+`startServer()` holds a response to its `Content-Length`. It sends no byte past it, closes the connection when a body ends short of it or fails after its first bytes, and answers `500` without the error's text when a body fails before them. It cancels a body when the client has gone. It passes on no `Transfer-Encoding` or `Trailer` header of a route, and a `Content-Length` of a route only when it is one whole number. An adapter that runs the kernel outside `startServer()` has to do the same itself.
+
+A client that speaks HTTP/1.0 reads a response without a length to the end of the connection. It cannot tell a body that failed from a whole one, because `startServer()` closes the connection and that client takes the bytes it received as the answer. Put a proxy that speaks HTTP/1.1 in front.
+
 ### Compression
 
 `marmeon build` compresses the assets once, and the server sends the `.br` or `.gz` copy with a cache time of a year. Pages and

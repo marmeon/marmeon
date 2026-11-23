@@ -33,6 +33,13 @@ export function bytesStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
   });
 }
 
+const RELEASABLE = Symbol.for('marmeon.body.release');
+
+/** `body`, saying that the server may cancel it when no client reads it, as for HEAD. Only for a stream a disk opened itself. */
+export function releasable<S extends ReadableStream>(body: S): S {
+  return Object.assign(body, { [RELEASABLE]: true });
+}
+
 /** What a driver is given for the app's `temporaryUrl()` options: `expiresIn` as whole seconds. */
 export function forDriver({ expiresIn, filename, base }: TemporaryUrlOptions): DiskDriverTemporaryUrlOptions {
   return { expiresInSeconds: secondsOf(expiresIn), ...(filename === undefined ? {} : { filename }), ...(base === undefined ? {} : { base }) };

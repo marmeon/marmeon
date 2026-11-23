@@ -8,6 +8,7 @@ import { GLOBAL, MiddlewareGroups } from './middleware-groups.ts';
 import { createRequestState, lowerBodyLimit, type RequestState } from './request.ts';
 import { isLiveValidation, liveValidationFields, VALIDATED_HEADER } from './live-validation.ts';
 import { authorizeRequest, nothingToValidate, unauthorized, validateRequest, ValidationError, type RequestDefinition, type ValidationHook } from './request-definition.ts';
+import { isResponse } from './response.ts';
 import { isFallbackDefinition, Route, type RegistrarAudit } from './route.ts';
 import { RouteDefinition } from './route-definition.ts';
 import type { UrlLocales } from './url-locales.ts';
@@ -145,7 +146,7 @@ export interface LoadOptions {
 
 /** Turns an action's result into a response: a `Response` as it is, nothing as 204, a string as text, an `Html` as HTML, everything else as JSON. */
 export const defaultToResponse: ResponseFactory = (result) => {
-  if (result instanceof Response) return result;
+  if (isResponse(result)) return result;
   if (result === undefined || result === null) return new Response(null, { status: 204 });
   // A string is text, never markup: a route that echoes input must not become reflected XSS. Markup is an `Html`.
   if (typeof result === 'string') return new Response(result, { headers: { 'content-type': 'text/plain; charset=utf-8' } });

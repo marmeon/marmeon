@@ -174,6 +174,7 @@ What the framework keeps for a disk of a provider's driver, whatever the driver 
 - **Keys are checked before the driver sees them.** Every key, and the directory of `list()`, goes through `normalizeKey()` and
   `normalizeDirectory()` first: `..`, absolute paths, backslashes, empty segments and control characters are refused with
   `InvalidKeyError`, as on the built-in disks. Both functions are exported for a driver that checks keys it builds itself.
+- **`open()` reports the true size.** `serveFile()` announces it as `Content-Length`, and `startServer()` sends no byte past it, so a size that is too small cuts the file.
 - **The disk is held privately.** The app gets a wrapper that delegates to the driver's disk; its `name` and `visibility` are the
   configured ones.
 

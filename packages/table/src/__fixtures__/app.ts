@@ -1029,11 +1029,12 @@ export const MEMBERS = [
 ];
 
 /** `translator: false` leaves the app without a `Translator`, as one without @marmeon/i18n. */
-export async function tableApp(driver: TestDriver, options: { readonly translator?: boolean } = {}): Promise<TableTestApp> {
+export async function tableApp(driver: TestDriver, options: { readonly translator?: boolean; readonly root?: string } = {}): Promise<TableTestApp> {
   const database = await freshDatabase(driver);
   const recorder = new Recorder();
   const application = await createApplication({
-    root: '/tmp',
+    // A test that runs startServer needs a root of its own, with the files of a build.
+    root: options.root ?? '/tmp',
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, TableServiceProvider],
     modules: [defineModule({ name: 'table-test', routes })],

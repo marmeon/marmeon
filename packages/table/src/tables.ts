@@ -6,7 +6,7 @@ import { SystemClock, type Clock, type Translator } from '@marmeon/core';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isConflictResult, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, contentDisposition, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition } from '@marmeon/router';
-import { fillPath, matchParams } from '@marmeon/router/internal';
+import { fillPath, isResponse, matchParams } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableExportEntry, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
@@ -880,7 +880,7 @@ async function parseBody<S extends v.GenericSchema>(schema: S, ctx: HttpContext)
  * table as it is now.
  */
 function answer(ctx: HttpContext, result: unknown, counts: Omit<TableActionResult, 'data'>): unknown {
-  if (result instanceof Response || isRedirectResult(result) || isJsonResult(result)) return result;
+  if (isResponse(result) || isRedirectResult(result) || isJsonResult(result)) return result;
   // Its data would go out as a 200 with counts: a stale save reported as a success.
   if (isConflictResult(result)) throw new TypeError("A table action's handler returned conflict(…): a table's endpoint answers its counts, so a stale save would read as a success. Answer with data, or throw.");
   const headers = ctx.request.headers;

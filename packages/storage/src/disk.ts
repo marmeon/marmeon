@@ -42,6 +42,7 @@ export interface DiskDriverTemporaryUrlOptions {
 /** A file opened for reading — what a disk's routes send. */
 export interface OpenedFile {
   readonly body: ReadableStream<Uint8Array>;
+  /** The file's size in bytes. `serveFile()` announces it as `Content-Length`, and `startServer()` sends no byte past it. See docs/storage.md#public-and-private-files. */
   readonly size: number;
   readonly lastModified: Date;
   readonly contentType: string;

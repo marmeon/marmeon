@@ -7,10 +7,11 @@ import type * as PresignedPost from '@aws-sdk/s3-presigned-post';
 import type { Clock, Duration } from '@marmeon/core';
 import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import type { S3DiskOptions, StorageOptions } from '../config.ts';
-import { secondsOf, toBytes } from '../contents.ts';
+import { releasable, secondsOf, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError, StorageSetupError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from '../mime.ts';
+import { unknownSize } from '../size.ts';
 import { withCode } from '@marmeon/core/internal';
 
 /**
@@ -222,8 +223,9 @@ export class S3Disk implements Disk {
 
   async open(key: string): Promise<OpenedFile> {
     const object = await this.#getObject(key);
+    const stream = releasable(object.Body!.transformToWebStream() as ReadableStream<Uint8Array>);
     return {
-      body: object.Body!.transformToWebStream() as ReadableStream<Uint8Array>,
+      body: object.ContentLength === undefined ? unknownSize(stream) : stream,
       size: object.ContentLength ?? 0,
       lastModified: object.LastModified ?? new Date(0),
       contentType: object.ContentType ?? mimeTypeOf(key),

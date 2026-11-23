@@ -14,6 +14,32 @@ export function ownResponse<R extends Response>(response: R): R {
   return response;
 }
 
+/** The platform's own `Response`: what `Response` is when no adapter has put a class of its own in front of it. */
+const platformResponse = (() => {
+  let platform: { prototype: object } = Response;
+  // Up to the class whose parent is no class: the parent of the root is a realm's `Function.prototype`, which has no `prototype`.
+  for (let parent = Object.getPrototypeOf(platform) as { prototype?: unknown } | null; typeof parent?.prototype === 'object' && parent.prototype !== null; parent = Object.getPrototypeOf(platform)) {
+    platform = parent as { prototype: object };
+  }
+  return platform;
+})();
+
+/**
+ * Whether `value` is a `Response` that a route may return: one that is not from `fetch()`, also a subclass or a clone of one. Throws a
+ * `TypeError` for one it must not pass on: from `fetch()` or its clone, `Response.error()`, and one whose body is used or locked.
+ * `false` means `value` is no `Response` of the platform at all. Never `instanceof`: Node's adapter makes that true for every
+ * platform `Response`.
+ * @internal
+ */
+export function isResponse(value: unknown): value is Response {
+  if (!platformResponse.prototype.isPrototypeOf(value as object)) return false;
+  const response = value as Response;
+  if (response.type !== 'default' || response.bodyUsed || response.body?.locked) {
+    throw new TypeError("A route returned a Response it must not pass on: one from fetch(), Response.error(), or one whose body is used or locked. Build a Response of your own from the body and the headers you mean to pass on.");
+  }
+  return true;
+}
+
 /**
  * `response`, ready for its headers to be set: itself when this request owns it ({@link ownResponse}), else a copy it owns from
  * now on — at most one copy per request. A response the framework did not make is copied rather than changed: an app may return

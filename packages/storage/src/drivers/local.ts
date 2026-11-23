@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { constants, createWriteStream, mkdirSync, realpathSync } from 'node:fs';
-import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, realpath, rename, stat, unlink, type FileHandle } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Disk, FileContents, ListOptions, OpenedFile, TemporaryUrlOptions, Visibility } from '../disk.ts';
-import { forDriver, toReadable } from '../contents.ts';
+import { forDriver, releasable, toReadable } from '../contents.ts';
 import { FileNotFoundError, InvalidKeyError, StorageError } from '../errors.ts';
 import { basename, encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { mimeTypeOf } from '../mime.ts';
@@ -21,6 +20,37 @@ export interface LocalDiskConfig {
   readonly visibility: Visibility;
   readonly url?: string | undefined;
   readonly temporaryUrls: TemporaryUrls;
+}
+
+const CHUNK_BYTES = 64 * 1024;
+
+/** Closes the file of a body nobody holds any more and nobody cancelled, such as a wrapped one that HEAD dropped. */
+const abandoned = new FinalizationRegistry<FileHandle>((handle) => void handle.close().catch(() => {}));
+
+/** The file as a stream. The handle refers to nothing of the stream, so a stream that was dropped can be collected. */
+function fileBody(handle: FileHandle): ReadableStream<Uint8Array> {
+  const release = () => {
+    abandoned.unregister(handle);
+    return handle.close();
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = new Uint8Array(CHUNK_BYTES);
+        const { bytesRead } = await handle.read(chunk, 0, CHUNK_BYTES, null);
+        // A short read is copied: a chunk's buffer holds that chunk alone.
+        if (bytesRead > 0) return controller.enqueue(bytesRead < CHUNK_BYTES ? chunk.slice(0, bytesRead) : chunk);
+      } catch (error) {
+        await release().catch(() => {});
+        throw error;
+      }
+      await release();
+      controller.close();
+    },
+    cancel: release,
+  }, { highWaterMark: 0 });
+  abandoned.register(body, handle, handle);
+  return releasable(body);
 }
 
 function isMissing(error: unknown): boolean {
@@ -98,7 +128,7 @@ export class LocalDisk implements Disk {
     const handle = await this.#openFile(key);
     try {
       const stats = await handle.stat();
-      const body = Readable.toWeb(handle.createReadStream({ autoClose: true })) as unknown as ReadableStream<Uint8Array>;
+      const body = fileBody(handle);
       return { body, size: stats.size, lastModified: stats.mtime, contentType: mimeTypeOf(key) };
     } catch (error) {
       await handle.close();

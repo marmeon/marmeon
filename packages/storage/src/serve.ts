@@ -2,6 +2,7 @@ import type { Disk } from './disk.ts';
 import { FileNotFoundError, InvalidKeyError } from './errors.ts';
 import { basename } from './keys.ts';
 import { contentDisposition, isInlineType, mimeTypeOf } from './mime.ts';
+import { lengthOf } from './size.ts';
 
 /**
  * What `serveFile()` takes: the `Cache-Control` of the response and the name the browser saves the file as. See
@@ -36,7 +37,11 @@ export function fileHeaders(key: string, contentType: string, options: ServeFile
   });
 }
 
-/** A file of a disk as a response — 404 for a missing file or a refused key, 304 when `If-Modified-Since` still holds. */
+/**
+ * A file of a disk as a response — 404 for a missing file or a refused key, 304 when `If-Modified-Since` still holds. Its
+ * `Content-Length` is the disk's size, and `startServer()` holds the body to it. An S3 store that names no length gets none. See
+ * docs/storage.md#public-and-private-files.
+ */
 export async function serveFile(disk: Disk, key: string, request: Request, options: ServeFileOptions): Promise<Response> {
   let file;
   try {
@@ -53,7 +58,8 @@ export async function serveFile(disk: Disk, key: string, request: Request, optio
     await file.body.cancel();
     return new Response(null, { status: 304, headers });
   }
-  headers.set('content-length', String(file.size));
+  const length = lengthOf(file);
+  if (length !== undefined) headers.set('content-length', String(length));
   if (request.method === 'HEAD') {
     await file.body.cancel();
     return new Response(null, { status: 200, headers });

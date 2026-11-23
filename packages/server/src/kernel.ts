@@ -72,6 +72,7 @@ import {
   describeRouteConflict,
   formatAccessProblems,
   isLiveValidation,
+  isResponse,
   keepFromSharedCaches,
   isIslandAction,
   keptFromSharedCaches,
@@ -97,8 +98,12 @@ import { checkHealthPaths, createHealthEndpoints, readyPathOf } from './health.t
 import { ServerConfig } from './provider.ts';
 import { forwardedRequest, proxyMatcher } from './proxies.ts';
 import { serveAssets } from './assets.ts';
+import { guarded } from './response-guard.ts';
 import { ServerTiming } from './server-timing.ts';
 import { createViteDevRenderer } from './vite.ts';
+
+/** What a body carries that may be cancelled when no client reads it: the disks of @marmeon/storage set it. */
+const RELEASABLE = Symbol.for('marmeon.body.release');
 
 /** The options of {@link createHttpKernel}; most defaults come from the app's `ServerConfig`. See docs/testing.md#your-own-kernel. */
 export interface KernelOptions {
@@ -598,13 +603,16 @@ export function createHttpKernel(
   const developmentError = async (error: unknown, result: unknown, failed: Request, request: Request): Promise<Response | undefined> => {
     try {
       const solutions = application.container.has(ErrorSolutions) ? application.container.make(ErrorSolutions) : undefined;
-      if (result instanceof Response) {
+      if (isResponse(result)) {
         if (result.status < 500 || !result.headers.get('content-type')?.includes('json')) return undefined;
         const [solution] = (await solutions?.find(error, { app: application })) ?? [];
         if (!solution) return undefined;
         const body = (await result.clone().json()) as Record<string, unknown>;
         const shown = { title: redactor.text(solution.title), text: redactor.text(solution.text), ...(solution.command ? { command: redactor.text(solution.command) } : {}), ...(solution.docs ? { docs: solution.docs } : {}) };
-        return Response.json({ ...body, solution: shown }, { status: result.status, headers: result.headers });
+        // The body is serialised again: the length and the encoding of the one rendered no longer describe it.
+        const headers = new Headers(result.headers);
+        for (const name of ['content-length', 'content-encoding', 'transfer-encoding']) headers.delete(name);
+        return Response.json({ ...body, solution: shown }, { status: result.status, headers });
       }
       if (!isViewResult(result) || result.component !== ERROR_PAGE || result.status < 500 || isActionRequest(request) || request.headers.has(UPLOAD_HEADER)) return undefined;
       const info = currentRequest();
@@ -654,7 +662,7 @@ export function createHttpKernel(
       const translator = scope?.has(Translator) ? scope.make(Translator) : undefined;
       // Never back to a form with the errors flashed (that would write the session): the island has no form.
       const result = error instanceof ValidationError ? Response.json({ message: error.message }, { status: 422 }) : handler.render(error, request, { debug: showsDebug(request), translator });
-      if (result instanceof Response) return result;
+      if (isResponse(result)) return result;
       if (isViewResult(result)) return Response.json(result.props, { status: result.status, headers: result.headers });
     } catch (failure) {
       logger.error('Rendering the error of an island failed', { exception: redactor.text(String(failure)) });
@@ -722,11 +730,15 @@ export function createHttpKernel(
     // In place when the request owns the response (the framework made it, or a middleware copied it already) — else one copy
     // (a response an app may hand out twice, immutable headers). Hono's `res` setter copies what it is given once more when it
     // already holds a response: cleared first, it takes the copy as it is.
+    // HEAD runs as GET and Hono drops the body. Only one that says it can be released is cancelled: a disk's. Read before the
+    // copy below, which takes the body over.
+    const dropped = c.req.raw.method === 'HEAD' ? (c.res.body as (ReadableStream & { [RELEASABLE]?: boolean }) | null) : null;
     const response = editableResponse(c.res);
     if (response !== c.res) {
       c.res = undefined;
       c.res = response;
     }
+    if (dropped?.[RELEASABLE]) void dropped.cancel().catch(() => {});
     response.headers.set('x-request-id', requestId);
     const serverTiming = timing?.header(info, performance.now() - started);
     if (serverTiming) response.headers.set('server-timing', serverTiming);
@@ -1239,6 +1251,10 @@ export async function startServer({
     if (closing?.draining.aborted) res.setHeader('connection', 'close');
   });
   const { root } = app;
+  const reportUnanswered = (error: unknown) => {
+    const redactor = app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor();
+    app.container.make(Logger).child({ channel: 'http' }).error('The server could not answer a request', { exception: redactor.text(error instanceof Error ? (error.stack ?? error.message) : String(error)) });
+  };
   let closeVite: (() => Promise<void>) | undefined;
   let kernel: HttpKernel;
 
@@ -1260,14 +1276,14 @@ export async function startServer({
       await vite.close();
       throw error;
     }
-    const handle = getRequestListener(engineOf(kernel).fetch);
+    const handle = guarded(getRequestListener(engineOf(kernel).fetch), reportUnanswered);
     // Vite answers module, asset and HMR requests; everything else falls through to Hono.
     server.on('request', (req, res) => vite.middlewares(req, res, () => handle(req, res)));
     closeVite = () => vite.close();
   } else {
     const renderer = await createProductionRenderer({ root });
     kernel = createHttpKernel(app, { renderer, clientDir: join(root, 'dist/client') });
-    server.on('request', getRequestListener(engineOf(kernel).fetch));
+    server.on('request', guarded(getRequestListener(engineOf(kernel).fetch), reportUnanswered));
   }
 
   let closed: Promise<void> | undefined;

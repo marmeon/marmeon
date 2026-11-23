@@ -16,6 +16,7 @@ export { matchParams, tokenizePattern } from './pattern.ts';
 export { localLocation } from './local-location.ts';
 export { addsOf, isMiddlewareClass } from './middleware.ts';
 export { withQueuedCookies } from './cookies.ts';
+export { isResponse } from './response.ts';
 export { keepFromSharedCaches, keptFromSharedCaches, SharedCacheWarnings } from './cache-control.ts';
 export { clientIp, createRequestState, requestBytes } from './request.ts';
 export { buildSchema, messageOf, NOT_LIVE } from './request-definition.ts';
