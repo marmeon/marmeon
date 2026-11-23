@@ -106,6 +106,21 @@ export async function serveFile(disk: Disk, key: string, request: Request, optio
   }
   let body = current.file.body;
   try {
+    // A precondition is answered only where the app opted in to ranges: a route without the option keeps today's response. No entity
+    // tag is ever issued, so an If-Match other than `*` cannot hold.
+    const failed = (snap: Snapshot) => {
+      if (!(ranges && ours)) return false;
+      const ifMatch = request.headers.get('if-match');
+      const unmodifiedSince = Date.parse(request.headers.get('if-unmodified-since') ?? '');
+      return ifMatch !== null ? ifMatch.trim() !== '*' : !Number.isNaN(unmodifiedSince) && snap.modified.getTime() > unmodifiedSince;
+    };
+    const refused = async (snap: Snapshot) => {
+      await release(snap.file.body);
+      snap.headers.set('content-length', '0');
+      snap.headers.set('cache-control', 'no-store');
+      return new Response(null, { status: 412, headers: snap.headers });
+    };
+    if (failed(current)) return await refused(current);
     const since = Date.parse(request.headers.get('if-modified-since') ?? '');
     if (!Number.isNaN(since) && current.modified.getTime() <= since) {
       await release(body);
@@ -113,8 +128,9 @@ export async function serveFile(disk: Disk, key: string, request: Request, optio
       return new Response(null, { status: 304, headers: current.headers });
     }
     if (range !== undefined && ifRange !== null) {
-      // The date is a strong validator only when it is this exact text and the file is at least a second older than now (by its
-      // exact time, not the header's whole seconds, so a file changed twice within a second is not taken for unchanged).
+      // The date holds only as this exact text and for a file at least a second older than now, by its exact time, not the header's
+      // whole seconds: a file still inside the second of its own Last-Modified gets the whole file. A replacement earlier in that
+      // second stays unseen (docs/storage.md#ranges-and-video).
       const { time } = current;
       if (ifRange !== current.headers.get('last-modified') || !(time > 0) || !(Date.now() - time >= 1000)) {
         await release(body);
@@ -128,6 +144,7 @@ export async function serveFile(disk: Disk, key: string, request: Request, optio
         }
         body = current.file.body;
         range = undefined;
+        if (failed(current)) return await refused(current);
       }
     }
     let served: OpenedFile = current.file;

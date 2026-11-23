@@ -591,3 +591,62 @@ describe('more rows of the range rules', () => {
     expect(state.cancelled).toBe(1);
   });
 });
+
+describe('If-Match and If-Unmodified-Since', () => {
+  const older = new Date(OLD.getTime() - 86_400_000).toUTCString();
+  const later = new Date(OLD.getTime() + 86_400_000).toUTCString();
+
+  it.each<[string, Record<string, string>]>([
+    ['an entity tag', { 'if-match': '"abc"' }],
+    ['a weak entity tag', { 'if-match': 'W/"abc"' }],
+    ['a list that is not *', { 'if-match': '*, "abc"' }],
+    ['an empty value', { 'if-match': '' }],
+    ['a date older than the file', { 'if-unmodified-since': older }],
+    ['an entity tag next to a date that holds', { 'if-match': '"abc"', 'if-unmodified-since': later }],
+  ])('%s with a Range: 412 with no body, never cached, the safe headers, the body cancelled', async (_name, headers) => {
+    const { disk, state } = slicing();
+    const response = await serveFile(disk, 'a.html', ranged('bytes=2-4', headers), withRanges);
+    expect([response.status, response.headers.get('content-length'), response.headers.get('cache-control'), response.headers.get('content-range'), await response.text()]).toEqual([412, '0', 'no-store', null, '']);
+    expect(Object.fromEntries(response.headers)).toMatchObject({ 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox', 'content-disposition': expect.stringMatching(/^attachment/) });
+    expect(state.cancelled).toBe(1);
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ['*', { 'if-match': '*' }],
+    ['a date the file did not outlive', { 'if-unmodified-since': OLD_TEXT }],
+    ['a later date', { 'if-unmodified-since': later }],
+    ['a date that does not parse', { 'if-unmodified-since': 'yesterday' }],
+    ['* next to a date older than the file: If-Match decides', { 'if-match': '*', 'if-unmodified-since': older }],
+  ])('%s passes: the range is answered', async (_name, headers) => {
+    const response = await serveFile(slicing().disk, 'a.txt', ranged('bytes=2-4', headers), withRanges);
+    expect([response.status, await response.text()]).toEqual([206, '234']);
+  });
+
+  it('a failing precondition comes before If-Modified-Since, and holds for HEAD', async () => {
+    const both = await serveFile(slicing().disk, 'a.txt', ranged('bytes=2-4', { 'if-match': '"abc"', 'if-modified-since': OLD_TEXT }), withRanges);
+    expect(both.status).toBe(412);
+    const head = await serveFile(slicing().disk, 'a.txt', get({ 'if-match': '"abc"' }, 'HEAD'), withRanges);
+    expect(head.status).toBe(412);
+  });
+
+  it('is not answered without the option, or for a disk that is not from Storage: today\'s response', async () => {
+    const headers = { 'if-match': '"abc"', 'if-unmodified-since': older };
+    const plain = await serveFile(slicing().disk, 'a.txt', ranged('bytes=2-4', headers), { cacheControl: 'private' });
+    expect([plain.status, await plain.text()]).toEqual([200, TEXT]);
+    const own = { open: async () => ({ body: new Response(TEXT).body!, size: 10, lastModified: OLD, contentType: 'text/plain' }) } as unknown as Disk;
+    const other = await serveFile(own, 'a.txt', ranged('bytes=2-4', headers), withRanges);
+    expect([other.status, await other.text()]).toEqual([200, TEXT]);
+  });
+
+  it('the file a stale If-Range reopens is checked against If-Unmodified-Since too: 412, the second body cancelled', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    const first = slicing();
+    const second = slicing({ lastModified: new Date('2025-06-01T00:00:00Z') });
+    let opened = 0;
+    const disk = frameworkDisk(async (...args: unknown[]) => (++opened === 1 ? first.disk.open(args[0] as string, args[1] as never) : second.disk.open(args[0] as string)));
+    const response = await serveFile(disk, 'a.txt', ranged('bytes=2-4', { 'if-unmodified-since': new Date('2025-03-01T00:00:00Z').toUTCString(), 'if-range': 'Mon, 01 Jan 2024 00:00:00 GMT' }), withRanges);
+    expect([response.status, response.headers.get('content-length'), response.headers.get('cache-control'), await response.text()]).toEqual([412, '0', 'no-store', '']);
+    expect([first.state.cancelled, second.state.cancelled]).toEqual([1, 1]);
+  });
+});

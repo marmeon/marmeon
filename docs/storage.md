@@ -231,6 +231,9 @@ number beyond `Number.MAX_SAFE_INTEGER` counts as that number. In an empty file 
 - **`If-Modified-Since` comes first.** A file that did not change is a `304` before any range is looked at. `If-Range` with the exact
   `Last-Modified` text of a file at least a second old answers the range; any other `If-Range`, an entity tag included, gets the
   whole file. No `ETag` is sent.
+- **A failed precondition is a `412`.** No `ETag` is issued, so an `If-Match` other than `*` fails, and so does an
+  `If-Unmodified-Since` older than the file's `Last-Modified`. The answer has no body and is not cached. It comes before
+  `If-Modified-Since` and holds for `HEAD` too.
 - **Only the slice leaves the disk.** The route asks the disk for those bytes alone.
 - **Only a disk from `Storage` answers a range.** A disk object of your own, or a wrapper around any disk, one from `Storage` included, gets the whole file. A route
   that changes the bytes `serveFile()` returns leaves `ranges` off. A wrapper that changes no bytes, such as a key prefix or
