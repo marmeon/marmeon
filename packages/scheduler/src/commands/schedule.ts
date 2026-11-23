@@ -2,6 +2,7 @@ import type { CommandInput } from 'marmeon';
 import { Application, Clock, CommandArgumentsError, environment, escapeControls, Logger, Redactor } from '@marmeon/core';
 import { environmentChecks, exitAfterShutdown } from '@marmeon/core/internal';
 import { ScheduleError } from '../cron.ts';
+import { warnJobNames } from '../job-names.ts';
 import { Scheduler, type TaskResult } from '../scheduler.ts';
 import { formatMinute, isoMinute } from '../time.ts';
 import { ScheduleWorker } from '../worker.ts';
@@ -90,7 +91,10 @@ export class ScheduleWorkCommand {
     );
     const worker = new ScheduleWorker(this.#scheduler, this.#clock, this.#logger, this.#redactor);
     try {
-      await worker.run({ signal: stop.signal });
+      const running = worker.run({ signal: stop.signal });
+      // Once, at the start, next to the loop and never before it: a job name another class holds fails every run of its task.
+      void warnJobNames(tasks, this.#app, (text) => output.warn(shown(this.#redactor, text)));
+      await running;
       if (!(await worker.drain(stopTimeout))) {
         this.#logger.warn(`${worker.running} ${worker.running === 1 ? 'run' : 'runs'} did not finish within ${stopTimeout}s and end with the process`);
         await this.#scheduler.releaseHeld();

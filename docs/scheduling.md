@@ -60,7 +60,7 @@ export const schedule = defineSchedule((s) => {
 });
 ```
 
-The job must be listed in its module's `jobs`. It is queued as a [unique job](queues.md#unique-jobs) until a worker starts it, so
+The app must register the job: a module lists it in `jobs`, or a package's provider lists it in `static [providerJobs]`. It is queued as a [unique job](queues.md#unique-jobs) until a worker starts it, so
 while the job of the last hour still waits, because the workers are behind or down, the task queues no second one.
 
 ### Callable task classes
@@ -168,9 +168,9 @@ export const schedule = defineSchedule((s) => {
 Selecting tasks is all `APP_ENV` does here. It never weakens a protection and never enables a development tool, which follow
 `NODE_ENV` alone, as the [configuration](configuration.md#app_env-the-environments-name) page explains.
 
-The scheduler checks at its start that every `s.command()` names a command the app has and every `s.job()` a job a module lists.
-A task limited to other environments is left out of that check, because it never runs here and its package may be a dev
-dependency: `s.command('devtools:prune').hourlyAt(40).environments('local')`.
+`schedule:work`, `schedule:run` and `schedule:test` check at each start that every `s.command()` names a command the app has and every `s.job()` a job the app registers, and they refuse to start otherwise. A task limited to other environments is left out of the check of its command, because it never runs here and its package may be a dev dependency: `s.command('devtools:prune').hourlyAt(40).environments('local')`. The check of a job's name covers every environment.
+
+A job's name can belong to another class: the app registers `SyncJob` as `pkg.sync`, and a task queues a class with the same `static job`, for example a subclass that inherits it. The scheduler starts and the other tasks run. The queue of `@marmeon/queue` refuses that class, so the task's runs fail. `schedule:work` prints one warning for each such task that runs in this environment, once at its start. `schedule:run` and `schedule:test` print none: `schedule:run` reports the failed run when such a task is due, `schedule:test` when you run that task, and both then exit with 1. To fix it, schedule the class the app registers, or a job class of your own (not a subclass of it) with another name (not under `marmeon.`), listed in a module's `jobs`.
 
 ## Several servers and long runs
 

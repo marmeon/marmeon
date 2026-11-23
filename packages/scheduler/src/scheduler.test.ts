@@ -3,23 +3,26 @@ import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { CACHE_MIGRATION, MemoryStore, StoreCache } from '@marmeon/cache/internal';
 import { CliServiceProvider, DevProcesses, type CommandInput } from 'marmeon';
 import { CommandRegistry } from 'marmeon/internal';
-import { Clock, createApplication, currentLogContext, defineModule, ErrorReports, EventRegistry, inTransaction, listen, Logger, Redactor, type Application, type ErrorReport, type ErrorReporter, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
+import { Clock, createApplication, currentLogContext, defineModule, ErrorReports, EventRegistry, inTransaction, listen, Logger, providerJobs, Redactor, type Application, type ErrorReport, type ErrorReporter, type ListenerBinding, type ModuleDefinition, type ServiceProviderClass } from '@marmeon/core';
 import { EventFake, TestClock } from '@marmeon/core/testing';
 import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Queue, QueueConnections, QueueServiceProvider, type JobPayload } from '@marmeon/queue';
+import { Queue, QueueConnections, QueueServiceProvider, type JobClass, type JobPayload } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import * as v from 'valibot';
 import { readdirSync, readFileSync } from 'node:fs';
 import { Output } from 'marmeon';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, assert, describe, expect, it, vi } from 'vitest';
 import { collectTasks } from './schedule.ts';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, type TaskResult } from './index.ts';
 import { ScheduleTester } from './testing.ts';
 import { MINUTE } from './time.ts';
 import { ScheduleWorker } from './worker.ts';
+import { ScheduleWorkCommand } from './commands/schedule.ts';
+import { ScheduleConfig } from './config.ts';
+import { warnJobNames } from './job-names.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
 /** Log entries, for assertions — and silence. */
@@ -138,6 +141,44 @@ class StatsJob {
   static readonly schema = v.object({ scope: v.string() });
   handle(_payload: JobPayload<typeof StatsJob>) {}
 }
+
+/** What a package brings: a job the app's schedule can queue, registered by the package's provider. */
+class PkgJob {
+  static readonly job = 'pkg.sync';
+  static readonly schema = v.object({ scope: v.string() });
+  handle(_payload: JobPayload<typeof PkgJob>) {}
+}
+
+/** Inherits the name of `PkgJob`: the app's schedule queues it, the provider registers its parent. */
+class PkgChildJob extends PkgJob {}
+
+/** Another class under the name of `PkgJob`. */
+class PkgOtherJob {
+  static readonly job = 'pkg.sync';
+  static readonly schema = v.object({ scope: v.string() });
+  handle(_payload: JobPayload<typeof PkgOtherJob>) {}
+}
+
+/** A provider that brings jobs — the one place the test names the key under which a provider lists them. */
+function providerOfJobs(...jobs: JobClass[]): ServiceProviderClass {
+  return class {
+    static [providerJobs] = jobs;
+  };
+}
+
+/** The check `schedule:work` starts, kept: a test awaits its promise, or lets it never settle. */
+const check = vi.hoisted(() => ({ kept: [] as Promise<void>[], neverSettle: false }));
+vi.mock('./job-names.ts', async (original) => {
+  const real = await original<typeof import('./job-names.ts')>();
+  return {
+    ...real,
+    warnJobNames: (...args: Parameters<typeof real.warnJobNames>) => {
+      const promise = check.neverSettle ? new Promise<void>(() => {}) : real.warnJobNames(...args);
+      check.kept.push(promise);
+      return promise;
+    },
+  };
+});
 
 const START = Date.parse('2026-10-05T10:00:00Z');
 
@@ -730,12 +771,12 @@ describe('the schedule.task channel', () => {
 });
 
 describe('s.job()', () => {
-  async function withQueue(schedule: ModuleDefinition['schedule']) {
+  async function withQueue(schedule: ModuleDefinition['schedule'], extra: { providers?: ServiceProviderClass[]; modules?: ModuleDefinition[]; env?: Record<string, string> } = {}) {
     const dir = tempDir('marmeon-schedule-queue-');
     const booted = await boot(schedule, {
-      providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
-      env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database' },
-      modules: [defineModule({ name: 'jobs', jobs: [StatsJob] })],
+      providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider, ...(extra.providers ?? [])],
+      env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database', ...extra.env },
+      modules: extra.modules ?? [defineModule({ name: 'jobs', jobs: [StatsJob] })],
     });
     for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await runMigration(booted.app.container.make(Connections), ((await import(file.href)) as { default: Migration }).default);
     return booted;
@@ -765,6 +806,367 @@ describe('s.job()', () => {
     });
     await expect(scheduler.checkProcess()).rejects.toThrow('The schedule of module fixture queues StatsJob ("fixture.stats"), which is no module\'s job — add it to jobs: [...] of its module, or no worker can run it.');
     await app.shutdown();
+  });
+
+  describe('a job name that belongs to another class', () => {
+    const MARK = 'but this app registers that job name for';
+    const warned = (text: string) => text.split('\n').filter((line) => line.includes(MARK));
+    const full = (task: string, mine: string, job: string, other: string) =>
+      `The task "${task}" queues ${mine} ("${job}"), ${MARK} ${other}. The queue of @marmeon/queue refuses ${mine}, so the task's runs fail. Schedule the class the app registers, or a job class of your own (not a subclass of it) with another job name (not under marmeon.), listed in a module's jobs.`;
+    const TWO_COPIES = ' Two classes with one name also come from an app that loads two copies of one package: load one.';
+
+    /** The decisive case: the provider registers `PkgJob`; the app schedules a subclass that inherits its name and another class under it. */
+    const mismatched = () =>
+      defineSchedule((s) => {
+        s.job(PkgChildJob, { scope: 'child' }).everyMinute().name('child');
+        s.job(PkgOtherJob, { scope: 'other' }).everyMinute().name('other');
+        s.call(CountRun).everyMinute().name('count');
+      });
+    const withPackage = (schedule: ModuleDefinition['schedule'], extra: Parameters<typeof withQueue>[1] = {}) => withQueue(schedule, { modules: [], providers: [providerOfJobs(PkgJob)], ...extra });
+
+    /** What the function says for `tasks` in `app`: the lines it hands to its `warn`. */
+    async function said(app: Application, tasks: readonly unknown[]) {
+      const lines: string[] = [];
+      await warnJobNames(tasks as never, app, (text) => void lines.push(text));
+      return lines;
+    }
+    /** A job task as the scheduler holds it. */
+    const jobTask = (name: string, target: unknown, environments?: string[]) => ({ name, definition: { kind: 'job', target, environments } });
+
+    /** `schedule:work` as the process runs it: stopped by SIGTERM after its start line — or at once, before the check ends. Waits for `lines` warnings. */
+    async function work(app: Application, options: { lines?: number; early?: boolean; scheduler?: Scheduler; logger?: Logger } = {}) {
+      const out: string[] = [];
+      const wanted = options.lines ?? 0;
+      let started!: () => void;
+      const running = new Promise<void>((resolve) => (started = resolve));
+      let seen!: () => void;
+      const lines = new Promise<void>((resolve) => (seen = resolve));
+      if (wanted === 0) seen();
+      const record = (text: unknown) => {
+        out.push(String(text));
+        if (String(text).includes('Running the schedule every minute')) {
+          if (options.early) process.emit('SIGTERM');
+          started();
+        }
+        if (warned(out.join('')).length >= wanted) seen();
+        return true;
+      };
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(record);
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(record);
+      // The command arms a timer that ends the process after the stop timeout; a test never lets it count down.
+      vi.useFakeTimers({ toFake: ['setTimeout'] });
+      const command = new ScheduleWorkCommand(options.scheduler ?? app.container.make(Scheduler), app.container.make(Clock), options.logger ?? app.container.make(Logger), app.container.make(Redactor), app);
+      const done = (command as unknown as { handle(input: unknown): Promise<number> }).handle({ args: [], options: { 'stop-timeout': '0' }, output: new Output(), root: app.root });
+      try {
+        await running;
+        process.emit('SIGTERM');
+        const code = await done;
+        await lines;
+        return { code, text: out.join('') };
+      } finally {
+        // A red run must not leave the loop sleeping.
+        process.emit('SIGTERM');
+        vi.useRealTimers();
+        stdout.mockRestore();
+        stderr.mockRestore();
+      }
+    }
+
+    /** `schedule:run` or `schedule:test`: output and exit code. */
+    async function once(app: Application, command: 'schedule:run' | 'schedule:test', args: string[] = []) {
+      const out: string[] = [];
+      const stdout = vi.spyOn(process.stdout, 'write').mockImplementation((text) => (out.push(String(text)), true));
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((text) => (out.push(String(text)), true));
+      try {
+        const Command = app.container.make(CommandRegistry).get(command)!;
+        const code = await (app.container.make(Command) as { handle(input: unknown): Promise<number> }).handle({ args, options: {}, output: new Output(), root: app.root });
+        return { code, text: out.join('') };
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+      }
+    }
+
+    it('schedule:work prints one line per task at its start, exits 0 and keeps no other line from the scheduler', { timeout: 20_000 }, async () => {
+      const { app, log } = await withPackage(mismatched());
+      const { code, text } = await work(app, { lines: 2 });
+      expect(code).toBe(0);
+      expect(text).toContain('Running the schedule every minute: 3 tasks (child, other, count)');
+      expect(warned(text)).toHaveLength(2);
+      expect(text).toContain(full('child', 'PkgChildJob', 'pkg.sync', 'PkgJob'));
+      expect(text).toContain(full('other', 'PkgOtherJob', 'pkg.sync', 'PkgJob'));
+      expect(log.entries.some((entry) => entry.message === 'Scheduler stopped')).toBe(true);
+      expect(log.entries.filter((entry) => entry.level === 'warn')).toEqual([]);
+      await app.shutdown();
+    });
+
+    it('a name a module registers for another class warns too — the shape an app has on 1.2.2', { timeout: 20_000 }, async () => {
+      class StatsChild extends StatsJob {}
+      const { app } = await withQueue(defineSchedule((s) => void s.job(StatsChild, { scope: 'x' }).everyMinute().name('stats-child')));
+      const { code, text } = await work(app, { lines: 1 });
+      expect(code).toBe(0);
+      expect(warned(text)).toEqual([expect.stringContaining(full('stats-child', 'StatsChild', 'fixture.stats', 'StatsJob'))]);
+      await app.shutdown();
+    });
+
+    it('a clean schedule gets no line: a module job and a provider job', async () => {
+      const { app } = await withPackage(
+        defineSchedule((s) => {
+          s.job(PkgJob, { scope: 'all' }).everyMinute().name('pkg');
+          s.job(StatsJob, { scope: 'all' }).everyMinute().name('stats');
+        }),
+        { modules: [defineModule({ name: 'jobs', jobs: [StatsJob] })] },
+      );
+      expect(await said(app, app.container.make(Scheduler).tasks)).toEqual([]);
+      await app.shutdown();
+    });
+
+    it('SIGTERM while the check still runs: the command exits 0 and the line still comes', { timeout: 20_000 }, async () => {
+      const { app } = await withPackage(mismatched());
+      const { code, text } = await work(app, { lines: 2, early: true });
+      expect(code).toBe(0);
+      expect(warned(text)).toHaveLength(2);
+      await app.shutdown();
+    });
+
+    it("an app's own scheduler object with a job task: tasks is read once, the command stops at once and exits 0", { timeout: 20_000 }, async () => {
+      const { app } = await withPackage(defineSchedule(() => {}));
+      let reads = 0;
+      const own = {
+        checkProcess: async () => {},
+        lockWarning: () => undefined,
+        get tasks() {
+          return reads++ === 0 ? [jobTask('child', PkgChildJob)] : undefined;
+        },
+        tick: async () => [],
+        releaseHeld: async () => {},
+      } as unknown as Scheduler;
+      const { code, text } = await work(app, { scheduler: own, lines: 1, early: true });
+      expect(code).toBe(0);
+      expect(reads).toBe(1);
+      expect(warned(text)).toHaveLength(1);
+      await app.shutdown();
+    });
+
+    it('reads that throw, or an output that throws, never reach the start: the next task still gets its line', async () => {
+      const { app } = await withPackage(defineSchedule(() => {}));
+      const throws = () => {
+        throw new Error('no');
+      };
+      await expect(warnJobNames({ filter: throws } as never, app, () => {})).resolves.toBeUndefined();
+      await expect(warnJobNames([jobTask('a', PkgChildJob)] as never, { container: { make: throws, has: throws } } as never, () => {})).resolves.toBeUndefined();
+      const broken = { name: 'broken', definition: { kind: 'job', target: PkgChildJob, get environments(): never { throw new Error('no environments'); } } };
+      expect(await said(app, [broken, jobTask('child', PkgChildJob)])).toEqual([full('child', 'PkgChildJob', 'pkg.sync', 'PkgJob')]);
+      let calls = 0;
+      await expect(
+        warnJobNames([jobTask('child', PkgChildJob), jobTask('other', PkgOtherJob)] as never, app, () => {
+          calls++;
+          throw new Error('the output is closed');
+        }),
+      ).resolves.toBeUndefined();
+      expect(calls).toBe(2);
+      await app.shutdown();
+    });
+
+    it('a registry without has, an app without the queue, and a job the app does not know: no line, no throw', async () => {
+      const { app } = await withPackage(defineSchedule(() => {}));
+      const registry = { get: () => PkgJob };
+      const fake = { has: () => true, make: (token: unknown) => (token === ScheduleConfig ? { environment: 'test' } : registry) };
+      await expect(warnJobNames([jobTask('child', PkgChildJob)] as never, { container: fake } as never, () => assert.fail('no line'))).resolves.toBeUndefined();
+      const bare = await boot(defineSchedule((s) => void s.job(PkgChildJob, { scope: 'x' }).everyMinute().name('child')));
+      expect(await said(bare.app, bare.scheduler.tasks)).toEqual([]);
+      await bare.app.shutdown();
+      expect(await said(app, [jobTask('unknown', StatsJob)])).toEqual([]);
+      await app.shutdown();
+    });
+
+    it('a logger whose warn rejects sees no call from the new line, and nothing is left unhandled', { timeout: 20_000 }, async () => {
+      const { app, log } = await withPackage(mismatched());
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => void unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+      const calls: string[] = [];
+      const rejecting: Logger = {
+        debug: () => {},
+        info: () => {},
+        warn: (message: string) => (calls.push(message), Promise.reject(new Error('the transport is down')) as never),
+        error: () => {},
+        child: () => rejecting,
+      };
+      try {
+        const { code, text } = await work(app, { lines: 2, logger: rejecting });
+        expect(code).toBe(0);
+        expect(warned(text)).toHaveLength(2);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
+      expect(calls).toEqual([]);
+      expect(log.entries.filter((entry) => entry.level === 'warn')).toEqual([]);
+      expect(unhandled).toEqual([]);
+      await app.shutdown();
+    });
+
+    it.each(['schedule:run', 'schedule:test'] as const)('%s prints no line: the failed run is reported and the exit code is 1', async (command) => {
+      const { app } = await withPackage(mismatched());
+      const { code, text } = await once(app, command, command === 'schedule:test' ? ['child'] : []);
+      expect(code).toBe(1);
+      expect(text).toContain('child: failed:');
+      expect(warned(text)).toEqual([]);
+      if (command === 'schedule:run') expect(text).toContain('count: ran');
+      await app.shutdown();
+    });
+
+    it("the failed run says what the line says, in the queue's words", async () => {
+      const { app, scheduler, clock, runs } = await withPackage(mismatched());
+      await expect(scheduler.checkProcess()).resolves.toBeUndefined();
+      const results = await Promise.all((await scheduler.tick(clock.now())).map((tick) => tick.done));
+      expect(results.map((result) => [result.task, result.outcome]).sort()).toEqual([['child', 'failed'], ['count', 'ran'], ['other', 'failed']]);
+      expect((results.find((result) => result.task === 'child')!.error as Error).message).toBe('PkgChildJob is named "pkg.sync", but that name belongs to PkgJob in this app\'s jobs.');
+      expect(runs.count('count')).toBe(1);
+      await app.shutdown();
+    });
+
+    it('names that cannot be shown: empty, a Symbol, a method, a getter that throws, both unnamed', async () => {
+      const variant = (define: (job: JobClass) => void) => {
+        const job = class {
+          static readonly job = 'pkg.sync';
+          static readonly schema = v.object({ scope: v.string() });
+          handle() {}
+        };
+        define(job);
+        return job;
+      };
+      const { app } = await withPackage(defineSchedule(() => {}));
+      const table: [string, JobClass][] = [
+        ['empty', variant((job) => Object.defineProperty(job, 'name', { value: '' }))],
+        ['symbol', variant((job) => Object.defineProperty(job, 'name', { value: Symbol('sym') }))],
+        ['method', variant((job) => Object.defineProperty(job, 'name', { value() {} }))],
+        [
+          'getter',
+          variant((job) =>
+            Object.defineProperty(job, 'name', {
+              get() {
+                throw new Error('no name');
+              },
+            }),
+          ),
+        ],
+      ];
+      for (const [, job] of table) expect(await said(app, [jobTask('t', job)]), String(table.findIndex(([, other]) => other === job))).toEqual([full('t', '(unnamed class)', 'pkg.sync', 'PkgJob')]);
+      await app.shutdown();
+      const unnamed = variant((job) => Object.defineProperty(job, 'name', { value: '' }));
+      const both = await withQueue(defineSchedule(() => {}), { modules: [], providers: [providerOfJobs(unnamed)] });
+      expect(await said(both.app, [jobTask('t', variant((job) => Object.defineProperty(job, 'name', { value: '' })))])).toEqual([full('t', '(unnamed class)', 'pkg.sync', 'another class') + TWO_COPIES]);
+      await both.app.shutdown();
+    });
+
+    it('two copies of one class: the line says "another class" and names the two copies', async () => {
+      const copy = class PkgJob {
+        static readonly job = 'pkg.sync';
+        static readonly schema = v.object({ scope: v.string() });
+        handle() {}
+      };
+      const { app } = await withPackage(defineSchedule(() => {}));
+      expect(await said(app, [jobTask('copy', copy)])).toEqual([full('copy', 'PkgJob', 'pkg.sync', 'another class') + TWO_COPIES]);
+      await app.shutdown();
+    });
+
+    it('the line holds neither the secret of a task name nor a control character', { timeout: 20_000 }, async () => {
+      const { app } = await withPackage(defineSchedule((s) => void s.job(PkgChildJob, { scope: 'x' }).everyMinute().name('esc\nape Cookie: a=1; marmeon_session=s3ss10nvalue')));
+      app.container.make(Redactor).addKeys('marmeon_session');
+      const { text } = await work(app, { lines: 1 });
+      expect(text).not.toContain('s3ss10nvalue');
+      expect(warned(text)).toHaveLength(1);
+      expect(text).toContain('The task "esc\\nape Cookie: [redacted]; marmeon_session=[redacted]" queues PkgChildJob');
+      await app.shutdown();
+    });
+
+    it('a task of another environment gets no line; an unknown name there is refused as before', async () => {
+      const elsewhere = await withPackage(defineSchedule((s) => void s.job(PkgOtherJob, { scope: 'x' }).everyMinute().environments('production').name('prod-only')));
+      expect(await said(elsewhere.app, elsewhere.scheduler.tasks)).toEqual([]);
+      await expect(elsewhere.scheduler.checkProcess()).resolves.toBeUndefined();
+      await elsewhere.app.shutdown();
+      const unknown = await withPackage(defineSchedule((s) => void s.job(StatsJob, { scope: 'x' }).everyMinute().environments('production').name('prod-only')));
+      await expect(unknown.scheduler.checkProcess()).rejects.toThrow('The schedule of module fixture queues StatsJob ("fixture.stats"), which is no module\'s job — add it to jobs: [...] of its module, or no worker can run it.');
+      await unknown.app.shutdown();
+    });
+
+    it('a task limited to the own environment warns; a production app warns for production, not for local', { timeout: 20_000 }, async () => {
+      const mine = await withPackage(defineSchedule(() => {}));
+      const environment = mine.app.container.make(ScheduleConfig).environment;
+      expect(await said(mine.app, [jobTask('here', PkgChildJob, [environment]), jobTask('there', PkgChildJob, [`not-${environment}`])])).toEqual([full('here', 'PkgChildJob', 'pkg.sync', 'PkgJob')]);
+      await mine.app.shutdown();
+      const production = await withPackage(
+        defineSchedule((s) => {
+          s.job(PkgChildJob, { scope: 'p' }).everyMinute().environments('production').name('for-production');
+          s.job(PkgChildJob, { scope: 'l' }).everyMinute().environments('local').name('for-local');
+        }),
+        { env: { NODE_ENV: 'production' } },
+      );
+      expect(await said(production.app, production.scheduler.tasks)).toEqual([full('for-production', 'PkgChildJob', 'pkg.sync', 'PkgJob')]);
+      await production.app.shutdown();
+    });
+
+    it('command and call tasks only: the queue is neither read nor made', async () => {
+      const { app } = await withPackage(defineSchedule(() => {}));
+      let touched = 0;
+      const counting = { container: { make: () => touched++, has: () => touched++ } };
+      await expect(warnJobNames([{ name: 'c', definition: { kind: 'command', target: 'x' } }, { name: 'k', definition: { kind: 'call', target: CountRun } }] as never, counting as never, () => assert.fail('no line'))).resolves.toBeUndefined();
+      expect(touched).toBe(0);
+      await app.shutdown();
+    });
+
+    it('a check that never settles does not hold up the start: SIGTERM still exits 0', { timeout: 20_000 }, async () => {
+      const { app } = await withPackage(mismatched());
+      check.neverSettle = true;
+      try {
+        const { code, text } = await work(app);
+        expect(code).toBe(0);
+        expect(warned(text)).toEqual([]);
+      } finally {
+        check.neverSettle = false;
+      }
+      await app.shutdown();
+    });
+
+    it('a clean schedule prints no line at command level once the check has ended', { timeout: 20_000 }, async () => {
+      const { app } = await withPackage(defineSchedule((s) => void s.job(PkgJob, { scope: 'all' }).everyMinute().name('pkg')));
+      check.kept.length = 0;
+      const { code, text } = await work(app);
+      await Promise.all(check.kept);
+      expect(code).toBe(0);
+      expect(check.kept).toHaveLength(1);
+      expect(warned(text)).toEqual([]);
+      await app.shutdown();
+    });
+
+    it('an unknown name still refuses the start, with the text it had', async () => {
+      const { app, scheduler } = await withPackage(defineSchedule((s) => void s.job(StatsJob, { scope: 'x' }).everyMinute()));
+      await expect(scheduler.checkProcess()).rejects.toThrow('The schedule of module fixture queues StatsJob ("fixture.stats"), which is no module\'s job — add it to jobs: [...] of its module, or no worker can run it.');
+      await app.shutdown();
+    });
+
+    it('the advice works: the registered class, or a class of your own with another name in a module\'s jobs', async () => {
+      class OwnJob {
+        static readonly job = 'app.sync';
+        static readonly schema = v.object({ scope: v.string() });
+        handle(_payload: JobPayload<typeof OwnJob>) {}
+      }
+      const { app, scheduler, clock } = await withPackage(
+        defineSchedule((s) => {
+          s.job(PkgJob, { scope: 'registered' }).everyMinute().name('registered');
+          s.job(OwnJob, { scope: 'own' }).everyMinute().name('own');
+        }),
+        { modules: [defineModule({ name: 'own', jobs: [OwnJob] })] },
+      );
+      await expect(scheduler.checkProcess()).resolves.toBeUndefined();
+      expect(await said(app, scheduler.tasks)).toEqual([]);
+      const results = await Promise.all((await scheduler.tick(clock.now())).map((tick) => tick.done));
+      expect(results.map((result) => [result.task, result.outcome]).sort()).toEqual([['own', 'ran'], ['registered', 'ran']]);
+      expect(await app.container.make(Queue).size()).toBe(2);
+      await app.shutdown();
+    });
   });
 });
 
