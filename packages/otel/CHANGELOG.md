@@ -1,5 +1,17 @@
 # @marmeon/otel
 
+## 1.2.3
+
+### Fixes
+
+- Hold a response to its Content-Length on startServer and refuse a fetched Response by @maxeckel in https://github.com/marmeon/marmeon/security/advisories/GHSA-mxg6-hmhw-47gq
+
+### Documentation
+
+- Count the layers of the chain in the hero stats, not its typos by @maxeckel in https://github.com/marmeon/marmeon/pull/889
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.2.2...v1.2.3
+
 ## 1.2.2
 
 ### Features

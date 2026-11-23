@@ -3,6 +3,24 @@
 This page lists every change between one version and the next that an app has to act on: how likely it is to affect your app, what to do, and the way back where there is one. The
 [release policy](docs/releases.md#what-a-version-promises) says what a version promises.
 
+## Upgrading to 1.2.3 from 1.2.2
+
+### Security hardening
+
+#### Low: startServer holds a response to its length, answers a failed body, and refuses a fetched Response
+
+*Likelihood of impact: low — apps with streamed responses of their own, routes that return a `Response` from `fetch()`, its clone, `Response.error()` or one made before the server started, code that checks `instanceof Response` or `instanceof Request`, and routes that set `Content-Length`, `Transfer-Encoding` or `Trailer` on a response.*
+
+Under `startServer()`, a response is held to its `Content-Length`: a longer body is cut at it and a shorter one closes the connection. A streamed body that fails on its first reads is answered `500` instead of a shorter `200`. A body that fails later closes the connection, and the text of its error is never sent. A `Transfer-Encoding` or `Trailer` header of a route is not sent, and a `Content-Length` of a route is sent only when it is one whole number. Nothing changes in code, unless your route sets one of these headers itself.
+
+A stream is cancelled when its client left before the response started. A stream you feed from a timer or an event needs a `cancel()` that stops feeding it.
+
+- `instanceof Response` and `instanceof Request` in your own code are now true also for those of the platform, such as from `fetch()` and `.clone()`.
+- A route that returns a `Response` of `fetch()` or its clone, `Response.error()`, or one whose body is read or locked now answers `500` with a `TypeError`. Before, `startServer()` sent it as JSON `{}`. Build a `Response` of your own from the body and the headers you choose to pass on, without `Content-Encoding` and `Content-Length` ([responses](docs/responses.md#other-results)).
+- A `Response` your code made goes out as the pages say, also a subclass of it, a clone of it, and one made before the server started. Before, `startServer()` sent a clone and one made before the start as `{}`.
+
+This release fixes [GHSA-mxg6-hmhw-47gq](https://github.com/marmeon/marmeon/security/advisories/GHSA-mxg6-hmhw-47gq).
+
 ## Upgrading to 1.2.2 from 1.1.0
 
 ### Commands

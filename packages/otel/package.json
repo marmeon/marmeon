@@ -1,6 +1,6 @@
 {
   "name": "@marmeon/otel",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "OpenTelemetry traces for Marmeon apps: requests, queries, jobs, mails and rendering as spans.",
   "keywords": [
     "marmeon",
