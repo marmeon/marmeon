@@ -715,37 +715,49 @@ export class Migrator {
    * database. A rename or drop in raw SQL leaves the migrations' schema naming something that is gone — a secret column, say, that is
    * now called something else and would be read as an ordinary one — so the migration is rolled back instead (on MySQL it is reported only: DDL cannot be rolled back there).
    *
+   * The other cause is a name Postgres cut at 63 bytes: the message names the first missing name over 63 bytes of UTF-8 as a possible cause.
+   *
    * Not the other way round: what the database has beyond the schema is no error. Raw SQL may add a column, another tool a table, a
    * newer release of the app a migration; `selectAll()` writes out the columns the migrations know, so nothing unknown is read by
    * accident, and `migrate` names what is unknown once it has run.
    */
   async #verify(trx: Kysely<any>, connection: string, file: MigrationFile, folded: Folded): Promise<void> {
-    const lacking = await this.#lacking(trx, connection, folded);
+    const { lacking, names } = await this.#lacking(trx, connection, folded);
     if (lacking.length === 0) return;
+    // UTF-8 is only a guess at the server's bytes (it counts in the database's encoding), so the sentence names the cause conditionally.
+    const cut = this.#driver(connection) === 'pgsql' ? names.find(({ name }) => Buffer.byteLength(name) > 63) : undefined;
     throw new SchemaError(
       withCode(
         'D3',
         `Migration ${file.name} (module "${file.module}") left the database without ${lacking.slice(0, 5).join(', ')}${lacking.length > 5 ? ', …' : ''}, which the migrations say is there: ` +
           `a table or column was renamed or dropped with raw SQL, and the schema the migrations describe did not follow. ${this.#driver(connection) === 'mysql' ? 'MySQL cannot undo a schema change: what the migration did stays, and it is not recorded. ' : 'The migration was rolled back. '}` +
-          'Use schema.alter() (renameColumn, dropColumn) and schema.rename(), which keep it in step. See docs/migrations.md#raw-sql.',
+          'Use schema.alter() (renameColumn, dropColumn) and schema.rename(), which keep it in step. See docs/migrations.md#raw-sql.' +
+          (cut ? ` Or the name ${printable(cut.shown)} is the cause: it is over 63 bytes of UTF-8, and Postgres cuts a name at 63 bytes of the database's encoding without a word. If it cut this one, use a shorter name.` : ''),
       ),
     );
   }
 
-  /** The tables and columns the schema puts on `connection` that the database lacks. */
-  async #lacking(db: Kysely<any>, connection: string, { projection, connections }: Folded): Promise<string[]> {
+  /** The tables and columns the schema puts on `connection` that the database lacks, as text and as names (`shown` the way the list writes one). */
+  async #lacking(db: Kysely<any>, connection: string, { projection, connections }: Folded): Promise<{ lacking: string[]; names: { shown: string; name: string }[] }> {
     const { types } = await tableColumns(runner(db), this.#driver(connection));
     const lacking: string[] = [];
+    const names: { shown: string; name: string }[] = [];
     for (const table of projection.tables.values()) {
       if (connections.get(table.name) !== connection) continue;
       const found = types.get(table.name);
       if (found === undefined) {
         lacking.push(`the table ${table.name}`);
+        // A qualified name is lacking whatever its length (the catalog is read by the bare name), so its length is no cause.
+        if (!table.name.includes('.')) names.push({ shown: table.name, name: table.name });
         continue;
       }
-      for (const column of table.columns) if (!found.has(column.name)) lacking.push(`the column ${table.name}.${column.name}`);
+      for (const column of table.columns) {
+        if (found.has(column.name)) continue;
+        lacking.push(`the column ${table.name}.${column.name}`);
+        names.push({ shown: `${table.name}.${column.name}`, name: column.name });
+      }
     }
-    return lacking;
+    return { lacking, names };
   }
 
   /**
@@ -757,7 +769,7 @@ export class Migrator {
     const present = new Map<string, Set<string>>();
     for (const connection of connections) {
       const books = this.#books(connection);
-      const lacking = await this.#lacking(books, connection, state);
+      const { lacking } = await this.#lacking(books, connection, state);
       if (lacking.length > 0) {
         throw new SchemaError(
           withCode(

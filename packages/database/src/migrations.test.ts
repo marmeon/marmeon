@@ -643,3 +643,174 @@ describe('migration files', () => {
     expect(app([{ name: 'x', migrations: dir.slice(root.length + 1) }]).files()).toEqual([]);
   });
 });
+
+// Postgres cuts an identifier at 63 bytes without a word, and the migrations' schema keeps the whole name: such a migration ends in D3,
+// which names the possible cause. A long name that lives inside one plan is never lacking.
+describe.each(drivers)('names Postgres cuts (%s)', (driver) => {
+  const root = workspaceTempDir('marmeon-long-names-');
+  const kysely = import.meta.resolve('kysely');
+  const letters = (n: number, char = 'c') => char.repeat(n);
+  const twoByte = 'é';
+  const stamp = '2026_02_01_000000';
+  const source = (body: string, down = '') => `import { sql } from '${kysely}';\nexport default {\n  up: (schema: any) => {\n${body}\n  },\n  down: (schema: any) => {\n${down}\n  },\n};\n`;
+  const moduleOf = (files: Record<string, string>): ModuleDefinition => {
+    const dir = mkdtempSync(join(root, 'm-'));
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, `${name}.ts`), text);
+    return { name: 'cut', migrations: dir };
+  };
+  const recorded = async (connections: Connections) => (await sql<{ name: string }>`select name from migrations order by id`.execute(connections.get<any>())).rows.map((row) => row.name);
+  const tablesOf = async (connections: Connections) => (await connections.get<any>().introspection.getTables()).map((t) => t.name).filter((name) => name !== LOCK_TABLE).sort();
+  const create = (table: string, column: string) => `    schema.create(${JSON.stringify(table)}, (table: any) => { table.string(${JSON.stringify(column)}); });`;
+  const cause = (name: string) => ` Or the name ${name} is the cause: it is over 63 bytes of UTF-8, and Postgres cuts a name at 63 bytes of the database's encoding without a word. If it cut this one, use a shorter name.`;
+  const d3 = (file: string, lacking: string, tail = '') =>
+    `[marmeon:D3] Migration ${file} (module "cut") left the database without ${lacking}, which the migrations say is there: a table or column was renamed or dropped with raw SQL, and the schema the migrations describe did not follow. The migration was rolled back. Use schema.alter() (renameColumn, dropColumn) and schema.rename(), which keep it in step. See docs/migrations.md#raw-sql.${tail}`;
+
+  const withDatabase = async (body: (own: Awaited<ReturnType<typeof freshConnections>>) => Promise<void>) => {
+    const own = await freshConnections(driver);
+    try {
+      await body(own);
+    } finally {
+      await own.close();
+    }
+  };
+
+  const refused = (name: string, files: Record<string, string>, message: string, before: string[] = [], tablesBefore: string[] = []) =>
+    it.runIf(driver === 'pgsql')(name, async () => {
+      await withDatabase(async ({ connections }) => {
+        const error = await migrator(connections, moduleOf(files)).migrate().then(() => undefined, (caught: unknown) => caught);
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toBe(message);
+        expect(await recorded(connections)).toEqual(before);
+        expect(await tablesOf(connections)).toEqual(['migrations', ...tablesBefore].sort());
+      });
+    });
+
+  const column64 = letters(64);
+  refused('ends a migration that leaves a column of 64 bytes in D3 and names the cut as the cause', { [`${stamp}_create_cut_column`]: source(create('items', column64)) }, d3(`${stamp}_create_cut_column`, `the column items.${column64}`, cause(`items.${column64}`)));
+
+  const column32 = letters(32, twoByte);
+  refused('counts bytes, not characters: a column of 32 two-byte letters is 64 bytes', { [`${stamp}_create_cut_bytes`]: source(create('items', column32)) }, d3(`${stamp}_create_cut_bytes`, `the column items.${column32}`, cause(`items.${column32}`)));
+
+  const table64 = letters(64, 't');
+  refused('ends a migration that creates a table of 64 bytes in D3 and names it', { [`${stamp}_create_cut_table`]: source(create(table64, 'a')) }, d3(`${stamp}_create_cut_table`, `the table ${table64}`, cause(table64)));
+
+  refused(
+    'ends a column renamed to a name of 64 bytes in D3, keeps the migration before it',
+    {
+      [`${stamp}_create_items`]: source(create('items', 'old')),
+      '2026_02_02_000000_rename_cut_column': source(`    schema.alter('items', (table: any) => { table.renameColumn('old', '${column64}'); });`),
+    },
+    d3('2026_02_02_000000_rename_cut_column', `the column items.${column64}`, cause(`items.${column64}`)),
+    [`${stamp}_create_items`],
+    ['items'],
+  );
+
+  refused(
+    'ends a table renamed to a name of 64 bytes in D3, keeps the migration before it',
+    {
+      [`${stamp}_create_items`]: source(create('items', 'a')),
+      '2026_02_02_000000_rename_cut_table': source(`    schema.rename('items', '${table64}');`),
+    },
+    d3('2026_02_02_000000_rename_cut_table', `the table ${table64}`, cause(table64)),
+    [`${stamp}_create_items`],
+    ['items'],
+  );
+
+  // A name that raw SQL renamed away is lacking whatever its length; the sentence belongs to Postgres and to a name over 63 bytes.
+  const rawRename = (table: string, column: string) => `${create(table, column)}\n    schema.raw(sql.raw('alter table ${table} rename column ${column} to renamed'));`;
+  const lost = (name: string, files: Record<string, string>, expected: string, only: 'pgsql' | 'sqlite') =>
+    it.runIf(only === driver)(name, async () => {
+      await withDatabase(async ({ connections }) => {
+        const error = await migrator(connections, moduleOf(files)).migrate().then(() => undefined, (caught: unknown) => caught);
+        expect((error as Error).message).toBe(expected);
+        expect(await recorded(connections)).toEqual([]);
+      });
+    });
+
+  lost('gives D3 without the sentence for a column of exactly 63 bytes that raw SQL renamed away', { [`${stamp}_raw_limit`]: source(rawRename('items', letters(63))) }, d3(`${stamp}_raw_limit`, `the column items.${letters(63)}`), 'pgsql');
+  lost('gives D3 without the sentence for a column of 70 bytes that raw SQL renamed away on SQLite', { [`${stamp}_raw_long`]: source(rawRename('items', letters(70))) }, d3(`${stamp}_raw_long`, `the column items.${letters(70)}`), 'sqlite');
+  lost(
+    'gives D3 without the sentence for a table x.<64 bytes>: a qualified table ends in D3 whatever its length',
+    { [`${stamp}_create_dotted_long`]: source(`    schema.raw(sql.raw('create schema x'));\n${create(`x.${table64}`, 'a')}`) },
+    d3(`${stamp}_create_dotted_long`, `the table x.${table64}`),
+    'pgsql',
+  );
+  lost(
+    'gives D3 without the sentence for a table public.<60 bytes>: a limit of qualified tables, 67 bytes as a whole',
+    { [`${stamp}_create_dotted_short`]: source(create(`public.${letters(60, 't')}`, 'a')) },
+    d3(`${stamp}_create_dotted_short`, `the table public.${letters(60, 't')}`),
+    'pgsql',
+  );
+
+  const migrates = (name: string, files: Record<string, string>, then: (own: Awaited<ReturnType<typeof freshConnections>>, run: Migrator) => Promise<void>, only: 'pgsql' | 'sqlite') =>
+    it.runIf(only === driver)(name, async () => {
+      await withDatabase(async (own) => then(own, migrator(own.connections, moduleOf(files))));
+    });
+
+  migrates(
+    'keeps the text of D3 for a short name lost to raw SQL',
+    { [`${stamp}_raw_rename`]: source(`${create('items', 'a')}\n    schema.raw(sql.raw('alter table items rename column a to b'));`) },
+    async ({ connections }, run) => {
+      const error = await run.migrate().then(() => undefined, (caught: unknown) => caught);
+      expect((error as Error).message).toBe(d3(`${stamp}_raw_rename`, 'the column items.a'));
+      expect(await recorded(connections)).toEqual([]);
+    },
+    'pgsql',
+  );
+
+  migrates(
+    'runs a migration whose column of 70 bytes lives and is renamed short inside one plan',
+    { [`${stamp}_create_local`]: source(`${create('items', letters(70))}\n    schema.alter('items', (table: any) => { table.renameColumn('${letters(70)}', 'short'); });`) },
+    async ({ connections }, run) => {
+      expect((await run.migrate()).map((ran) => ran.name)).toEqual([`${stamp}_create_local`]);
+      expect((await connections.get<any>().introspection.getTables()).find((table) => table.name === 'items')!.columns.map((column) => column.name)).toEqual(['short']);
+    },
+    'pgsql',
+  );
+
+  migrates(
+    'runs a migration that creates a column of 70 bytes and drops it with dropColumn() in one plan',
+    { [`${stamp}_create_dropped`]: source(`    schema.create('items', (table: any) => { table.string('a'); table.string('${letters(70)}'); });\n    schema.alter('items', (table: any) => { table.dropColumn('${letters(70)}'); });`) },
+    async ({ connections }, run) => {
+      expect((await run.migrate()).map((ran) => ran.name)).toEqual([`${stamp}_create_dropped`]);
+      expect((await connections.get<any>().introspection.getTables()).find((table) => table.name === 'items')!.columns.map((column) => column.name)).toEqual(['a']);
+    },
+    'pgsql',
+  );
+
+  migrates(
+    'keeps Postgres its own error for two names that cut alike',
+    { [`${stamp}_create_alike`]: source(`    schema.create('items', (table: any) => { table.string('${letters(63)}a'); table.string('${letters(63)}b'); });`) },
+    async ({ connections }, run) => {
+      const error = await run.migrate().then(() => undefined, (caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toMatch(/specified more than once/);
+      expect((error as Error).message).not.toContain('[marmeon:D3]');
+      expect(await recorded(connections)).toEqual([]);
+    },
+    'pgsql',
+  );
+
+  migrates(
+    'runs a table and a column of exactly 63 bytes',
+    { [`${stamp}_create_limit`]: source(create(letters(63, 't'), letters(63))) },
+    async ({ connections }, run) => {
+      await run.migrate();
+      expect(await recorded(connections)).toEqual([`${stamp}_create_limit`]);
+      expect(await connections.get<any>().selectFrom(letters(63, 't')).select(letters(63)).execute()).toEqual([]);
+    },
+    'pgsql',
+  );
+
+  migrates(
+    'runs, queries and rolls back a table and a column of 70 bytes on SQLite',
+    { [`${stamp}_create_long`]: source(create(letters(70, 't'), letters(70)), `    schema.drop('${letters(70, 't')}');`) },
+    async ({ connections }, run) => {
+      await run.migrate();
+      expect(await connections.get<any>().selectFrom(letters(70, 't')).select(letters(70)).execute()).toEqual([]);
+      expect((await run.rollback()).map((ran) => ran.name)).toEqual([`${stamp}_create_long`]);
+      expect(await tablesOf(connections)).toEqual(['migrations']);
+    },
+    'sqlite',
+  );
+});
