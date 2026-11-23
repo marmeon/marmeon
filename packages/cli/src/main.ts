@@ -37,14 +37,14 @@ export function checkArgs(command: string, argv: readonly string[], name = comma
  * whatever app code writes to stdout meanwhile goes to stderr.
  * @internal Only for the launcher (`bin/marmeon.js`); not part of the public API.
  */
-export async function run(args: readonly string[], root = process.cwd()): Promise<number> {
+export async function run(args: readonly string[], root = process.cwd(), launch?: string): Promise<number> {
   const { argv, noInteraction } = withoutNoInteraction(args, 1);
   const rest = argv.slice(1);
   // `marmeon mcp` speaks its protocol on stdout: like `--json`, whatever else writes there goes to stderr.
   const protocol = argv[0] === 'mcp';
   const redirect = protocol || (rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest).includes('--json') ? stdoutToStderr() : undefined;
   try {
-    return await runCommandLine(argv, root, new Output(redirect?.write), noInteraction);
+    return await runCommandLine(argv, root, new Output(redirect?.write), noInteraction, launch);
   } finally {
     redirect?.restore();
   }
@@ -60,7 +60,8 @@ function withoutNoInteraction(argv: readonly string[], from: number): { readonly
   return { argv: kept, noInteraction: kept.length !== argv.length };
 }
 
-async function runCommandLine(argv: readonly string[], root: string, output: Output, noInteraction: boolean): Promise<number> {
+/** `launch` is the command the launcher was called with (`start` and `dev` both run `serve`). */
+async function runCommandLine(argv: readonly string[], root: string, output: Output, noInteraction: boolean, launch?: string): Promise<number> {
   const [name = 'list', ...rest] = argv;
   const builtIn = BUILT_IN.find((command) => command.command === name);
   const listing = name === 'list' || name === 'help' || name === '--help' || name === '-h';
@@ -106,7 +107,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
         const redactor = await redactorAfter(undefined, root);
         output.error(redactor.text(loaded instanceof ConfigError ? loaded.message : `Could not start the application: ${loaded.message}${typeof code === 'string' ? ` (${code})` : ''}${where ? `\n  at ${where}` : ''}`));
         await printSolutions(output, loaded, root, failing, redactor);
-        printPackageAdvice(output, loaded, root, failing);
+        printPackageAdvice(output, loaded, root, failing, launch !== 'start');
         return 1;
       }
       const where = appFrameOf(loaded, root);
@@ -204,7 +205,7 @@ async function runCommandLine(argv: readonly string[], root: string, output: Out
       return EXIT_USAGE;
     }
     printError(output, error, await redactorAfter(app, root, booted));
-    printPackageAdvice(output, error, root, 'stderr');
+    printPackageAdvice(output, error, root, 'stderr', false);
     reportFailure(app, Command, error);
     return 1;
   } finally {
@@ -244,14 +245,22 @@ async function printSolutions(output: Output, error: Error, root: string, stream
 
 /**
  * After a K3 (a class the loader could not give an injection list), the @marmeon packages of the app that are not in one version
- * — the usual reason a package is read by a loader of another version. Prints nothing when they are all alike. Never fails itself.
+ * — the usual reason a package is read by a loader of another version — and, under a heading of their own, the packages that resolve a second
+ * copy of an @marmeon package. After another error `starting` is true for (the app did not start, and the launcher was not called with `start`), only
+ * those copies. After a command that failed once the app had started (`starting` false), a K3 gets its advice and any other error nothing.
+ * Prints nothing when there is none. Never fails itself.
  */
-function printPackageAdvice(output: Output, error: unknown, root: string, stream: 'stdout' | 'stderr'): void {
-  if (errorCodeOf(error) !== 'K3') return;
-  const advice = packageAdvice(root);
-  if (advice.length === 0) return;
+function printPackageAdvice(output: Output, error: unknown, root: string, stream: 'stdout' | 'stderr', starting: boolean): void {
+  const k3 = errorCodeOf(error) === 'K3';
+  if (!k3 && !starting) return;
   const line = (text = '') => (stream === 'stderr' ? void process.stderr.write(`${terminalText(text)}\n`) : output.line(text));
-  line();
-  line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} The @marmeon packages of this app are not in one version (docs/check.md#the-packages-check):`);
-  for (const text of advice) line(`  ${text}`);
+  const section = (heading: string, advice: readonly string[]) => {
+    if (advice.length === 0) return;
+    line();
+    line(`${stream === 'stderr' ? 'ℹ' : style('cyan', 'ℹ')} ${heading} (docs/check.md#the-packages-check):`);
+    // The lines after the first are indented, so that a text cannot pass for a line of its own.
+    for (const text of advice) line(`  ${text.split('\n').join('\n    ')}`);
+  };
+  if (k3) section('The @marmeon packages of this app are not in one version', packageAdvice(root, 'versions'));
+  section('A package of this app resolves its own copy of an @marmeon package', packageAdvice(root, 'copies'));
 }

@@ -4,6 +4,13 @@ import { EXACT, FRAMEWORK_NAME, isFramework, PROTOCOL, readManifest, resolveFirs
 import { reportOf, unrunReport, type CheckProblem } from './report.ts';
 import { plainReason, type CheckRun } from './tools.ts';
 
+/** A version as the text of a finding shows it: only one a registry serves, since the manifest it comes from is not the app's. */
+const shown = (version: unknown): string => (typeof version === 'string' && EXACT.test(version) ? version : 'in a version that cannot be read');
+
+/** A name from a manifest: as it is when it holds only the characters of a package name, otherwise quoted with every character beyond printable ASCII escaped (an allow-list, so no line break, control or direction character reaches the output). */
+const plain = (name: string): string =>
+  /^[\w.@/~-]+$/.test(name) ? name : JSON.stringify(name).replace(/[^\x20-\x7e]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+
 const DOCS = 'docs/check.md#the-packages-check';
 
 /** The most directories the strict walk follows unless `maxWalk` says otherwise. */
@@ -63,7 +70,7 @@ export function problemsAgainst(root: string, referenceName: '@marmeon/core' | '
   for (const [name, { version }] of installed) {
     if (version === reference.version) continue;
     wrong.add(name);
-    problems.push(problem('error', `${name} is ${String(version)}, the app's framework is ${reference.version} — install it in that version`, install(name)));
+    problems.push(problem('error', `${name} is ${shown(version)}, the app's framework is ${shown(reference.version)} — install it in that version`, install(name)));
   }
   for (const [name, { spec }] of listed) {
     if (!installed.has(name) || wrong.has(name) || PROTOCOL.test(spec) || EXACT.test(spec)) continue;
@@ -75,14 +82,14 @@ export function problemsAgainst(root: string, referenceName: '@marmeon/core' | '
     const manifest = readManifest(join(dir, 'package.json'));
     for (const group of [manifest?.dependencies, manifest?.peerDependencies]) {
       for (const [other, spec] of Object.entries(group ?? {})) {
-        if (!isFramework(other) || PROTOCOL.test(spec)) continue;
+        if (!FRAMEWORK_NAME.test(other) || PROTOCOL.test(spec)) continue;
         const found = resolveInstalled(dir, other);
         if (!found || found.manifest.version === version) continue;
         reported.add(copyKey(name, version, other, found.manifest.version));
         problems.push(
           problem(
             'error',
-            `${name} ${String(version)} uses ${other} ${String(found.manifest.version)}, a second copy next to the app's ${String(reference.version)} — install it in the app's version`,
+            `${name} ${shown(version)} uses ${other} ${shown(found.manifest.version)}, a second copy next to the app's ${shown(reference.version)} — install it in the app's version`,
             install(other),
           ),
         );
@@ -94,14 +101,14 @@ export function problemsAgainst(root: string, referenceName: '@marmeon/core' | '
     if (isFramework(name)) continue;
     const found = resolveInstalled(root, name);
     for (const [other, spec] of Object.entries(found?.manifest.dependencies ?? {})) {
-      if (!found || !isFramework(other) || PROTOCOL.test(spec)) continue;
+      if (!found || !FRAMEWORK_NAME.test(other) || PROTOCOL.test(spec)) continue;
       const copy = resolveInstalled(found.dir, other);
       if (!copy || copy.manifest.version === reference.version) continue;
       reported.add(copyKey(name, found.manifest.version, other, copy.manifest.version));
       problems.push(
         problem(
           'error',
-          `${name} ${String(found.manifest.version)} uses ${other} ${String(copy.manifest.version)}, a second copy next to the app's ${String(reference.version)} — use a version of ${name} that depends on the app's, or override ${other} to ${String(reference.version)}`,
+          `${name} ${shown(found.manifest.version)} uses ${other} ${shown(copy.manifest.version)}, a second copy next to the app's ${shown(reference.version)} — use a version of ${name} that depends on the app's, or override ${other} to ${shown(reference.version)}`,
         ),
       );
     }
@@ -124,16 +131,15 @@ export function problemsAgainst(root: string, referenceName: '@marmeon/core' | '
           const found = resolveFirst(dir, other, dir === root && strict ? root : undefined, manifests);
           if (!found) continue;
           // A package no one can read is not judged by looking away: its dependencies could be anything.
-          if (found.manifest === undefined || Array.isArray(found.manifest)) throw new UnreadableTree(`${relative(root, found.dir) || found.dir} has a package.json that cannot be read`);
+          if (found.manifest === undefined || Array.isArray(found.manifest)) throw new UnreadableTree(`${plain(relative(root, found.dir) || found.dir)} has a package.json that cannot be read`);
           // The installed copy decides, by the name in its manifest as well as by the key that declared it (`"legacy": "npm:@marmeon/core@1.0.0"`).
           const realName = typeof found.manifest.name === 'string' ? found.manifest.name : other;
           if (dir !== root && (isFramework(other) || FRAMEWORK_NAME.test(realName)) && found.manifest.version !== reference.version) {
-            const label = realName === other ? other : `${other} (${realName})`;
+            const label = realName === other ? plain(other) : `${plain(other)} (${plain(realName)})`;
             const key = copyKey(name, manifest?.version, other, found.manifest.version);
             if (!reported.has(key)) {
               reported.add(key);
-              const copy = typeof found.manifest.version === 'string' ? found.manifest.version : 'in a version that cannot be read';
-              problems.push(problem('error', `${name} ${String(manifest?.version)} uses ${label} ${copy}, a second copy next to the app's ${String(reference.version)} — install it in the app's version`, install(other)));
+              problems.push(problem('error', `${plain(name)} ${shown(manifest?.version)} uses ${label} ${shown(found.manifest.version)}, a second copy next to the app's ${shown(reference.version)} — install it in the app's version`, install(other)));
             }
           }
           if (visited.has(found.dir)) continue;
@@ -146,19 +152,70 @@ export function problemsAgainst(root: string, referenceName: '@marmeon/core' | '
   return problems;
 }
 
+const COPIES_DOCS = 'docs/package-development.md#one-copy-of-a-framework-package';
+
+/**
+ * A package of someone else the app lists (dependencies and devDependencies) whose `@marmeon/*` of `dependencies` or `peerDependencies`, resolved from that
+ * package's real directory, is another directory than the one the app resolves the same name to, in the same version (whatever the range says, `workspace:` included).
+ * A copy in another version is a warning here only where {@link problemsAgainst} does not judge the key (one that is only a peer, or has a protocol range); elsewhere
+ * it is the error that function reports. The CLI `marmeon` is left out, it is types only. Nothing where {@link problemsAgainst} gives `undefined` (the app does not list
+ * an installed `@marmeon/core`). A key that is not the name of a framework package is skipped. Throws when `package.json` cannot be read.
+ */
+function copyProblems(root: string): CheckProblem[] {
+  if (problemsAgainst(root, '@marmeon/core') === undefined) return [];
+  const app = readManifest(join(root, 'package.json'));
+  if (!app) throw new Error('package.json could not be read');
+  const problems: CheckProblem[] = [];
+  const reported = new Set<string>();
+  for (const name of Object.keys({ ...app.dependencies, ...app.devDependencies })) {
+    if (isFramework(name)) continue;
+    const found = resolveInstalled(root, name);
+    if (!found) continue;
+    const declared = typeof found.manifest.dependencies === 'object' && found.manifest.dependencies !== null ? found.manifest.dependencies : {};
+    const peers = typeof found.manifest.peerDependencies === 'object' && found.manifest.peerDependencies !== null ? found.manifest.peerDependencies : {};
+    for (const other of [...Object.keys(declared), ...Object.keys(peers)]) {
+      if (!FRAMEWORK_NAME.test(other) || other === 'marmeon' || reported.has(`${name}|${other}`)) continue;
+      const copy = resolveInstalled(found.dir, other);
+      const mine = resolveInstalled(root, other);
+      if (!copy || !mine || copy.dir === mine.dir) continue;
+      const same = copy.manifest.version === mine.manifest.version;
+      // Another version of a package that `problemsAgainst` judges (an exact range in `dependencies`) is its error, reported once there.
+      const range = declared[other];
+      if (!same && typeof range === 'string' && !PROTOCOL.test(range)) continue;
+      reported.add(`${name}|${other}`);
+      problems.push({
+        severity: 'warning',
+        message: same ? `${name} resolves another copy of ${other} (the same version, other peers)` : `${name} resolves its own copy of ${other} ${shown(copy.manifest.version)}, the app has ${shown(mine.manifest.version)}`,
+        file: 'package.json',
+        fix: "align the peers' versions, then pnpm dedupe",
+        docs: COPIES_DOCS,
+        rule: 'marmeon(packages)',
+      });
+    }
+  }
+  return problems;
+}
+
 /**
  * What is wrong with the versions of `marmeon` and the `@marmeon/*` packages an app uses: every package must be in the version of
  * `@marmeon/core` (a package pins its siblings exactly, so another version brings a second core) and be listed exactly, not as a
- * range. `undefined` without a `package.json` or an installed `@marmeon/core`; throws when `package.json` cannot be read. See docs/check.md#the-packages-check.
+ * range. A warning besides: a package of someone else resolves its own copy of an `@marmeon/*` package that no error above reports (`workspace:` ranges included).
+ * `undefined` without a `package.json` or an installed `@marmeon/core`; throws when `package.json` cannot be read. See docs/check.md#the-packages-check.
  */
 export function packageProblems(root: string): CheckProblem[] | undefined {
-  return problemsAgainst(root, '@marmeon/core');
+  const problems = problemsAgainst(root, '@marmeon/core');
+  return problems && [...problems, ...copyProblems(root)];
 }
 
-/** The findings of {@link packageProblems} as lines of advice (`message: fix`) for `marmeon dev` and a failed start; none when all is well or the packages cannot be read. */
-export function packageAdvice(root: string): string[] {
+const asAdvice = (problems: readonly CheckProblem[]): string[] => problems.map((problem) => (problem.fix === undefined ? problem.message : `${problem.message}: ${problem.fix}`));
+
+/**
+ * The findings of {@link packageProblems} as lines of advice (`message: fix`) for `marmeon dev` and a failed start; none when all is well or the packages cannot be read.
+ * `'copies'` gives only the second copies (also one in another version that no error reports), `'versions'` all the others.
+ */
+export function packageAdvice(root: string, only?: 'copies' | 'versions'): string[] {
   try {
-    return (packageProblems(root) ?? []).map((problem) => (problem.fix === undefined ? problem.message : `${problem.message}: ${problem.fix}`));
+    return asAdvice(only === 'copies' ? copyProblems(root) : only === 'versions' ? (problemsAgainst(root, '@marmeon/core') ?? []) : (packageProblems(root) ?? []));
   } catch {
     return [];
   }

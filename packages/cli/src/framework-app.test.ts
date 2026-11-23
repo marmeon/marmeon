@@ -309,6 +309,16 @@ describe('readFrameworkState', () => {
     }
   });
 
+  it('does not print a directory name that adds a line when it refuses an unreadable package.json', () => {
+    const key = '@marmeon/x/../../../d\n! FAKE DIR';
+    const root = app({ '@marmeon/core': '1.1.0', plugin: '1.0.0' }, { '@marmeon/core': '1.1.0' });
+    write(join(root, 'node_modules/plugin/package.json'), { name: 'plugin', version: '1.0.0', dependencies: { [key]: '1.0.0' } });
+    write(join(root, 'node_modules/plugin/node_modules/@marmeon/x', '../../../d\n! FAKE DIR', 'package.json'), '{ nope');
+    const state = readFrameworkState(root);
+    expect(state).toMatchObject({ ok: false, reason: 'unreadable', message: expect.stringContaining('FAKE DIR') });
+    expect(state.ok ? '' : state.message).not.toContain('\n');
+  });
+
   it('keeps going past a dependency that is not installed', () => {
     const root = app({ '@marmeon/core': '1.1.0', plugin: '1.0.0' }, { '@marmeon/core': '1.1.0' });
     write(join(root, 'node_modules/plugin/package.json'), { name: 'plugin', version: '1.0.0', dependencies: { absent: '1.0.0' } });

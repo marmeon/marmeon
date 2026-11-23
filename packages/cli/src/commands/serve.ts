@@ -76,7 +76,7 @@ export class ServeCommand {
       return 1;
     }
     const views = watched;
-    // At each start of the server (under `node --watch`, each restart): the @marmeon packages in one version. A warning only — the server starts, and `marmeon check` fails on it.
+    // At each start of the server (under `node --watch`, each restart): the findings of the packages check (versions of the @marmeon packages, second copies). Warned about only — the server starts, and `marmeon check` fails on an error.
     if (development) for (const advice of packageAdvice(root)) output.warn(advice);
     // Parses the modules' files: development only, so `marmeon start` never loads the parser. A failure is a warning, never fatal.
     if (development) {
