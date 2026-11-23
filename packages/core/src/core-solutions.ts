@@ -100,10 +100,10 @@ export const coreSolutions = defineSolutions([
     solve: (e) => ({
       title: 'Install the package as it is published',
       text:
-        `Node does not run TypeScript under node_modules (${/for "([^"]+)"/.exec(e.message)?.[1] ?? 'a package'}). A published package ` +
-        'brings its built dist/ — this one points Node at its sources: packed with npm pack (which ignores publishConfig.exports — pack ' +
-        'with pnpm), a workspace package copied with its workspace manifest, or the @marmeon/source condition outside the ' +
-        "framework's monorepo (NODE_OPTIONS).",
+        `Node does not run TypeScript under node_modules (${/for "([^"]+)"/.exec(e.message)?.[1] ?? 'a package'}). A copy of the package under ` +
+        'node_modules points Node at its TypeScript sources. Usually it is a package published with a TypeScript entry, one packed with npm ' +
+        'pack (which ignores publishConfig.exports — pack with pnpm), a workspace package copied with its workspace manifest, or an ' +
+        'installed package that still has an @marmeon/source export while that condition is on (NODE_OPTIONS).',
       docs: 'docs/package-development.md#building-and-publishing',
     }),
   },
