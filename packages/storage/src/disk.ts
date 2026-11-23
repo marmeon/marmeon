@@ -39,13 +39,31 @@ export interface DiskDriverTemporaryUrlOptions {
   readonly base?: string;
 }
 
+/** Some of a file's bytes: from `start` to `end` (both included; no `end`: to the file's end), or the `last` bytes. See docs/storage.md#opening-a-range. */
+export type ByteRange =
+  | { readonly start: number; readonly end?: number | undefined; readonly last?: undefined }
+  | { readonly last: number; readonly start?: undefined; readonly end?: undefined };
+
+/** What `open()` takes. See docs/storage.md#opening-a-range. */
+export interface OpenOptions {
+  /** Open only these bytes of the file. A disk that cannot says so with no `range` on the result and returns the whole file. */
+  readonly range?: ByteRange | undefined;
+}
+
 /** A file opened for reading — what a disk's routes send. */
 export interface OpenedFile {
   readonly body: ReadableStream<Uint8Array>;
-  /** The file's size in bytes. `serveFile()` announces it as `Content-Length`, and `startServer()` sends no byte past it. See docs/storage.md#public-and-private-files. */
+  /** The whole file's size in bytes, also when `range` is set. `serveFile()` announces it as `Content-Length`, and `startServer()` sends no byte past it. See docs/storage.md#public-and-private-files. */
   readonly size: number;
   readonly lastModified: Date;
   readonly contentType: string;
+  /**
+   * Set only in answer to `options.range`: `body` holds exactly these bytes (first and last, both included), or none for
+   * `'unsatisfiable'`. Absent: `body` is the whole file. See docs/drivers.md#disk-drivers.
+   */
+  readonly range?: { readonly start: number; readonly end: number } | 'unsatisfiable' | undefined;
+  /** This disk honours `options.range`. */
+  readonly acceptsRanges?: boolean | undefined;
 }
 
 /**
@@ -70,8 +88,12 @@ export interface Disk {
   text(key: string): Promise<string>;
   /** The file as a stream — for large files. */
   stream(key: string): Promise<ReadableStream<Uint8Array>>;
-  /** The file opened for reading, with its size, time and content type (one look at the file). */
-  open(key: string): Promise<OpenedFile>;
+  /**
+   * The file opened for reading, with its size, time and content type (one look at the file); `{ range }` opens some of its
+   * bytes. A malformed range throws a `RangeError`; a disk that cannot answer a range returns the whole file without `range`.
+   * See docs/storage.md#opening-a-range.
+   */
+  open(key: string, options?: OpenOptions): Promise<OpenedFile>;
   exists(key: string): Promise<boolean>;
   /** Removes a file; `false` when there was none. */
   delete(key: string): Promise<boolean>;
@@ -107,11 +129,20 @@ export interface DiskDriver {
   /** The disk's name in the configuration. */
   readonly name: string;
   readonly visibility: Visibility;
+  /**
+   * `true` opts in: `open(key, { range })` is given the app's range, and the driver honours it exactly or returns the whole
+   * file. `false` or no field: `open(key)` is called with the key alone.
+   */
+  readonly acceptsRanges?: boolean | undefined;
   put(key: string, contents: FileContents, options?: PutOptions): Promise<void>;
   get(key: string): Promise<Uint8Array>;
   text(key: string): Promise<string>;
   stream(key: string): Promise<ReadableStream<Uint8Array>>;
-  open(key: string): Promise<OpenedFile>;
+  /**
+   * The file. The framework passes an {@link OpenOptions} as `options`, and only to a driver with `acceptsRanges: true`: honour
+   * its `range` exactly or return the whole file. See docs/drivers.md#disk-drivers.
+   */
+  open(key: string, options?: unknown): Promise<OpenedFile>;
   exists(key: string): Promise<boolean>;
   /** Removes a file; `false` when there was none. */
   delete(key: string): Promise<boolean>;

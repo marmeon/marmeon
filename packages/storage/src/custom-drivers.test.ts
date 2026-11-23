@@ -6,10 +6,10 @@ import { createHttpKernel } from '@marmeon/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { defineStorage, type DiskDriverFactory } from './config.ts';
-import type { Disk, DiskDriver, DiskDriverTemporaryUrlOptions } from './disk.ts';
+import type { Disk, DiskDriver, DiskDriverTemporaryUrlOptions, OpenedFile } from './disk.ts';
 import { MemoryDisk } from './drivers/memory.ts';
 import { StorageFake } from './fake.ts';
-import { Storage, StorageError, StorageServiceProvider, StorageSetupError } from './index.ts';
+import { InvalidKeyError, Storage, StorageError, StorageServiceProvider, StorageSetupError } from './index.ts';
 import { servedPublicDisks } from './routes.ts';
 
 declare module './config.ts' {
@@ -291,5 +291,233 @@ describe('disk drivers of providers', () => {
   it('the app serves no route for a provider driver’s disk: its url is its own', () => {
     const options = { default: 'a', disks: { a: { driver: 'crate', bucket: 'b', visibility: 'public', url: '/files' } } };
     expect(servedPublicDisks(options as never)).toEqual([]);
+  });
+});
+
+describe('open() with a range on the disk of a driver', () => {
+  /** A driver whose `open` is `open(inner, ...args)`, the rest of it the memory disk's. */
+  const opening = (open: (inner: MemoryDisk, ...args: unknown[]) => Promise<OpenedFile>, acceptsRanges = false) =>
+    providing((_: unknown, { name }: { name: string }) => {
+      const inner = memory(name);
+      return new Proxy(asDriver(inner), {
+        get: (target, property) => {
+          if (property === 'acceptsRanges') return acceptsRanges ? true : undefined;
+          return property === 'open' ? (...args: unknown[]) => open(inner, ...args) : Reflect.get(target, property);
+        },
+      });
+    });
+  const diskOf = async (provider: object) => {
+    const disk = (await boot(disks(), [provider])).container.make(Storage).disk('media') as unknown as Disk;
+    await disk.put('digits.txt', '0123456789');
+    return disk;
+  };
+  const text = async (file: OpenedFile) => new Response(file.body).text();
+
+  it('a driver written before ranges is called with the key alone, and answers the whole file when a range is asked', async () => {
+    const calls: unknown[][] = [];
+    const disk = await diskOf(opening(async (inner, ...args) => (calls.push(args), inner.open(args[0] as string))));
+    expect(await text(await disk.open('digits.txt'))).toBe('0123456789');
+    expect(calls).toEqual([['digits.txt']]); // exactly one argument
+    const whole = await disk.open('digits.txt', { range: { start: 3, end: 4 } });
+    expect([await text(whole), whole.range]).toEqual(['0123456789', undefined]);
+    expect(calls[1]).toEqual(['digits.txt']); // asked, but the driver did not opt in: still the key alone
+  });
+
+  it('a driver with a second parameter of its own is never given the range unless it opts in', async () => {
+    const seen: unknown[][] = [];
+    const flagged = (acceptsRanges: boolean) =>
+      opening(async (inner, key, flag = false) => (seen.push([key, flag]), flag ? { ...(await inner.open(key as string)), contentType: 'x/flagged' } : inner.open(key as string)), acceptsRanges);
+    const plain = await diskOf(flagged(false));
+    const file = await plain.open('digits.txt', { range: { start: 1 } });
+    expect([file.contentType, file.range, await text(file)]).toEqual(['text/plain', undefined, '0123456789']);
+    expect(seen).toEqual([['digits.txt', false]]);
+    seen.length = 0;
+    const opted = await diskOf(flagged(true));
+    expect((await opted.open('digits.txt', { range: { start: 1 } })).contentType).toBe('x/flagged');
+    expect(seen).toEqual([['digits.txt', { range: { start: 1 } }]]);
+  });
+
+  it('a driver that did not opt in has a range it made up dropped when one was asked', async () => {
+    const disk = await diskOf(opening(async (inner, key) => ({ ...(await inner.open(key as string)), range: { start: 1, end: 2 } })));
+    const file = await disk.open('digits.txt', { range: { start: 1, end: 2 } });
+    expect([file.range, await text(file)]).toEqual([undefined, '0123456789']);
+  });
+
+  it('a driver that did not opt in and whose range and acceptsRanges show up only on a later read: the result never shows them', async () => {
+    let rangeReads = 0;
+    let claimReads = 0;
+    const disk = await diskOf(
+      opening(async (inner, key) => {
+        const file = await inner.open(key as string);
+        return Object.defineProperties({}, {
+          body: { value: file.body, enumerable: true },
+          size: { value: file.size, enumerable: true },
+          lastModified: { value: file.lastModified, enumerable: true },
+          contentType: { value: file.contentType, enumerable: true },
+          range: { get: () => (rangeReads++ === 0 ? undefined : { start: 2, end: 4 }), enumerable: true },
+          acceptsRanges: { get: () => (claimReads++ === 0 ? undefined : true), enumerable: true },
+        }) as OpenedFile;
+      }),
+    );
+    const file = await disk.open('digits.txt', { range: { start: 2, end: 4 } });
+    expect([file.range, file.range, file.acceptsRanges, file.acceptsRanges, await text(file)]).toEqual([undefined, undefined, undefined, undefined, '0123456789']);
+  });
+
+  it('the answer of an opted-in driver is read once: a getter that changes afterwards does not matter', async () => {
+    let sizeReads = 0;
+    let rangeReads = 0;
+    const disk = await diskOf(
+      opening(async (inner, key) => {
+        const file = await inner.open(key as string);
+        return Object.defineProperties({}, {
+          body: { value: file.body, enumerable: true },
+          size: { get: () => (sizeReads++ === 0 ? 10 : 3), enumerable: true },
+          lastModified: { value: file.lastModified, enumerable: true },
+          contentType: { value: file.contentType, enumerable: true },
+          range: { get: () => (rangeReads++ === 0 ? { start: 2, end: 4 } : 'unsatisfiable'), enumerable: true },
+        }) as OpenedFile;
+      }, true),
+    );
+    const file = await disk.open('digits.txt', { range: { start: 2, end: 4 } });
+    expect([file.size, file.range, file.size, file.range]).toEqual([10, { start: 2, end: 4 }, 10, { start: 2, end: 4 }]);
+  });
+
+  it('the answer of an opted-in driver without a range is read once too: a range that shows up later is not seen', async () => {
+    let rangeReads = 0;
+    const disk = await diskOf(
+      opening(async (inner, key) => {
+        const file = await inner.open(key as string);
+        return Object.defineProperties({}, {
+          body: { value: file.body, enumerable: true },
+          size: { value: file.size, enumerable: true },
+          lastModified: { value: file.lastModified, enumerable: true },
+          contentType: { value: file.contentType, enumerable: true },
+          range: { get: () => (rangeReads++ === 0 ? undefined : { start: 0, end: 9 }), enumerable: true },
+        }) as OpenedFile;
+      }, true),
+    );
+    const file = await disk.open('digits.txt', { range: { start: 0 } });
+    expect([file.range, file.range, await text(file)]).toEqual([undefined, undefined, '0123456789']);
+  });
+
+  it('acceptsRanges is the framework\'s: not opted in it is never on the result, opted in it always is', async () => {
+    const plain = await diskOf(opening(async (inner, key) => inner.open(key as string))); // the memory disk's result says true
+    expect((await plain.open('digits.txt')).acceptsRanges).toBeUndefined();
+    expect((await plain.open('digits.txt', { range: { start: 1 } })).acceptsRanges).toBeUndefined();
+    const silent = await diskOf(
+      opening(async (inner, key) => {
+        const { acceptsRanges: _dropped, ...file } = await inner.open(key as string);
+        return file;
+      }, true),
+    );
+    expect((await silent.open('digits.txt')).acceptsRanges).toBe(true);
+    expect((await silent.open('digits.txt', { range: { start: 1 } })).acceptsRanges).toBe(true);
+  });
+
+  it('a driver that did not opt in and returns a class instance with getters and a made-up range: its fields are kept, the range dropped', async () => {
+    const lastModified = new Date(5000);
+    class Answer {
+      get body() {
+        return new Response('whole').body!;
+      }
+      get size() {
+        return 5;
+      }
+      get lastModified() {
+        return lastModified;
+      }
+      get contentType() {
+        return 'text/plain';
+      }
+      get range() {
+        return { start: 1, end: 2 };
+      }
+    }
+    const disk = await diskOf(opening(async () => new Answer() as unknown as OpenedFile));
+    const file = await disk.open('digits.txt', { range: { start: 1 } });
+    expect([file.size, file.lastModified, file.contentType, file.range, await text(file)]).toEqual([5, lastModified, 'text/plain', undefined, 'whole']);
+  });
+
+  it('a driver that honours the range is given a copy of the checked range, and its answer passes', async () => {
+    const seen: unknown[] = [];
+    const asked = { start: 2, end: 4 };
+    const disk = await diskOf(opening(async (inner, key, options) => (seen.push(options), inner.open(key as string, options as never)), true));
+    const file = await disk.open('digits.txt', { range: asked });
+    expect([await text(file), file.range]).toEqual(['234', { start: 2, end: 4 }]);
+    expect(seen).toEqual([{ range: { start: 2, end: 4 } }]);
+    expect((seen[0] as { range: unknown }).range).not.toBe(asked);
+  });
+
+  it('negative: an answer that is not the requested bytes is refused, its body cancelled', async () => {
+    const wrongAnswers: (OpenedFile['range'])[] = [{ start: 0, end: 5 }, { start: 3, end: 4 }, { start: 2, end: 9 }, 'unsatisfiable'];
+    for (const range of wrongAnswers) {
+      let cancelled = 0;
+      const disk = await diskOf(
+        opening(async (inner, key) => ({
+          ...(await inner.open(key as string)),
+          body: new ReadableStream<Uint8Array>({ cancel: () => void cancelled++ }),
+          range,
+        }), true),
+      );
+      await expect(disk.open('digits.txt', { range: { start: 2, end: 4 } }), JSON.stringify(range)).rejects.toThrow(StorageError);
+      expect(cancelled).toBe(1);
+    }
+  });
+
+  it('negative: a range that cannot be answered is refused whatever a driver says, for an unsatisfiable one too', async () => {
+    const disk = await diskOf(opening(async (inner, key) => ({ ...(await inner.open(key as string)), range: { start: 0, end: 9 } }), true));
+    await expect(disk.open('digits.txt', { range: { start: 10 } })).rejects.toThrow(StorageError);
+    await expect(disk.open('digits.txt', { range: { last: 0 } })).rejects.toThrow(StorageError);
+  });
+
+  it('negative: a range of the caller that is not whole never reaches the driver', async () => {
+    let calls = 0;
+    const disk = await diskOf(opening(async (inner, key) => (calls++, inner.open(key as string)), true));
+    for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 0, last: 1 }, { last: 0.5 }, { first: 1 }, { start: 0, length: 4 }, { start: 0, End: 4 }, { last: 1, extra: true }]) {
+      await expect(disk.open('digits.txt', { range } as never)).rejects.toThrow(RangeError);
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('negative: a key is checked before the driver sees it, with a range too', async () => {
+    let calls = 0;
+    const disk = await diskOf(opening(async (inner, key) => (calls++, inner.open(key as string)), true));
+    await expect(disk.open('../x', { range: { start: 0 } })).rejects.toThrow(InvalidKeyError);
+    expect(calls).toBe(0);
+  });
+
+  it('a range field nobody asked for is not passed on', async () => {
+    const disk = await diskOf(opening(async (inner, key) => ({ ...(await inner.open(key as string)), range: { start: 1, end: 2 } })));
+    const file = await disk.open('digits.txt');
+    expect([file.range, await text(file)]).toEqual([undefined, '0123456789']);
+    expect((await disk.open('digits.txt', {})).range).toBeUndefined();
+  });
+
+  // Guards the design (an optional argument, not a new method), not one change of it.
+  it('a wrapper written before ranges that overrides open(key) is not bypassed: it serves what it changes, whole', async () => {
+    const wrapper = providing((_: unknown, { name }: { name: string }) => {
+      const inner = asDriver(memory(name));
+      return new Proxy(inner, {
+        get(target, property) {
+          if (property !== 'open') return Reflect.get(target, property);
+          return async (key: string) => {
+            const file = await target.open(key);
+            return { ...file, body: new Response((await new Response(file.body).text()).replace(/\d/g, '#')).body! };
+          };
+        },
+      });
+    });
+    const disk = await diskOf(wrapper);
+    expect(await text(await disk.open('digits.txt'))).toBe('##########');
+    const ranged = await disk.open('digits.txt', { range: { start: 2, end: 4 } });
+    expect([await text(ranged), ranged.range]).toEqual(['##########', undefined]);
+  });
+
+  it('the storage fake opens a range of its memory disks', async () => {
+    const app = await boot(disks(), [Crate], { fake: true });
+    const disk = app.container.make(Storage).disk('media') as unknown as Disk;
+    await disk.put('digits.txt', '0123456789');
+    const file = await disk.open('digits.txt', { range: { last: 3 } });
+    expect([await text(file), file.range]).toEqual(['789', { start: 7, end: 9 }]);
   });
 });

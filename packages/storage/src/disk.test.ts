@@ -56,6 +56,97 @@ describe.each(DISK_KINDS.map((kind) => [kind.name, kind] as const))('the %s disk
     expect(await disk.mimeType('blob')).toBe('image/webp');
   });
 
+  describe.skipIf(kind.skip || kind.name === 's3')('open() with a range', () => {
+    const bytes = (file: { body: ReadableStream<Uint8Array> }) => text(file.body);
+
+    it('opens the three forms with exactly their bytes, the whole size and acceptsRanges', async () => {
+      const disk = await make();
+      await disk.put('digits.txt', '0123456789');
+      const from = await disk.open('digits.txt', { range: { start: 3 } });
+      expect([await bytes(from), from.size, from.range, from.acceptsRanges]).toEqual(['3456789', 10, { start: 3, end: 9 }, true]);
+      const between = await disk.open('digits.txt', { range: { start: 2, end: 4 } });
+      expect([await bytes(between), between.size, between.range]).toEqual(['234', 10, { start: 2, end: 4 }]);
+      const last = await disk.open('digits.txt', { range: { last: 4 } });
+      expect([await bytes(last), last.size, last.range]).toEqual(['6789', 10, { start: 6, end: 9 }]);
+      const cut = await disk.open('digits.txt', { range: { start: 8, end: 500 } });
+      expect([await bytes(cut), cut.range]).toEqual(['89', { start: 8, end: 9 }]);
+    });
+
+    it('a range of a file bigger than one chunk holds its bytes and no others', async () => {
+      const disk = await make();
+      const big = new Uint8Array(150_000).map((_, index) => index % 251);
+      await disk.put('big.bin', big);
+      const file = await disk.open('big.bin', { range: { start: 65_000, end: 140_000 } });
+      expect(new Uint8Array(await new Response(file.body).arrayBuffer())).toEqual(big.slice(65_000, 140_001));
+    });
+
+    it('opens the whole file, with no range on the result, when none is asked', async () => {
+      const disk = await make();
+      await disk.put('digits.txt', '0123456789');
+      for (const file of [await disk.open('digits.txt'), await disk.open('digits.txt', {}), await disk.open('digits.txt', { range: undefined })]) {
+        expect(file.range).toBeUndefined();
+        expect(file.acceptsRanges).toBe(true);
+        expect(await bytes(file)).toBe('0123456789');
+      }
+    });
+
+    it('a range that starts at or after the end is unsatisfiable: no bytes, still the size', async () => {
+      const disk = await make();
+      await disk.put('digits.txt', '0123456789');
+      for (const range of [{ start: 10 }, { start: 11, end: 20 }, { last: 0 }]) {
+        const file = await disk.open('digits.txt', { range });
+        expect([await bytes(file), file.size, file.range]).toEqual(['', 10, 'unsatisfiable']);
+      }
+    });
+
+    it('an empty file: a start is unsatisfiable, a suffix gives the whole (empty) file', async () => {
+      const disk = await make();
+      await disk.put('empty.txt', '');
+      const start = await disk.open('empty.txt', { range: { start: 0 } });
+      expect([await bytes(start), start.size, start.range]).toEqual(['', 0, 'unsatisfiable']);
+      const suffix = await disk.open('empty.txt', { range: { last: 5 } });
+      expect([await bytes(suffix), suffix.size, suffix.range]).toEqual(['', 0, undefined]);
+    });
+
+    it('a suffix of an empty file stays empty when the file is replaced afterwards (memory copies, local closes at once)', async () => {
+      const disk = await make();
+      await disk.put('empty.txt', '');
+      const file = await disk.open('empty.txt', { range: { last: 5 } });
+      await disk.put('empty.txt', 'grown after the open');
+      expect(await bytes(file)).toBe('');
+    });
+
+    it('negative: a range that is not whole numbers, or in two forms, is a RangeError before the file is looked at', async () => {
+      const disk = await make();
+      for (const range of [{ start: -1 }, { start: 3, end: 2 }, { start: 1.5 }, { last: -1 }, { start: 0, last: 1 }, {}, { start: 0, length: 4 }, { start: 0, End: 4 }, { last: 1, extra: true }]) {
+        await expect(disk.open('missing.txt', { range } as never), JSON.stringify(range)).rejects.toThrow(RangeError);
+      }
+      await expect(disk.open('missing.txt', { range: { start: 0 } })).rejects.toThrow(FileNotFoundError);
+    });
+
+    it('negative: a bad key stays refused with a range', async () => {
+      const disk = await make();
+      await expect(disk.open('../x', { range: { start: 0 } })).rejects.toThrow(InvalidKeyError);
+    });
+
+    it('replaced after open: the body keeps the old bytes', async () => {
+      const disk = await make();
+      await disk.put('digits.txt', '0123456789');
+      const file = await disk.open('digits.txt', { range: { start: 2, end: 5 } });
+      await disk.put('digits.txt', 'abcdefghij');
+      expect(await bytes(file)).toBe('2345');
+      expect(await disk.text('digits.txt')).toBe('abcdefghij');
+    });
+
+    it('stream(), get() and copy() stay whole', async () => {
+      const disk = await make();
+      await disk.put('digits.txt', '0123456789');
+      await disk.copy('digits.txt', 'copy.txt');
+      expect(await disk.text('copy.txt')).toBe('0123456789');
+      expect(await text(await disk.stream('digits.txt'))).toBe('0123456789');
+    });
+  });
+
   it.skipIf(kind.skip)('exists, delete, move, copy', async () => {
     const disk = await make();
     await disk.put('a/one.txt', '1');

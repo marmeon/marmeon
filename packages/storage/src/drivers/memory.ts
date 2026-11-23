@@ -1,10 +1,11 @@
 import { AssertionError } from 'node:assert';
 import type { Clock } from '@marmeon/core';
-import type { Disk, FileContents, ListOptions, OpenedFile, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
+import type { Disk, FileContents, ListOptions, OpenedFile, OpenOptions, PutOptions, TemporaryUrlOptions, Visibility } from '../disk.ts';
 import { bytesStream, forDriver, toBytes } from '../contents.ts';
 import { FileNotFoundError, StorageError } from '../errors.ts';
 import { encodeKey, normalizeDirectory, normalizeKey } from '../keys.ts';
 import { mimeTypeOf } from '../mime.ts';
+import { checkRange, resolveRange } from '../ranges.ts';
 import type { TemporaryUrls } from '../temporary.ts';
 
 interface StoredFile {
@@ -63,9 +64,15 @@ export class MemoryDisk implements Disk {
     return bytesStream(new Uint8Array(this.#file(key).bytes));
   }
 
-  async open(key: string): Promise<OpenedFile> {
+  async open(key: string, options: OpenOptions = {}): Promise<OpenedFile> {
+    const range = options.range === undefined ? undefined : checkRange(options.range);
     const file = this.#file(key);
-    return { body: bytesStream(new Uint8Array(file.bytes)), size: file.bytes.byteLength, lastModified: new Date(file.lastModified), contentType: file.contentType };
+    const size = file.bytes.byteLength;
+    const found = { size, lastModified: new Date(file.lastModified), contentType: file.contentType, acceptsRanges: true };
+    const resolved = range === undefined ? undefined : resolveRange(range, size);
+    if (resolved === 'unsatisfiable') return { ...found, body: bytesStream(new Uint8Array(0)), range: resolved };
+    if (resolved === undefined) return { ...found, body: bytesStream(new Uint8Array(file.bytes)) };
+    return { ...found, body: bytesStream(file.bytes.slice(resolved.start, resolved.end + 1)), range: resolved };
   }
 
   async exists(key: string): Promise<boolean> {
