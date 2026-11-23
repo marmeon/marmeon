@@ -10,7 +10,7 @@ import type { MailReceipt, MailTransport } from './transports.ts';
 export interface QueueMailOptions {
   /** The queue (default: the connection's default queue). A worker without `--queue` takes it; one with `--queue` must name it. */
   readonly queue?: string;
-  /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). */
+  /** Send no earlier than this — seconds, or a duration (`{ minutes: 5 }`). The `sync` queue connection sends without the delay and logs a warning, one for all queued mails. */
   readonly delay?: Duration;
   /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;

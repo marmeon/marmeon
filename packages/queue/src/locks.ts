@@ -61,7 +61,7 @@ export const ONCE_BUSY_DELAY = 5;
 
 /**
  * Thrown when another attempt runs `job.once(key)` right now — the worker puts this attempt back for {@link ONCE_BUSY_DELAY}
- * seconds without counting it: it never got to run `fn`.
+ * seconds without counting it: it never got to run `fn`. On `sync` it fails the job.
  */
 export class JobOnceBusyError extends Error {
   override name = 'JobOnceBusyError';
@@ -90,7 +90,7 @@ export async function runOnce(cache: CacheSource, key: string, fn: () => unknown
 
 /** Options of {@link withoutOverlapping}. */
 export interface WithoutOverlappingOptions {
-  /** How long until the job runs again when another holds the key (seconds or a duration, default 5). Each wait is an attempt: give the job `tries`. */
+  /** How long until the job runs again when another holds the key (seconds or a duration, default 5). Each wait is an attempt: give the job `tries`. On `sync` the job fails with a `QueueError`. */
   readonly releaseAfter?: Duration;
   /** How long the lock holds at most (seconds or a duration; default: the connection's `retryAfterSeconds` — as long as a claim may run). */
   readonly expiresAfter?: Duration;
@@ -100,7 +100,7 @@ export interface WithoutOverlappingOptions {
 
 /**
  * Job middleware: never two attempts with the same key at once — on any worker (a lock in the app's cache). An attempt
- * that finds the key taken does not run; it goes back to the queue for `releaseAfter` (an attempt counts). See
+ * that finds the key taken does not run; it goes back to the queue for `releaseAfter` (an attempt counts); on `sync` the job fails with a `QueueError`. See
  * `docs/queues.md#job-middleware`.
  *
  * The type argument types the payload (the class is not known yet where its own static field is written). Only its

@@ -18,6 +18,8 @@ export const RECORD_OPTIONS: unique symbol = Symbol.for('marmeon.queue.record-op
 export interface RecordOptions {
   readonly tries?: number;
   readonly backoff?: readonly number[];
+  /** Names what queued the job (`<event>/<listener>`, a notification) in the warning about a delay on `sync`; never stored, never published. */
+  readonly label?: string;
 }
 
 const dispatches = channels.tracing('queue.dispatch');
@@ -121,10 +123,13 @@ export class QueueManager implements Queue {
   readonly #deps: QueueManagerDependencies;
   readonly #transaction: Transaction<any> | undefined;
   readonly #redactor: Redactor;
+  /** The connection, job name and label this app warned about a delay on `sync` — shared with the managers `using()` makes. */
+  readonly #warnedDelays: Set<string>;
 
-  constructor(dependencies: QueueManagerDependencies, transaction?: Transaction<any>) {
+  constructor(dependencies: QueueManagerDependencies, transaction?: Transaction<any>, warnedDelays: Set<string> = new Set()) {
     this.#deps = dependencies;
     this.#transaction = transaction;
+    this.#warnedDelays = warnedDelays;
     this.#redactor = dependencies.redactor ?? new Redactor();
   }
 
@@ -197,7 +202,7 @@ export class QueueManager implements Queue {
     if (typeof (transaction as { selectFrom?: unknown } | null)?.selectFrom !== 'function') {
       throw new QueueError('queue.using() takes a database transaction (the trx of db.transaction().execute(async (trx) => …)).');
     }
-    return new QueueManager(this.#deps, transaction);
+    return new QueueManager(this.#deps, transaction, this.#warnedDelays);
   }
 
   async size(queue?: string, sizeOptions: { readonly connection?: string } = {}): Promise<number> {
@@ -270,6 +275,11 @@ export class QueueManager implements Queue {
       if (this.#detached()) {
         throw new QueueError('The sync queue cannot run a job for a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): it could not tell when the transaction commits. Dispatch inside connections.transaction() instead.');
       }
+      if (delay > 0) {
+        // Where afterCommit() would throw for a finished transaction, so a refused dispatch says nothing.
+        inTransaction();
+        this.#warnDelayIgnored(name, prepared, delay, options);
+      }
       // Held until the commit inside a transaction: a sync job must never act on data that is rolled back.
       await afterCommit(async () => {
         await queued();
@@ -303,6 +313,27 @@ export class QueueManager implements Queue {
       if (!this.#detached()) await afterCommit(queued);
     }
     return ids;
+  }
+
+  /**
+   * The sync connection ignores a delay: said once per app, connection, job name and label, in every environment. Never the
+   * payload or the unique key. A key is added before its line is written and never removed, so a logger that throws, or
+   * one that dispatches again, is asked once per key — and the dispatch stays as it was.
+   */
+  #warnDelayIgnored(connection: string, prepared: readonly Prepared[], delay: number, options: object): void {
+    for (const { record } of prepared) {
+      try {
+        const given = recordOptionsOf(options).label;
+        const label = typeof given === 'string' ? given : undefined;
+        const key = JSON.stringify([connection, record.job, label]);
+        if (this.#warnedDelays.has(key)) continue;
+        this.#warnedDelays.add(key);
+        const what = label === undefined ? record.job : `${record.job} (${label})`;
+        this.#deps.logger.child({ dispatched: record.job }).warn(`The sync queue connection "${connection}" runs ${what} at its dispatch, or at the commit inside a transaction, and ignores its delay of ${delay}s. Queue it on a worker's connection (database or redis) to delay it.`);
+      } catch {
+        // A logger that throws must not fail a dispatch that works.
+      }
+    }
   }
 
   /** The `sync` connection: each job (and the rest of its chain) runs now, in its own scope; an error reaches the caller. */

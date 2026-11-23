@@ -36,7 +36,7 @@ export interface QueuedListenerOptions {
   readonly queue?: string;
   /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
-  /** Run no earlier than this — seconds, or a duration. */
+  /** Run no earlier than this — seconds, or a duration. The `sync` queue connection runs the listener without the delay and logs a warning, once per event and listener. */
   readonly delay?: Duration;
   /** Attempts in all (default 1: no retry). */
   readonly tries?: number;

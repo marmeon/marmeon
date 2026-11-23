@@ -138,7 +138,7 @@ export interface JobEntryContent {
   readonly attempt?: number;
   /** `dispatch`, `bulk` or `chain` — dispatches only. */
   readonly kind?: 'dispatch' | 'bulk' | 'chain';
-  /** Seconds before it may run — dispatches only. */
+  /** Seconds before it may run, as asked — dispatches only; the `sync` connection ignores it. */
   readonly delaySeconds?: number;
   readonly unique?: string;
   /** The payload, redacted — an encrypted job's is `[encrypted]`, never its contents. */

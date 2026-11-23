@@ -229,6 +229,7 @@ export class OrderService {
 `queue(message, options?)` checks the message and the destination at once, then queues the encrypted job `marmeon.chat`.
 `options` takes the `queue`, the `connection` and a `delay`. A mistake throws a `ChatError` where you call it, and a worker
 posts the message with retries of its own. With a database queue on the connection of a transaction, the job commits with it.
+The `sync` queue connection posts without the `delay` and logs one warning for all queued chat messages.
 
 `send(message)` posts now and resolves when the webhook took the message. It throws a `ChatDeliveryError` when the provider
 did not take it, with a `reason` of `refused`, `rejected`, `gone`, `throttled` or `unavailable`, and the `status`.
@@ -258,6 +259,8 @@ worker checks the message and the address again before it posts, since a payload
 The job has five tries and waits 10, 60, 300 and 300 seconds between them, and times out after 30 seconds. Delivery
 is at least once, so a retry after a lost answer can post a message twice. The `failed_jobs` entry names the provider and the
 status, and the provider's own error code when it is a short word, never an address.
+
+On the `sync` queue connection none of this waiting and retrying happens: the job fails, and its error goes to the caller.
 
 ## Untrusted content
 

@@ -197,7 +197,7 @@ export class QueueListenerDispatcher implements ListenerQueue {
       ...(queue === undefined ? {} : { queue }),
       ...(connection === undefined ? {} : { connection }),
       ...(delay === undefined ? {} : { delay }),
-      [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: backoffSeconds(backoff) }) },
+      [RECORD_OPTIONS]: { ...(tries === undefined ? {} : { tries }), ...(backoff === undefined ? {} : { backoff: backoffSeconds(backoff) }), label: `${queueable.event}/${listener.listener}` },
     };
     // The normal dispatch path: in a transaction, part of it — atomic with a database queue.
     await this.#queue().dispatch(CallQueuedListener as never, { event: queueable.event, listener: listener.listener, payload } as never, options);

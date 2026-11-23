@@ -51,7 +51,7 @@ export interface NotificationQueueOptions {
   readonly queue?: string;
   /** The queue connection (default: `QUEUE_DRIVER`). */
   readonly connection?: string;
-  /** Deliver no earlier than this — seconds, or a duration. */
+  /** Deliver no earlier than this — seconds, or a duration. The `sync` queue connection delivers without the delay and logs a warning, once per notification. */
   readonly delay?: Duration;
   /** Attempts of the job in all (default 3). */
   readonly tries?: number;

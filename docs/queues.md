@@ -224,7 +224,7 @@ export class SendRemindersController extends Controller {
 
 | Option | What it does |
 | --- | --- |
-| `delay` | A [`Duration`](time.md#spans-of-time), seconds or an object such as `{ minutes: 5 }`, before the job may run. |
+| `delay` | A [`Duration`](time.md#spans-of-time), seconds or an object such as `{ minutes: 5 }`, before the job may run. The `sync` connection runs the job without it and logs a warning; see [Drivers](#drivers). |
 | `queue` | The queue's name. Without it the connection's default queue, `default` unless configured. |
 | `connection` | The queue connection. Without it `QUEUE_DRIVER`. |
 
@@ -353,7 +353,15 @@ package stops the app at its start, with what to do.
 | --- | --- | --- |
 | `database` | The `jobs` table. | The default. No extra service, and a dispatch is part of the app's transaction. |
 | `redis` | Lists and sorted sets in Redis. | Many jobs, in an app that runs Redis anyway. |
-| `sync` | Nowhere: `handle()` runs at the dispatch, in a scope of its own, and its error is the dispatch's. | Scripts, and tests that want the work done at once. |
+| `sync` | Nowhere: `handle()` runs at the dispatch, in a scope of its own, and its error is the dispatch's. It ignores `delay`, `tries` and `backoff`. | Scripts, and tests that want the work done at once. |
+
+A `sync` job runs once, at its dispatch, or at the commit when you dispatch inside a transaction. It ignores `delay`, `tries` and
+`backoff`. A delay logs one warning per app, connection and job name. A queued listener gets one per event and listener, a notification one per
+notification. A `job.release()`, a `withoutOverlapping()` that finds its key taken and a chat webhook that answers
+429 or 503 with a `Retry-After` fail the job with a `QueueError`, because nothing runs a job a second time. A busy `job.once()` fails
+it with a `JobOnceBusyError`. A `unique` lock is taken at the dispatch and freed when the job has run, or when it starts with
+`uniqueUntil: 'processing'`, and at the latest after `uniqueFor`. So it is no debounce. Queue a job that has to wait or retry on
+`database` or `redis`.
 
 Exactly one worker claims a job, also with many workers on Postgres or Redis. The `redis` driver needs `@marmeon/redis`, which
 brings the Redis client. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
@@ -396,12 +404,14 @@ the [error reporters](errors.md#reporting) of the app (`source` `job`), with its
 its payload. An attempt that will run again is only logged. A job that a reporter queued is logged but not reported when it fails,
 so a reporter that queues an alert cannot start a loop.
 
+On the `sync` connection a job gets one attempt. When that fails, its error goes to the caller, and the job is not written to the failed jobs. See [Drivers](#drivers).
+
 A job can also end an attempt on its own:
 
 | Call | What happens |
 | --- | --- |
 | `job.discard(reason)` | The job ends without a retry and without a failed entry. For a record that is gone. |
-| `job.release(delay)` | The job goes back to the queue, to run again after `delay`, a [`Duration`](time.md#spans-of-time). The attempt counts, so a release on the last attempt fails the job. |
+| `job.release(delay)` | The job goes back to the queue, to run again after `delay`, a [`Duration`](time.md#spans-of-time). The attempt counts, so a release on the last attempt fails the job. On the `sync` connection the job then fails with a `QueueError`. |
 | `job.fail(reason)` | The job fails now, without further attempts. |
 
 Some jobs can never succeed, and they fail at once, after one attempt:
@@ -583,7 +593,7 @@ Every step of a job is an event of the app's event dispatcher:
 
 | Event | When | Fields besides `connection`, `queue`, `job` and `jobId` |
 | --- | --- | --- |
-| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction; never for a transaction you began yourself. | `delaySeconds` |
+| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction; never for a transaction you began yourself. | `delaySeconds`, as asked |
 | `JobProcessing` | An attempt starts. | `attempt` |
 | `JobProcessed` | An attempt ran to its end. | `attempt`, `ms`, `discarded` |
 | `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delaySeconds`. | `attempt`, `delaySeconds`, `reason`, `ms` |
