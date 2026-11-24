@@ -87,6 +87,14 @@ describe('nextMigrationStamp', () => {
     const root = app({ billing: ['9999_12_31_235959_create_invoices_table.ts'] });
     expect(() => nextMigrationStamp(root)).toThrow('has a timestamp that leaves no room behind it — rename it with an earlier one.');
   });
+
+  it('puts a stamp behind a newest stamp whose day overflows its month', () => {
+    at('2026-01-23T10:00:00Z');
+    const root = app({ billing: ['2026_02_31_000000_create_invoices_table.ts'] });
+    const stamp = nextMigrationStamp(root);
+    expect(stamp).toBe('2026_03_03_000001');
+    expect(stamp > '2026_02_31_000000').toBe(true);
+  });
 });
 
 describe('newestMigration', () => {
