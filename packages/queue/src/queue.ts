@@ -7,7 +7,7 @@ import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type 
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
 import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './locks.ts';
 import { backoffOf, nameOf, providerSourceOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
-import { cipherContext, delaySeconds, nextInChain, RECORD_VERSION, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
+import { cipherContext, delaySeconds, isEncryptedJob, nextInChain, RECORD_VERSION, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
 
 /**
  * Settings of one queued record that the framework's own jobs take from elsewhere — a queued listener's `tries` and
@@ -189,7 +189,7 @@ export class QueueManager implements Queue {
       kind,
       jobs: pending.map(([job]) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
       payloads: pending.map(([, payload]) => payload),
-      encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
+      encrypted: pending.map(([job]) => isEncryptedJob(job)),
       connection,
       queue: options.queue ?? this.#deps.connection(connection)?.queue ?? '',
       delaySeconds: delay,
@@ -431,13 +431,13 @@ export async function prepareRecord(
   const requestId = currentRequest()?.requestId ?? currentJob()?.requestId;
   // Queued by a reporter, or by a job that a reporter queued: its failure is never reported (see JobRecord.fromReporter).
   const fromReporter = startedByReporter() || currentJob()?.fromReporter === true;
-  const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
+  const data = isEncryptedJob(job) ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
   const record: JobRecord = {
     v: RECORD_VERSION,
     uuid,
     job: job.job,
     data,
-    ...(job.encrypted ? { encrypted: true as const } : {}),
+    ...(isEncryptedJob(job) ? { encrypted: true as const } : {}),
     tries: extra.tries ?? triesOf(job),
     backoff: extra.backoff ? [...extra.backoff] : backoffOf(job),
     dispatchedAt: deps.clock.now(),
