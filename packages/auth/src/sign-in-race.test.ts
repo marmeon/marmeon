@@ -707,6 +707,25 @@ describe('a remember-me token is bound to the account state it was issued under'
     expect((await thief.send('/me')).status).toBe(401);
   });
 
+  it('logs the copy even when ending this device throws', async () => {
+    const warnings: { message: string; context?: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (message, context) => void warnings.push({ message, context }), error() {}, child: () => logger };
+    const world = await boot({ hold: 'issue', logger });
+    await rotatedByCopy(world);
+    const end = vi.spyOn(world.application.container.make(SignInStore), 'end').mockImplementation(() => {
+      throw new Error('store broke before it answered');
+    });
+    try {
+      await world.send('/logout-others', {});
+      expect(end).toHaveBeenCalled();
+    } finally {
+      end.mockRestore();
+    }
+    const theft = warnings.filter((warning) => warning.message.startsWith('A rotated remember-me token was presented again'));
+    expect(theft).toHaveLength(1);
+    expect(theft[0]!.context).toMatchObject({ user: 1 });
+  });
+
   it('ends this device as a guest, not with an error, when its sign-in row cannot be ended and nothing can be logged', async () => {
     const throwing: Logger = { debug() {}, info() {}, warn() { throw new Error('log sink down'); }, error() { throw new Error('log sink down'); }, child: () => throwing };
     const world = await boot({ hold: 'issue', logger: throwing });

@@ -976,6 +976,15 @@ describe('remember me', () => {
       }
     });
 
+    it('ends the sessions when the logger answers with a promise that rejects', async () => {
+      const rejecting: Logger = { debug() {}, info() {}, warn: async () => Promise.reject(new Error('log sink down')), error: async () => Promise.reject(new Error('log sink down')), child: () => rejecting } as unknown as Logger;
+      const booted = await boot({ logger: rejecting });
+      const { copied, thief } = await copiedCookie(booted);
+      expect(await (await replayLater(booted, copied)).json()).toEqual({ id: null, viaRemember: false });
+      expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(await signInRows(booted)).toBe(0);
+    });
+
     it('reports the sessions ended when the live streams cannot be told and nothing can be logged', async () => {
       const booted = await boot({ logger: throwingLogger() });
       const { copied } = await copiedCookie(booted);

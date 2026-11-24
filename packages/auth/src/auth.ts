@@ -759,9 +759,9 @@ export class Auth {
     }
     this.#cookies.delete(this.#rememberCookie);
     await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
-    await this.#end();
-    // A logger that throws never skips an ending or the owner's notice, and never changes how the request ends.
+    // A logger that throws never skips an ending or the owner's notice, and never changes how the request ends. Logged before `#end()`, which can throw.
     this.#logTheft('A rotated remember-me token was presented again while signing out other devices: all remember-me tokens and sessions of the user are being ended', result.error.userId);
+    await this.#end();
     return false;
   }
 

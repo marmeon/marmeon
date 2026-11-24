@@ -35,7 +35,7 @@ describe('auth:end-all-sessions', () => {
   });
   afterAll(() => close());
 
-  async function setup() {
+  async function setup(info = vi.fn()) {
     const db = connections.get<any>();
     for (const table of [SIGN_INS_TABLE, PASSWORD_RESET_TABLE, ACCESS_TOKEN_TABLE]) await db.deleteFrom(table).execute();
     const clock = new TestClock();
@@ -49,12 +49,22 @@ describe('auth:end-all-sessions', () => {
     const accounts = new AccountSessions(guardContext({ users, signIns, passwordResets: resets, accessTokens: access, clock }));
     const lines: string[] = [];
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
-    const info = vi.fn();
     const run = (options: Record<string, boolean>, target: Pick<AccountSessions, 'endEveryone'> = accounts, args: string[] = []) =>
       new EndAllSessionsCommand(target as AccountSessions, { info } as unknown as Logger, new Redactor().addKeys('marmeon_session'), commandGuards(guardContext())).handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
     const rows = async (table: string) => (await db.selectFrom(table).selectAll().execute()).length as number;
     return { users, run, lines, rows, access, token, info };
   }
+
+  it('exits 0 with its output when the log cannot be written', async () => {
+    const down = vi.fn(() => {
+      throw new Error('log sink down');
+    });
+    const { run, lines, rows } = await setup(down);
+    expect(await run({ force: true })).toBe(0);
+    expect(down).toHaveBeenCalled();
+    expect(await rows(SIGN_INS_TABLE)).toBe(0);
+    expect(lines.join('\n')).toContain('Ended every session of 1 account');
+  });
 
   it('changes nothing without --force, and says what it would end', async () => {
     const { users, run, lines, rows } = await setup();
