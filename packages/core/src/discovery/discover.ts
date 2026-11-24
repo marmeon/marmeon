@@ -22,16 +22,19 @@ export type { PackageSurface };
 import {
   exportedSubpaths,
   findFoundPackage,
+  lookupPackage,
+  trusted,
   resolveExports,
   resolveTypes,
   runtimeConditions,
   splitSpecifier,
   type FoundPackage,
+  type LookupBound,
   type PackageInfo,
 } from './resolve.ts';
 
 /** Bump when the manifest format changes, so old manifests are regenerated. */
-const MANIFEST_VERSION = '4';
+const MANIFEST_VERSION = '5';
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
@@ -114,6 +117,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const hash = manifestHash(root, conditions);
   const { ordered, visited } = walk(root);
   const reached = new Map<string, FoundPackage>();
+  const bound = { app: realRoot(root), limit: workspaceRoot(root) };
   const namespaces: { package: string; dir: string; namespace: string }[] = [];
 
   for (const pkg of ordered) {
@@ -161,7 +165,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
             if (!param.type) {
               throw new DiscoveryError(`Cannot inject ${where}: only classes and tokens can be injected.`);
             }
-            const ref = resolveDependency(param.type, location, pkg, { reached, reader, conditions, where });
+            const ref = resolveDependency(param.type, location, pkg, { reached, reader, conditions, where, bound });
             return [moduleIndex(ref.url), ref.exportName];
           });
           injections.push({ class: target, inject, package: pkg.name });
@@ -373,6 +377,8 @@ function walkDependencies(root: string): PackageInfo[] {
 /** The walk: `ordered` are the packages with a `marmeon` field; `visited` every package it reached, with or without one. */
 function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] } {
   const rootJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  // Nothing is looked up above the app's workspace: a name that is not installed nearer stays absent.
+  const bound = { app: realRoot(root), limit: workspaceRoot(root) };
   const seen = new Set<string>();
   const ordered: FoundPackage[] = [];
   const visited: FoundPackage[] = [];
@@ -385,11 +391,11 @@ function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] 
     seen.add(pkg.dir);
     visited.push(pkg);
     for (const dep of [...Object.keys(ownRecord(pkg.json, 'dependencies')), ...Object.keys(ownRecord(pkg.json, 'optionalDependencies'))]) {
-      const found = findFoundPackage(dep, pkg.dir);
+      const found = findFoundPackage(dep, pkg.dir, bound);
       if (found) visit(found, pkg.dir);
     }
     for (const dep of Object.keys(ownRecord(pkg.json, 'peerDependencies'))) {
-      const found = findFoundPackage(dep, dependentDir);
+      const found = findFoundPackage(dep, dependentDir, bound);
       if (found) visit(found, dependentDir);
     }
     if (marmeonField(pkg)) ordered.push(pkg);
@@ -397,7 +403,7 @@ function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] 
 
   // The app's dev dependencies count too — they are simply absent in production installs.
   for (const dep of [...dependencyNames(rootJson), ...Object.keys(ownRecord(rootJson, 'devDependencies'))]) {
-    const found = findFoundPackage(dep, root);
+    const found = findFoundPackage(dep, root, bound);
     if (found) visit(found, root);
   }
   return { ordered, visited };
@@ -429,6 +435,13 @@ interface ResolveContext {
   readonly reader: DeclarationReader;
   readonly conditions: readonly string[];
   readonly where: string;
+  /** The app's workspace: resolution does not look above it. */
+  readonly bound: LookupBound;
+}
+
+/** `path` relative to the app, with `/`: the manifest holds no absolute path, it is copied between machines. */
+function fromApp(app: string, path: string): string {
+  return relative(app, path).split(sep).join('/') || '.';
 }
 
 /** Resolves a constructor parameter type, as written in `location.file`, to a public runtime export. */
@@ -456,8 +469,16 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
       declared = target ? reader.read(target, pkg).exports.get(name) : undefined;
     } else {
       const { name: packageName, subpath } = splitSpecifier(imported.from);
-      const found = findFoundPackage(packageName, pkg.dir); // from the OWNER's directory
-      if (!found) throw new DiscoveryError(`Cannot inject ${where}: package "${packageName}" is not installed.`);
+      const { found, stoppedAt, above } = lookupPackage(packageName, pkg.dir, context.bound); // from the OWNER's directory
+      if (!found) {
+        const why =
+          stoppedAt !== undefined
+            ? `is not found: the lookup stopped at ${fromApp(context.bound.app, stoppedAt)}, which everyone can write to or another user owns`
+            : above
+              ? `is not installed in the app's workspace (${fromApp(context.bound.app, context.bound.limit)})`
+              : 'is not installed';
+        throw new DiscoveryError(`Cannot inject ${where}: package "${packageName}" ${why}.`);
+      }
       context.reached.set(found.dir, found);
       home = found;
       const js = jsEntryOf(home, subpath, conditions);
@@ -506,8 +527,8 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   // Resolution depends on the *set* of conditions, not their order or repetition.
   const hash = createHash('sha256').update(MANIFEST_VERSION).update([...new Set(conditions)].sort().join('\0'));
   hash.update(readFileSync(join(root, 'package.json')));
-  // The same rule as the way up to the workspace: a lockfile above the last trusted folder (behind a folder that others can write to,
-  // or that someone other than this user or root owns) counts as absent, and so does one that is no regular file.
+  // The same rule as the way up to the workspace: a lockfile above the last trusted folder (`trustedTop`) counts as absent, and so
+  // does one that is no regular file.
   const app = realRoot(root);
   const lockfile = findLockfile(app, trustedTop(app));
   hash.update(lockfile !== undefined && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
@@ -520,23 +541,6 @@ function realRoot(root: string): string {
     return realpathSync.native(root);
   } catch {
     return root;
-  }
-}
-
-/**
- * Whether `dir` may be a root above the app: not writable by everyone (so not `/tmp`, where anyone can plant a marker), and owned by the
- * user of the process or by root. The same rule as `trusted` in `@marmeon/database`. Windows has no `getuid`, and its `mode` says nothing
- * about who may write, so there the check passes.
- */
-function trusted(dir: string): boolean {
-  if (process.platform === 'win32') return true;
-  try {
-    const { mode, uid } = statSync(dir);
-    if (mode & 0o002) return false;
-    const me = process.getuid?.();
-    return me === undefined || uid === me || uid === 0;
-  } catch {
-    return false;
   }
 }
 
@@ -582,11 +586,31 @@ function declaresWorkspace(dir: string): boolean {
   }
 }
 
+/** The user that owns the app folder: a folder of that user is as trusted as one of the process's user. */
+function appOwner(app: string): number | undefined {
+  try {
+    return statSync(app).uid;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The last folder of the way up from the app that can be trusted: the way ends below the first folder above the app that `trusted`
+ * refuses, so markers and lockfiles are looked for only up to here. The app folder itself is always accepted.
+ */
+function trustedTop(app: string): string {
+  const owner = appOwner(app);
+  let top = app;
+  for (let dir = dirname(app); dir !== top && trusted(dir, owner); dir = dirname(dir)) top = dir;
+  return top;
+}
+
 /**
  * The app's workspace: the nearest folder at or above the app that declares one (a `pnpm-workspace.yaml`, or a `package.json` with
  * `workspaces`); else the folder of the nearest lockfile above the app; else the app folder. The way up, for markers and lockfile alike,
- * ends below the first folder that others can write to or that someone other than this user or root owns: what it holds is no one's
- * to trust. A real path, like the directories of the packages.
+ * ends below the first folder that others can write to or another user (neither the user of the process, root nor the owner of the app)
+ * owns: what it holds is no one's to trust. A real path, like the directories of the packages.
  */
 function workspaceRoot(root: string): string {
   const app = realRoot(root);
@@ -612,7 +636,7 @@ function isWorkspaceFile(boundary: string, file: string): boolean {
 /** The `sources` and `sourcesHash` of a manifest: the packages of the walk that lie in the app's workspace, hashed from the bytes the walk parsed. */
 function workspaceSources(root: string, visited: readonly FoundPackage[]): Pick<Manifest, 'sources' | 'sourcesHash'> {
   const sources: string[] = [];
-  // No package reached, nothing to place: an app without dependencies does not look above itself.
+  // No package reached, nothing to place; the workspace is not searched again here.
   if (visited.length === 0) return { sources, sourcesHash: combineDigests([]) };
   const boundary = workspaceRoot(root);
   const base = realRoot(root);
@@ -632,7 +656,7 @@ function workspaceSources(root: string, visited: readonly FoundPackage[]): Pick<
  */
 function currentSourcesHash(root: string, sources: unknown): string | undefined {
   if (!Array.isArray(sources)) return undefined;
-  // Nothing listed: nothing to read, so no walk above the app at start.
+  // Nothing listed: nothing to read. At boot, an app whose manifest lists no workspace package does not search for the workspace again.
   if (sources.length === 0) return combineDigests([]);
   const boundary = workspaceRoot(root);
   const base = realRoot(root);
