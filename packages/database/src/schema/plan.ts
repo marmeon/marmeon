@@ -6,6 +6,7 @@ import { Blueprint, blueprintParts, compileColumn, foreignKeyName, mysqlForeignK
 import { checkMysqlPlan, checkMysqlState, fitsMysql, indexRenamesOf, mysqlStateTables, NO_STATE, readMysqlState, refuseNamedConstraints } from './mysql-checks.ts';
 import type { ProjectedTable } from './projection.ts';
 import { schemaSteps, sealSchema, Schema } from './schema.ts';
+import { tableParts } from './table-name.ts';
 import { SchemaError } from './schema-error.ts';
 import { unknownDriver } from '../supported-driver.ts';
 
@@ -114,13 +115,6 @@ export interface PgsqlName {
   readonly effect?: string;
 }
 
-/** The parts of a table name as Kysely sends them: `schema.table` is two identifiers (only the first dot splits, a third part is dropped), a name without a dot is one, untrimmed. */
-function tableParts(name: string): { kind: 'schema' | 'table'; name: string }[] {
-  const [node] = (sql.table(name).toOperationNode() as unknown as { parameters: { table: { schema?: { name: string }; identifier: { name: string } } }[] }).parameters;
-  const { schema, identifier } = node!.table;
-  return [...(schema ? [{ kind: 'schema' as const, name: schema.name }] : []), { kind: 'table' as const, name: identifier.name }];
-}
-
 /**
  * The names a plan gives, and those it acts on, that Postgres may cut: it alone knows where it cuts one (63 bytes of the database's
  * encoding), so nothing is measured here: pass them to {@link assertNamesFitPgsql}. The names a plan gives are those `check()` measures on MySQL.
@@ -128,7 +122,7 @@ function tableParts(name: string): { kind: 'schema' | 'table'; name: string }[] 
  * A name a plan only acts on is collected when a step names a table, column, index or check constraint that Postgres would take for the
  * one its first 63 bytes name: the table of `drop`, `rename` (its `from`) and `alter` (each part of a qualified name), the columns of
  * `dropColumn`, `renameColumn` (its `from`), `notNull`, `nullable` and a `oneOf` change, and the names of `dropIndex`, `dropUnique` and
- * `dropCheck`. Not those an earlier step of the plan made (created, renamed to, added), which the plan holds under the long name. A name in
+ * `dropCheck`, the table and column a foreign key points at, and the columns of an index and of its `where`. Not those an earlier step of the plan made (created, renamed to, added), which the plan holds under the long name. A name in
  * `raw()` and `data()` steps is not collected.
  */
 export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): PgsqlName[] {
@@ -146,10 +140,28 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
     if (known) return;
     for (const part of parts) add(part.name, part.kind, `Name the ${part.kind} as Postgres stored it.`, `, so ${method} would act on the ${part.kind} its first 63 bytes name.`);
   };
+  // Postgres reads a short name as a longer one only when it is the other's cut, or is itself cut: it keeps whole characters up to 63 bytes (ASCII 1 byte, any other character counted as 4), so the short name must leave no room for the long one's next character.
+  const bytes = (text: string) => [...text].reduce((sum, char) => sum + (char.charCodeAt(0) < 128 ? 1 : 4), 0);
+  const alike = (a: string, b: string) => {
+    const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+    if (!long.startsWith(short)) return false;
+    const [next = ''] = long.slice(short.length);
+    return bytes(short) + bytes(next) > 63;
+  };
+  // A step on a name withdraws what the plan holds under one Postgres would read as it. A table is compared by its own name: `public.S` is the table S.
+  const withdraw = (set: Set<string>, name: string, table = false) => {
+    const own = table ? tableParts(name).at(-1)!.name : name;
+    for (const entry of set) {
+      if (entry === name) continue;
+      const other = table ? tableParts(entry).at(-1)!.name : entry;
+      if (other === own || alike(other, own)) set.delete(entry);
+    }
+  };
   const actsOnTable = (method: string, table: string) => acts('table', method, table, created.has(table), tableParts(table));
   for (const [index, step] of steps.entries()) {
     if (step.kind === 'drop') {
       actsOnTable(step.ifExists ? 'dropIfExists()' : 'drop()', step.table);
+      withdraw(created, step.table, true);
       created.delete(step.table);
       added.delete(step.table);
       checks.delete(step.table);
@@ -158,6 +170,8 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
       actsOnTable('rename()', step.from);
       const columns = added.get(step.from);
       const constraints = checks.get(step.from);
+      withdraw(created, step.from, true);
+      withdraw(created, step.to, true);
       created.delete(step.from);
       added.delete(step.from);
       checks.delete(step.from);
@@ -168,6 +182,7 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
     const parts = blueprintParts(step.blueprint);
     if (step.kind === 'create') {
+      withdraw(created, step.table, true);
       created.add(step.table);
       added.set(step.table, new Set());
     } else actsOnTable('alter()', step.table);
@@ -183,17 +198,30 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
     }
     for (const { from, to } of step.kind === 'alter' ? parts.renames : []) {
       acts('column', 'renameColumn()', from, columns.has(from));
+      withdraw(columns, from);
+      withdraw(columns, to);
       columns.delete(from);
       columns.add(to);
     }
-    for (const spec of parts.columns) columns.add(spec.name);
+    for (const spec of parts.columns) {
+      withdraw(columns, spec.name);
+      columns.add(spec.name);
+    }
     for (const { column, nullable } of step.kind === 'alter' ? parts.nullability : []) acts('column', nullable ? 'nullable()' : 'notNull()', column, columns.has(column));
     for (const { column } of step.kind === 'alter' ? parts.oneOfChanges : []) acts('column', 'oneOf()', column, columns.has(column));
     for (const column of step.kind === 'alter' ? parts.drops : []) {
       acts('column', 'dropColumn()', column, columns.has(column));
+      withdraw(columns, column);
       columns.delete(column);
     }
+    // What a foreign key points at, and the columns an index covers (the projection reads these in an up(), not in a down()).
+    for (const { references } of [...parts.columns, ...(step.kind === 'alter' ? parts.foreignKeys : [])]) {
+      if (!references) continue;
+      actsOnTable('the foreign key', references.table);
+      acts('column', 'the foreign key', references.column, added.get(references.table)?.has(references.column) ?? false);
+    }
     for (const index of step.blueprint.allIndexes()) {
+      for (const column of [...index.columns, ...Object.keys(index.where ?? {})]) acts('column', 'the index', column, columns.has(column));
       add(index.name, 'index name');
       indexes.add(index.name);
     }

@@ -525,8 +525,8 @@ A step that names a table, column, index or check constraint by a name Postgres 
 the name, which is not the one you named. `drop()`, `dropIfExists()`, `dropColumn()`, `dropIndex()` and `dropUnique()` with such a name end
 in error D5 before the first statement of the run, and of the rollback for a `down()`. `rename()`, `renameColumn()`, `dropCheck()`,
 `schema.alter()` of such a table, and `notNull()`, `nullable()` and `oneOf()` of such a column end in error D19 in an `up()`, where the
-migrations know which tables exist; in a `down()` all of them but `oneOf()` end in error D5. The exemption is one plan: a step may use a
-name when an earlier step of the same migration created it, renamed a table or column to it, or added it. A name an earlier migration
+migrations know which tables exist; in a `down()` all of them but `oneOf()` end in error D5. The table and column a foreign key points at (`constrained()`, `foreign()`), and the columns an index covers or filters on with `where`, are asked the same way, in an `up()` and in a `down()`, and end in D5. The exemption is one plan: a step may use a
+name when an earlier step of the same migration created it, renamed a table or column to it, or added it. A step on a name that shares its first 63 bytes with one the plan made withdraws that exemption, because Postgres reads the two as one. A name an earlier migration
 gave is not exempt, so use the name as Postgres stored it. For a qualified table name such as `analytics.events`, Marmeon asks the schema
 and the table as Postgres reads them, each on its own. Names in `schema.raw()` and in `data()` steps are not checked, and Postgres cuts
 them in every statement, so use names of at most 63 bytes for temporary tables and columns too, and test your migrations on Postgres.

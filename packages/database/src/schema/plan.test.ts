@@ -324,6 +324,16 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
 });
 
 describe('what up() refuses while it builds the plan', () => {
+  it('refuses to change the table of the migrator by any name Kysely reads as it, and allows another', () => {
+    for (const name of ['migrations', 'public.migrations', 'public. migrations', 'public.migrations.x', 'main.migration_lock', 'a. Migrations .x']) {
+      expect(() => new Schema().dropIfExists(name), name).toThrow(/^\[marmeon:D4\]/);
+      expect(() => new Schema().alter(name, (table: any) => table.string('x')), name).toThrow(/^\[marmeon:D4\]/);
+      expect(() => new Schema().rename(name, 'other'), name).toThrow(/^\[marmeon:D4\]/);
+    }
+    expect(() => new Schema().dropIfExists('public.orders.x')).not.toThrow();
+    expect(() => new Schema().dropIfExists('orders')).not.toThrow();
+  });
+
   it('refuses raw SQL that names a table of the migrator, and allows a literal that only says its name', () => {
     const schema = new Schema();
     for (const name of ['migrations', 'migration_lock']) {
@@ -653,6 +663,80 @@ describe('asking Postgres whether the names of a plan fit', () => {
         schema.alter('items', (table: any) => table.index(['a'], 'i'.repeat(70)));
         schema.alter('items', (table: any) => table.dropIndex('i'.repeat(70)));
       }).filter((one) => one.what === 'index')).toEqual([]);
+    });
+
+    it('names what a foreign key points at and the columns of an index, unless the plan made them', () => {
+      expect(collected((schema) => schema.create('items', (table: any) => { table.foreignId('owner_id').constrained('people', 'ident'); })).slice(0, 2)).toEqual([
+        entry('table', 'people', 'the foreign key'),
+        entry('column', 'ident', 'the foreign key'),
+      ]);
+      expect(collected((schema) => schema.alter('items', (table: any) => table.foreign('owner_id').constrained('people'))).filter((one) => one.effect)).toEqual([
+        entry('table', 'items', 'alter()'),
+        entry('table', 'people', 'the foreign key'),
+        entry('column', 'id', 'the foreign key'),
+      ]);
+      expect(collected((schema) => {
+        schema.create('people', (table: any) => table.id());
+        schema.create('items', (table: any) => { table.id(); table.foreignId('person_id').constrained('people'); table.foreignId('parent_id').constrained('items'); });
+      }).filter((one) => one.effect)).toEqual([]);
+      expect(collected((schema) => schema.alter('items', (table: any) => table.unique(['c'], 'short_uq'))).filter((one) => one.what === 'column')).toEqual([entry('column', 'c', 'the index')]);
+      expect(collected((schema) => schema.alter('items', (table: any) => table.index(['c'], { name: 'short_ix', where: { state: 'a' } }))).filter((one) => one.what === 'column')).toEqual([
+        entry('column', 'c', 'the index'),
+        entry('column', 'state', 'the index'),
+      ]);
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.string('c'); table.unique(['c'], 'short_uq'); })).filter((one) => one.what === 'column')).toEqual([]);
+    });
+
+    it('withdraws what the plan holds under a name that shares its first characters with one a step takes or gives', () => {
+      const long = 'x'.repeat(70);
+      const stored = 'x'.repeat(63);
+      expect(collected((schema) => {
+        schema.create(long, (table: any) => table.string('a'));
+        schema.rename(stored, 'keep');
+        schema.create(stored, (table: any) => table.string('a'));
+        schema.drop(long);
+      }).filter((one) => one.what === 'table')).toEqual([entry('table', stored, 'rename()'), entry('table', long, 'drop()')]);
+      const longColumn = 'y'.repeat(70);
+      const storedColumn = 'y'.repeat(63);
+      expect(collected((schema) => {
+        schema.create('items', (table: any) => table.string('a'));
+        schema.alter('items', (table: any) => table.string(longColumn));
+        schema.alter('items', (table: any) => table.renameColumn(storedColumn, 'keep'));
+        schema.alter('items', (table: any) => table.string(storedColumn));
+        schema.alter('items', (table: any) => table.dropColumn(longColumn));
+      }).filter((one) => one.what === 'column')).toEqual([entry('column', storedColumn, 'renameColumn()'), entry('column', longColumn, 'dropColumn()')]);
+      // A short name that only begins like a long one cannot be its cut: nothing is withdrawn.
+      expect(collected((schema) => {
+        schema.create('orders', (table: any) => table.string('a'));
+        schema.create('orders_archive', (table: any) => table.string('a'));
+        schema.drop('orders');
+      })).toEqual([]);
+      const staging = `import_staging_${'x'.repeat(56)}`;
+      expect(collected((schema) => {
+        schema.create(staging, (table: any) => table.string('a'));
+        schema.create('import_staging', (table: any) => table.string('a'));
+        schema.drop(staging);
+        schema.drop('import_staging');
+      })).toEqual([]);
+      const payload = `payload_${'y'.repeat(60)}`;
+      expect(collected((schema) => {
+        schema.create('tmp', (table: any) => { table.string(payload); table.string('payload'); table.index([payload], 'tmp_short_index'); });
+        schema.alter('tmp', (table: any) => table.dropColumn(payload));
+      }).filter((one) => one.effect)).toEqual([]);
+      // A name of 61 characters that begins a name of 70 is not the other's cut (63 bytes keep two more characters).
+      expect(collected((schema) => {
+        schema.create('z'.repeat(70), (table: any) => table.string('a'));
+        schema.create('z'.repeat(61), (table: any) => table.string('a'));
+        schema.drop('z'.repeat(70));
+        schema.drop('z'.repeat(61));
+      })).toEqual([]);
+      // Postgres reads `public.S` as the table S.
+      expect(collected((schema) => {
+        schema.create(long, (table: any) => table.string('a'));
+        schema.rename(`public.${stored}`, 'keep');
+        schema.rename('users', `public.${stored}`);
+        schema.drop(long);
+      }).filter((one) => one.name === long)).toEqual([entry('table', long, 'drop()')]);
     });
 
     it('names what an earlier step of the plan took away or never made', () => {
