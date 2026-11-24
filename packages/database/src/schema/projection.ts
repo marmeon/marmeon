@@ -88,9 +88,12 @@ export const MARKER_COLUMNS: Readonly<Record<string, TableMarker>> = { deleted_a
 
 /** A change of something no migration created with the blueprint: the projection would not hold it, and a mark such as `.secret()` would be lost. */
 function unknown(where: string, what: string): SchemaError {
-  return new SchemaError(
-    withCode('D19', `${where} changes ${what}, which no migration created with the blueprint. Create it with schema.create(): a change in raw SQL keeps no secret, soft-delete or timestamps mark. See docs/migrations.md#raw-sql.`),
-  );
+  // A name with a dot cannot be created with the blueprint (D31): the hint would send the migration into that refusal.
+  const dotted = what.startsWith('table "') && what.includes('.');
+  const hint = dotted
+    ? 'The migrations do not describe a table named with its schema or database: use drop() or dropIfExists() for it, or schema.raw(). See docs/migrations.md#what-the-migrations-describe.'
+    : 'Create it with schema.create(): a change in raw SQL keeps no secret, soft-delete or timestamps mark. See docs/migrations.md#raw-sql.';
+  return new SchemaError(withCode('D19', `${where} changes ${what}, which no migration created with the blueprint. ${hint}`));
 }
 
 function retiredColumn(where: string, table: string, column: string): SchemaError {

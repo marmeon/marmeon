@@ -5,7 +5,7 @@ import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
 import { Blueprint, blueprintParts, compileColumn, foreignKeyName, mysqlForeignKeys, oneOfCondition, oneOfName, type Driver } from './blueprint.ts';
 import { checkMysqlPlan, checkMysqlState, fitsMysql, indexRenamesOf, mysqlStateTables, NO_STATE, readMysqlState, refuseNamedConstraints } from './mysql-checks.ts';
 import type { ProjectedTable } from './projection.ts';
-import { schemaSteps, sealSchema, Schema } from './schema.ts';
+import { rollbackSchema, schemaSteps, sealSchema, Schema } from './schema.ts';
 import { tableParts } from './table-name.ts';
 import { SchemaError } from './schema-error.ts';
 import { unknownDriver } from '../supported-driver.ts';
@@ -43,6 +43,7 @@ interface Planned {
  */
 export function planOf(migration: Planned, direction: 'up' | 'down', name = 'A migration'): readonly PlanStep[] {
   const schema = new Schema();
+  if (direction === 'down') rollbackSchema(schema);
   const build = migration[direction];
   if (typeof build !== 'function') throw new Error(`${name} has no ${direction}().`);
   const result = build.call(migration, schema);

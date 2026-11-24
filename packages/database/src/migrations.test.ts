@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshConnections, freshDatabase, silent, withMysql } from './__fixtures__/databases.ts';
+import { drivers, freshConnections, freshDatabase, MYSQL_URL, PGSQL_URL, silent, withMysql } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
 import { runMigration } from './migrations/run.ts';
 import { projectMigrations } from './schema/projection.ts';
@@ -730,19 +730,6 @@ describe.each(drivers)('names Postgres cuts (%s)', (driver) => {
 
   lost('gives D3 without the sentence for a column of exactly 63 bytes that raw SQL renamed away', { [`${stamp}_raw_limit`]: source(rawRename('items', letters(63))) }, d3(`${stamp}_raw_limit`, `the column items.${letters(63)}`), 'pgsql');
   lost('gives D3 without the sentence for a column of 70 bytes that raw SQL renamed away on SQLite', { [`${stamp}_raw_long`]: source(rawRename('items', letters(70))) }, d3(`${stamp}_raw_long`, `the column items.${letters(70)}`), 'sqlite');
-  lost(
-    'gives D3 without the sentence for a table x.<64 bytes>: a qualified table ends in D3 whatever its length',
-    { [`${stamp}_create_dotted_long`]: source(`    schema.raw(sql.raw('create schema x'));\n${create(`x.${table64}`, 'a')}`) },
-    d3(`${stamp}_create_dotted_long`, `the table x.${table64}`),
-    'pgsql',
-  );
-  lost(
-    'gives D3 without the sentence for a table public.<60 bytes>: a limit of qualified tables, 67 bytes as a whole',
-    { [`${stamp}_create_dotted_short`]: source(create(`public.${letters(60, 't')}`, 'a')) },
-    d3(`${stamp}_create_dotted_short`, `the table public.${letters(60, 't')}`),
-    'pgsql',
-  );
-
   const migrates = (name: string, files: Record<string, string>, then: (own: Awaited<ReturnType<typeof freshConnections>>, run: Migrator) => Promise<void>, only: 'pgsql' | 'sqlite') =>
     it.runIf(only === driver)(name, async () => {
       await withDatabase(async (own) => then(own, migrator(own.connections, moduleOf(files))));
@@ -827,6 +814,151 @@ describe.each(drivers)('names Postgres cuts (%s)', (driver) => {
     },
     'sqlite',
   );
+});
+
+// In an up(), a name with a dot names a table together with its schema or database, and the migrations do not describe such a table.
+describe('a table name with a dot in create() and rename()', () => {
+  const root = workspaceTempDir('marmeon-dotted-');
+  const kysely = import.meta.resolve('kysely');
+  const stamp = '2026_02_01_000000';
+  const second = '2026_02_02_000000';
+  type Driver = 'sqlite' | 'pgsql' | 'mysql';
+  const every: Driver[] = [...drivers, ...(MYSQL_URL === undefined ? [] : (['mysql'] as const))];
+  const source = (up: string, down = '') => `import { sql } from '${kysely}';\nexport default {\n  up: (schema: any) => {\n${up}\n  },\n  down: (schema: any) => {\n${down}\n  },\n};\n`;
+  const create = (table: string) => `    schema.create(${JSON.stringify(table)}, (table: any) => { table.string('a'); });`;
+  const d31 = (action: string, table: string) =>
+    `[marmeon:D31] Cannot ${action} "${table}": a name with a dot names a table together with its schema or database, and the migrations do not describe such a table. Use a name without a dot. See docs/migrations.md#what-the-migrations-describe.`;
+  const names = (connections: Connections, driver: Driver) =>
+    sql<{ name: string }>`${
+      driver === 'sqlite'
+        ? sql.raw(`select name from sqlite_master where type = 'table' and name not in ('migration_lock', 'sqlite_sequence') order by 1`)
+        : driver === 'pgsql'
+          ? sql.raw(`select table_schema || '.' || table_name as name from information_schema.tables where table_schema not in ('pg_catalog', 'information_schema') order by 1`)
+          : sql.raw(`select concat(table_schema, '.', table_name) as name from information_schema.tables where table_schema not in ('mysql', 'sys', 'information_schema', 'performance_schema') order by 1`)
+    }`
+      .execute(connections.get<any>())
+      .then((result) => result.rows.map((row) => row.name));
+  /** The schema or database a table of the connection lies in, as a prefix of a qualified name. */
+  const qualifier = async (connections: Connections, driver: Driver) =>
+    driver === 'sqlite' ? 'main' : driver === 'pgsql' ? 'public' : (await sql<{ name: string }>`select database() as name`.execute(connections.get<any>())).rows[0]!.name;
+  const recorded = async (connections: Connections) => (await sql<{ name: string }>`select name from migrations order by id`.execute(connections.get<any>())).rows.map((row) => row.name);
+  const long = (n: number, char = 't') => char.repeat(n);
+
+  type Own = Awaited<ReturnType<typeof freshConnections>>;
+  /** Runs the migrations on a fresh database. `files` may need the database (its name), so it is given the connections. */
+  const run = async (driver: Driver, files: Record<string, string> | ((connections: Connections) => Promise<Record<string, string>>), then: (error: unknown, own: Own, run: Migrator) => Promise<void>) => {
+    const own = await freshConnections(driver);
+    try {
+      const dir = mkdtempSync(join(root, 'm-'));
+      for (const [name, text] of Object.entries(typeof files === 'function' ? await files(own.connections) : files)) writeFileSync(join(dir, `${name}.ts`), text);
+      const runner = migrator(own.connections, { name: 'dotted', migrations: dir });
+      const error = await runner.migrate().then(() => undefined, (caught: unknown) => caught);
+      await then(error, own, runner);
+    } finally {
+      await own.close();
+    }
+  };
+
+  it.runIf(PGSQL_URL !== undefined)('refuses x.<64 bytes> on Postgres, where the table would be created and then lacked as D3', async () => {
+    await run('pgsql', { [`${stamp}_dotted`]: source(create(`x.${long(64)}`)) }, async (error, { connections }) => {
+      expect((error as Error).message).toBe(d31('create the table', `x.${long(64)}`));
+      expect(await recorded(connections)).toEqual([]);
+      expect(await names(connections, 'pgsql')).toEqual(['public.migrations']);
+    });
+  });
+
+  it.runIf(PGSQL_URL !== undefined)('refuses public.<60 bytes> on Postgres, a name of 67 bytes that Postgres would not cut', async () => {
+    await run('pgsql', { [`${stamp}_dotted`]: source(create(`public.${long(60)}`)) }, async (error, { connections }) => {
+      expect((error as Error).message).toBe(d31('create the table', `public.${long(60)}`));
+      expect(await recorded(connections)).toEqual([]);
+      expect(await names(connections, 'pgsql')).toEqual(['public.migrations']);
+    });
+  });
+
+  it('refuses main.items on SQLite and creates nothing', async () => {
+    await run('sqlite', { [`${stamp}_dotted`]: source(create('main.items')) }, async (error, { connections }) => {
+      expect((error as Error).message).toBe(d31('create the table', 'main.items'));
+      expect(await recorded(connections)).toEqual([]);
+      expect(await names(connections, 'sqlite')).toEqual(['migrations']);
+    });
+  });
+
+  it('refuses a rename to a name with a dot, keeps the migration that ran before it and its table', async () => {
+    for (const driver of every) {
+      const own = await freshConnections(driver);
+      try {
+        const dir = mkdtempSync(join(root, 'm-'));
+        const runner = migrator(own.connections, { name: 'dotted', migrations: dir });
+        writeFileSync(join(dir, `${stamp}_items.ts`), source(create('items')));
+        await runner.migrate();
+        // The plans of all pending migrations are built before the first runs, so the migration that renames comes in a run of its own.
+        writeFileSync(join(dir, `${second}_rename.ts`), source("    schema.rename('items', 'x.items');"));
+        const error = await runner.migrate().then(() => undefined, (caught: unknown) => caught);
+        expect((error as Error).message, driver).toBe(d31('rename a table to', 'x.items'));
+        expect(await recorded(own.connections), driver).toEqual([`${stamp}_items`]);
+        expect((await names(own.connections, driver)).filter((name) => name.endsWith('items')), driver).toEqual([`${driver === 'sqlite' ? '' : `${await qualifier(own.connections, driver)}.`}items`]);
+      } finally {
+        await own.close();
+      }
+    }
+  });
+
+  it('still runs dropIfExists() of a name with a dot', async () => {
+    for (const driver of every) {
+      await run(driver, { [`${stamp}_dotted`]: source(`    schema.dropIfExists('a.b');\n${create('items')}`) }, async (error, { connections }) => {
+        expect(error, driver).toBeUndefined();
+        expect(await recorded(connections), driver).toEqual([`${stamp}_dotted`]);
+      });
+    }
+  });
+
+  it('ends alter() and rename() of a name with a dot in D19, whose hint does not send it to create()', async () => {
+    for (const driver of every) {
+      for (const change of ["schema.alter('x.items', (table: any) => { table.string('b').nullable(); });", "schema.rename('x.items', 'y');"]) {
+        await run(driver, { [`${stamp}_dotted`]: source(`    ${change}`) }, async (error) => {
+          expect((error as Error).message, `${driver} ${change}`).toBe(
+            `[marmeon:D19] Migration ${stamp}_dotted (module "dotted") changes table "x.items", which no migration created with the blueprint. The migrations do not describe a table named with its schema or database: use drop() or dropIfExists() for it, or schema.raw(). See docs/migrations.md#what-the-migrations-describe.`,
+          );
+        });
+      }
+    }
+  });
+
+  it('accepts a name with a dot in a down(): it recreates a table another tool made, and the migrations do not check it', async () => {
+    for (const driver of every) {
+      await run(
+        driver,
+        async (connections) => ({
+          [`${stamp}_legacy`]: source(create('legacy_items')),
+          [`${second}_drop`]: source("    schema.drop('legacy_items');", create(`${await qualifier(connections, driver)}.legacy_items`)),
+        }),
+        async (error, { connections }, runner) => {
+          expect(error, driver).toBeUndefined();
+          expect((await names(connections, driver)).filter((name) => name.endsWith('legacy_items')), driver).toEqual([]);
+          expect((await runner.rollback()).map((ran) => ran.name), driver).toEqual([`${second}_drop`, `${stamp}_legacy`]);
+          expect((await names(connections, driver)).filter((name) => name.endsWith('legacy_items')), driver).toHaveLength(1);
+        },
+      );
+    }
+  });
+
+  withMysql('on MySQL', () => {
+    it('refuses a table of another database and leaves that database alone', async () => {
+      const other = `marmeon_test_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}_dotted_${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`;
+      const own = await freshConnections('mysql');
+      try {
+        await sql.raw(`create database ${other}`).execute(own.connections.get<any>());
+        const dir = mkdtempSync(join(root, 'm-'));
+        writeFileSync(join(dir, `${stamp}_dotted.ts`), source(create(`${other}.b`)));
+        const error = await migrator(own.connections, { name: 'dotted', migrations: dir }).migrate().then(() => undefined, (caught: unknown) => caught);
+        expect((error as Error).message).toBe(d31('create the table', `${other}.b`));
+        expect((await names(own.connections, 'mysql')).filter((name) => name.startsWith(`${other}.`))).toEqual([]);
+      } finally {
+        await sql.raw(`drop database if exists ${other}`).execute(own.connections.get<any>());
+        await own.close();
+      }
+    });
+  });
 });
 
 describe.each(drivers)('the data step a generator writes (%s)', (driver) => {

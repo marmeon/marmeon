@@ -383,7 +383,7 @@ export function blueprintParts(blueprint: Blueprint): BlueprintParts {
  * `boolean`, `json`, `datetime`/`timestamptz` stay recognizable on both drivers.
  */
 export class Blueprint {
-  readonly table: string;
+  declare readonly table: string;
 
   readonly #parts: BlueprintParts = {
     columns: [],
@@ -409,7 +409,8 @@ export class Blueprint {
 
   /** @internal — a blueprint is handed to the callback of `schema.create()` and `schema.alter()`. */
   constructor(table: string) {
-    this.table = table;
+    // Not writable: the build callback of `create()` cannot change the table after its name was checked.
+    Object.defineProperty(this, 'table', { value: table, writable: false, enumerable: true });
   }
 
   /** Auto-incrementing big integer primary key. */

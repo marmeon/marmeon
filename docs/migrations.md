@@ -266,6 +266,8 @@ and `nullable()` changes (by the column's name after the renames), new checks, n
 at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
 no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it, or a column in the `where` of an index); dropping such a table is allowed.
 
+A table name with a dot names a table together with its schema or database, and the migrations do not describe such a table. In an `up()`, `schema.create()` and the new name of `schema.rename()` refuse it with error D31 before any statement runs: use a name without a dot. `drop()` and `dropIfExists()` still accept one, for a table of another tool; `alter()` and the old name of `rename()` of such a table end in error D19, since the migrations do not know it. A `down()` is not checked against the migrations, so `create()`, `alter()` and `rename()` accept a name with a dot there, except a `oneOf()` change of such a table, which ends in error D19 as it does for any table the migrations do not know.
+
 Tables that nothing in the migrations creates, such as a table another tool made in the same database or one that raw SQL made, are not
 in it, and neither are their columns. Create a table with `schema.create()` when Marmeon is to know it.
 
@@ -514,7 +516,7 @@ The projection says which tables and columns the database has now. After every m
   own and the leftovers of 0.3 are not named.
 
 Postgres cuts a table or column name at 63 bytes of the database's encoding without a word. A migration that leaves such a name usually
-ends in error D3, and the message names a name over 63 bytes of UTF-8 as the possible cause (not a table name with a dot): use a shorter
+ends in error D3, and the message names a name over 63 bytes of UTF-8 as the possible cause: use a shorter
 name. Creating a table, or a column in the same table, or renaming one, to a name that is cut to one already taken ends in Postgres's own
 error instead. The comparison before a run does not name this cause.
 
