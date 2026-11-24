@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { glob } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EventDispatcher, EventRegistry, providerJobs, Translator, type Application, type Container, type Key } from '@marmeon/core';
-import { withCode } from '@marmeon/core/internal';
+import { belongsTo, findPackage, isInside, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { appListedProviders } from '../app-providers.ts';
 
@@ -20,13 +20,64 @@ export interface Helper {
   readonly value: () => unknown;
 }
 
-/** What `--sandbox` needs of `Connections` (@marmeon/database) — found by name, so the CLI does not depend on the package. */
+/** What `--sandbox` needs of `Connections` (@marmeon/database) — the class of the app's own copy of the package (found by {@link ownExport}), so the CLI does not depend on it. */
 interface SandboxConnections {
   transaction<R>(callback: () => Promise<R>): Promise<R>;
   options(name?: string): { readonly driver: 'sqlite'; readonly database: string } | { readonly driver: 'pgsql' | 'mysql'; readonly url: string };
 }
 
 type RepositoryClass = (new (...args: any[]) => object) & { readonly table: string };
+
+/**
+ * A class or token of the app's own copy of a package — or why there is none: `missing` (the app does not list the package, or it is not
+ * installed) or `unloadable` (installed, but its entry leads out of it, does not load or lacks the export).
+ */
+type Own = Key | 'missing' | 'unloadable';
+
+/** The classes and tokens of the app's own packages the helpers and the sandbox resolve — by identity, never by a name. */
+interface OwnExports {
+  readonly Connections: Own;
+  readonly Database: Own;
+  readonly Queue: Own;
+  readonly Mailer: Own;
+}
+
+/** The names the app's `package.json` lists, as discovery reads its root: dependencies, optional and peer dependencies, dev dependencies. */
+function listedDependencies(root: string): Set<string> {
+  const listed = new Set<string>();
+  try {
+    const json: unknown = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    if (typeof json !== 'object' || json === null) return listed;
+    for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
+      const list = Object.hasOwn(json, field) ? (json as Record<string, unknown>)[field] : undefined;
+      if (typeof list === 'object' && list !== null) for (const name of Object.keys(list)) listed.add(name);
+    }
+  } catch {
+    // No readable package.json: the app lists nothing.
+  }
+  return listed;
+}
+
+/**
+ * One export of a package the app's `package.json` lists, found the way discovery finds the copy it binds for the app (`findPackage` from the
+ * app root, which walks `node_modules` directories only — never `NODE_PATH` — and the entry through `exports` under the process's
+ * conditions), and only a copy the app lists, never one that only another package depends on. The entry must lie in the package, by its path
+ * and by its real path, so a package cannot make tinker run another one's code. A class (`Connections`) or a token (`Database`, `Queue`,
+ * `Mailer`) of that copy; a class or token of the same name anywhere else is no stand-in. See {@link Own} for the two ways there is none.
+ */
+async function ownExport(root: string, listed: ReadonlySet<string>, pkg: string, name: string): Promise<Own> {
+  if (!listed.has(pkg)) return 'missing';
+  try {
+    const found = findPackage(pkg, root);
+    if (!found) return 'missing';
+    const entry = resolveExports(found, '.', runtimeConditions());
+    if (!entry || !belongsTo(resolve(found.dir), resolve(entry)) || !isInside(found.dir, realpathSync.native(entry))) return 'unloadable';
+    const value = ((await import(pathToFileURL(entry).href)) as Record<string, unknown>)[name];
+    return typeof value === 'function' || (typeof value === 'object' && value !== null) ? (value as Key) : 'unloadable';
+  } catch {
+    return 'unloadable';
+  }
+}
 
 /** Directories never searched for repositories. */
 const NOT_APP_CODE = /(^|[\\/])(node_modules|dist|storage|\.marmeon|\.git|public)([\\/]|$)/;
@@ -37,8 +88,8 @@ const ROLLBACK = Symbol('tinker sandbox rollback');
 /**
  * One `marmeon tinker` session: the booted app, one container scope for all of it, the helpers and — with `--sandbox` — a
  * transaction around everything that rolls back at the end. The helpers live on the REPL's context only, built on first use;
- * those of packages the CLI does not depend on are found by the name the package binds (`Database`, `Queue`, `Mailer`,
- * `Connections`), so an app without the package still has a tinker. See docs/console.md#tinker.
+ * those of packages the CLI does not depend on are the classes and tokens (`Database`, `Queue`, `Mailer`, `Connections`) of the
+ * copy of the package that your app's `package.json` lists, resolved by {@link open} (call it first), so an app without the package still has a tinker. See docs/console.md#tinker.
  */
 export class TinkerSession {
   readonly app: Application;
@@ -64,6 +115,8 @@ export class TinkerSession {
   #inside: (<R>(fn: () => R) => R) | undefined;
   #end: (() => void) | undefined;
   #done: Promise<void> | undefined;
+  /** The classes and tokens of the app's own packages — undefined until {@link open} resolved them. */
+  #resolved: OwnExports | undefined;
 
   constructor(app: Application, options: { readonly sandbox?: boolean } = {}) {
     this.app = app;
@@ -75,16 +128,18 @@ export class TinkerSession {
   // -- The helpers -------------------------------------------------------------------------------------------------
 
   helpers(): Helper[] {
-    const byName = (name: string, label: string, pkg: string) => {
-      const key = this.#names.get(name);
+    const own = this.#own();
+    const helper = (key: Own, label: string, pkg: string, name: string) => {
+      const problem = this.#problem(key, label, pkg, name);
       return {
-        available: key !== undefined,
+        available: problem === undefined,
         value: () => {
-          if (!key) throw new Error(`${label} needs ${pkg} (marmeon add ${pkg.replace('@marmeon/', '')}; if it is installed already: marmeon discover).`);
+          if (problem !== undefined) throw new Error(problem);
           return this.scope.make(key as Key<unknown>);
         },
       };
     };
+    const repos = this.#problem(own.Connections, 'repos', '@marmeon/database', 'Connections');
     const translator = this.scope.has(Translator);
     return [
       { name: 'app', usage: 'app', description: 'the Application — container, modules, root', available: true, value: () => this.app },
@@ -95,20 +150,20 @@ export class TinkerSession {
         available: true,
         value: () => (key: Key | string) => this.make(key),
       },
-      { name: 'db', usage: 'db', description: 'Kysely on the default connection', ...byName('Database', 'db', '@marmeon/database') },
+      { name: 'db', usage: 'db', description: 'Kysely on the default connection', ...helper(own.Database, 'db', '@marmeon/database', 'Database') },
       {
         name: 'repos',
         usage: 'repos.<table>',
         description: 'the repositories (*Repository.ts), by table: repos.users',
-        available: this.#names.has('Connections'),
+        available: repos === undefined,
         value: () => {
-          if (!this.#names.has('Connections')) throw new Error('repos needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).');
+          if (repos !== undefined) throw new Error(repos);
           return this.#repositoryObject();
         },
       },
-      { name: 'jobs', usage: 'jobs.dispatch(Job, payload)', description: 'the Queue', ...byName('Queue', 'jobs', '@marmeon/queue') },
+      { name: 'jobs', usage: 'jobs.dispatch(Job, payload)', description: 'the Queue', ...helper(own.Queue, 'jobs', '@marmeon/queue', 'Queue') },
       { name: 'events', usage: 'events.dispatch(new Event(…))', description: 'the EventDispatcher', available: true, value: () => this.scope.make(EventDispatcher) },
-      { name: 'mail', usage: 'mail.send(new Mail(…))', description: 'the Mailer', ...byName('Mailer', 'mail', '@marmeon/mail') },
+      { name: 'mail', usage: 'mail.send(new Mail(…))', description: 'the Mailer', ...helper(own.Mailer, 'mail', '@marmeon/mail', 'Mailer') },
       {
         name: 'url',
         usage: "url('route.name', params?, query?)",
@@ -240,11 +295,17 @@ export class TinkerSession {
     return inside(() => connections.transaction(() => run()));
   }
 
-  /** Opens the sandbox's transaction on the default connection (with `--sandbox`; otherwise nothing to do). */
+  /**
+   * Resolves the app's own classes and tokens of the helpers and, with `--sandbox`, opens the transaction; call it before anything
+   * else — the helpers and the banner refuse until it ran.
+   */
   async open(): Promise<void> {
+    await this.#resolveOwn();
     if (!this.sandbox || this.#done) return;
-    const connections = this.#connections();
-    if (!connections) throw new Error('--sandbox needs @marmeon/database (marmeon add database; if it is installed already: marmeon discover).');
+    const own = this.#own();
+    const problem = this.#problem(own.Connections, '--sandbox', '@marmeon/database', 'Connections');
+    if (problem !== undefined) throw new Error(problem);
+    const connections = this.#connections()!;
     const inside = Promise.withResolvers<<R>(fn: () => R) => R>();
     const end = Promise.withResolvers<void>();
     this.#end = end.resolve;
@@ -322,9 +383,35 @@ export class TinkerSession {
 
   // -- Internals ---------------------------------------------------------------------------------------------------
 
+  #own(): OwnExports {
+    if (!this.#resolved) throw new Error('TinkerSession: call open() first.');
+    return this.#resolved;
+  }
+
+  /** Why the app's `key` of `pkg` is no use to `label`: no such package of the app's, one that cannot be loaded, or a provider that is not registered. Undefined when it is usable. */
+  #problem(key: Own, label: string, pkg: string, name: string): string | undefined {
+    if (key === 'missing') return `${label} needs ${pkg} in your app's package.json, installed (marmeon add ${pkg.replace('@marmeon/', '')}, or install your dependencies).`;
+    if (key === 'unloadable') return `${label} needs ${pkg}: it is installed, but it could not be loaded or lacks ${name} (reinstall it at your app's version).`;
+    if (!this.app.container.has(key)) return `${label} needs ${pkg}: it is installed, but its provider is not registered (marmeon discover).`;
+    return undefined;
+  }
+
   #connections(): SandboxConnections | undefined {
-    const key = this.#names.get('Connections');
-    return key ? (this.scope.make(key as Key<SandboxConnections>) as SandboxConnections) : undefined;
+    const key = this.#own().Connections;
+    return typeof key !== 'string' && this.app.container.has(key) ? (this.scope.make(key as Key<SandboxConnections>) as SandboxConnections) : undefined;
+  }
+
+  /** Finds the exports of @marmeon/database, @marmeon/queue and @marmeon/mail in the app's own copies — before the sandbox opens and the helpers are read. */
+  async #resolveOwn(): Promise<void> {
+    const root = this.app.root;
+    const listed = listedDependencies(root);
+    const [Connections, Database, Queue, Mailer] = await Promise.all([
+      ownExport(root, listed, '@marmeon/database', 'Connections'),
+      ownExport(root, listed, '@marmeon/database', 'Database'),
+      ownExport(root, listed, '@marmeon/queue', 'Queue'),
+      ownExport(root, listed, '@marmeon/mail', 'Mailer'),
+    ]);
+    this.#resolved = { Connections, Database, Queue, Mailer };
   }
 
   /** The names: what the container binds and what the modules list (jobs, notifications, seeders, listeners and their events, …), then the jobs of the providers as the last resort. */
