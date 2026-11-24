@@ -92,12 +92,12 @@ function snapshot(options: CookieOptions | undefined): CookieOptions {
   const copy: CookieOptions = {};
   if (!options) return copy;
   const { path, domain, maxAge, expires, secure, httpOnly, sameSite } = options;
-  if (path !== undefined) copy.path = path;
-  if (domain !== undefined) copy.domain = domain;
+  if (path != null) copy.path = path;
+  if (domain != null) copy.domain = domain;
   if (maxAge !== undefined) copy.maxAge = maxAge;
   if (expires !== undefined) copy.expires = expires;
-  if (secure !== undefined) copy.secure = secure;
-  if (httpOnly !== undefined) copy.httpOnly = httpOnly;
+  if (secure != null) copy.secure = secure;
+  if (httpOnly != null) copy.httpOnly = httpOnly;
   if (sameSite !== undefined) copy.sameSite = sameSite;
   return copy;
 }
@@ -113,14 +113,18 @@ function checkCookie(name: string, given: CookieOptions | undefined, defaults: C
   const checked = snapshot(given);
   if (defaults.secure && checked.secure === undefined) checked.secure = true;
   for (const key of ['path', 'domain'] as const) {
-    const attribute = checked[key];
+    const attribute: unknown = checked[key];
+    if (attribute !== undefined && typeof attribute !== 'string') throw new TypeError(`Cookie "${name}": the ${key} must be a string.`);
     if (attribute !== undefined && UNSAFE_ATTRIBUTE.test(attribute)) {
       throw new TypeError(`Cookie "${name}": the ${key} must not contain ";", a control character or a character above U+00FF.`);
     }
   }
   if (checked.maxAge !== undefined) {
     try {
-      checked.maxAge = Math.floor(durationToSeconds(checked.maxAge));
+      const seconds = Math.floor(durationToSeconds(checked.maxAge));
+      // From 1e21 on, a number is written as `1e+21`, which a browser ignores; below that it is plain digits.
+      if (!/^-?\d+$/.test(String(seconds))) throw new RangeError(`${seconds} seconds cannot be written as digits`);
+      checked.maxAge = seconds;
     } catch (error) {
       throw new TypeError(`Cookie "${name}": maxAge is not a span of time — ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -214,9 +218,9 @@ export class CookieJar {
     this.#permit = permit;
   }
 
-  /** Expires the cookie in the browser. Pass the same `path`/`domain` it was set with. */
+  /** Expires the cookie in the browser. Pass the options object it was set with: its `path` and `domain`, and its `secure`/`sameSite` where the name's prefix or `SameSite=None` needs them. */
   delete(name: string, options: Pick<CookieOptions, 'path' | 'domain'> = {}): void {
-    this.set(name, '', { path: options.path, domain: options.domain, maxAge: 0, expires: new Date(0) });
+    this.set(name, '', { ...snapshot(options), maxAge: 0, expires: new Date(0) });
   }
 
   /**

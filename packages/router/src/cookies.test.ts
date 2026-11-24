@@ -305,6 +305,37 @@ describe('cookie values and attributes that cannot be written', () => {
     expect(await jar.queued()).toEqual([expect.stringContaining('Path=/ok;')]);
   });
 
+  it('delete() forwards the secure and sameSite options it was given', async () => {
+    const jar = new CookieJar(null);
+    const options = { path: '/', secure: true, sameSite: 'strict' as const };
+    jar.set('__Host-token', 'v', options);
+    jar.delete('__Host-token', options);
+    const prefixed = { path: '/app', secure: true };
+    jar.delete('__Secure-token', prefixed);
+    const embedded = { path: '/', secure: true, sameSite: 'none' as const };
+    jar.delete('embed', embedded);
+    const [host, secure, embed] = await jar.queued();
+    expect(host).toContain('Secure; SameSite=Strict');
+    expect(secure).toContain('Path=/app');
+    expect(embed).toContain('Secure; SameSite=None');
+  });
+
+  it('refuses a path that is not a string and treats null as omitted', () => {
+    const jar = new CookieJar(null);
+    const tricky = { toString: () => '/; Domain=evil.test' } as unknown as string;
+    expect(() => jar.set('a', 'x', { path: tricky })).toThrow(/the path must be a string/);
+    expect(serializeCookie('a', 'x', { path: null as unknown as string, secure: null as unknown as boolean })).toBe('a=x; Path=/; HttpOnly; SameSite=Lax');
+  });
+
+  it('refuses a maxAge that cannot be written as digits', async () => {
+    const jar = new CookieJar(null);
+    expect(() => jar.set('a', 'x', { maxAge: 1e21 })).toThrow(/maxAge is not a span of time/);
+    expect(() => jar.set('a', 'x', { maxAge: -1e21 })).toThrow(/maxAge is not a span of time/);
+    expect(() => jar.set('a', 'x', { maxAge: Number.MAX_SAFE_INTEGER })).not.toThrow();
+    jar.set('b', 'x', { maxAge: 2 ** 53 });
+    expect(await jar.queued()).toContainEqual(expect.stringContaining('b=x; Path=/; Max-Age=9007199254740992;'));
+  });
+
   it('refuses delete() with a path that cannot be written', () => {
     expect(() => new CookieJar(null).delete('a', { path: '/;x' })).toThrow(/the path must not/);
     expect(() => new CookieJar(null).delete('a', { domain: 'a;b' })).toThrow(/the domain must not/);
