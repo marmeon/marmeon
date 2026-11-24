@@ -10,7 +10,7 @@ import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsT
 import { migratorConnection } from '../migrator-connection.ts';
 import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
-import { assertRawFitsMysql, check, executePlan, planOf, type PlanStep } from '../schema/plan.ts';
+import { assertNamesFitPgsql, assertRawFitsMysql, check, executePlan, planOf, pgsqlNames, type PgsqlName, type PlanStep } from '../schema/plan.ts';
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
 import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, tablesAtOf, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
@@ -314,6 +314,14 @@ export class Migrator {
         assertRawFitsMysql(plan, who);
         checkNamed('mysql', plan, who);
       }
+      // Postgres says whether it would cut a name, in the encoding of its database: asked for the names of the whole run before the first migration.
+      const starts: SchemaProjection[] = [];
+      let from = state;
+      for (const entry of pending) {
+        starts.push(from.projection);
+        from = fold([entry], from);
+      }
+      await this.#assertNamesFit(pending, starts);
       // And the database must be what the run starts from: an old mismatch is not the first migration's fault, and a table the run is
       // to create must not be there already (a database that is not this app's).
       await this.#precheck(state, pending);
@@ -505,7 +513,8 @@ export class Migrator {
       const columns = new Map<string, string[]>();
       const extension = new Set<string>();
       for (const row of rows) {
-        if (row.extension) extension.add(row.table_name);
+        // Only `true` says it: an app's own parser for booleans may give back the text, and 'f' is truthy.
+        if (row.extension === true) extension.add(row.table_name);
         const known = columns.get(row.table_name) ?? [];
         if (!known.includes(row.column_name)) known.push(row.column_name);
         columns.set(row.table_name, known);
@@ -615,6 +624,14 @@ export class Migrator {
       checkNamed(this.#driver(connection), plan, who);
       targets.push({ row, entry: { file, connection, plan } });
     }
+    // Each `down()` starts from the schema the migrations that remain after the ones rolled back before it leave.
+    const rolledBack = new Set<string>();
+    const starts = targets.map(({ row }) => {
+      const start = fold(planned.filter(({ file }) => remaining.has(file.name) && !rolledBack.has(file.name))).projection;
+      rolledBack.add(row.name);
+      return start;
+    });
+    await this.#assertNamesFit(targets.map(({ entry }) => entry), starts);
     const runs: MigrationRun[] = [];
     for (const { row, entry } of targets) {
       await this.#held?.heartbeat();
@@ -758,6 +775,21 @@ export class Migrator {
       }
     }
     return { lacking, names };
+  }
+
+  /**
+   * The names the plans give on Postgres, asked of the server of their connection before the first of them runs (D5); `starts[i]` is the
+   * schema the migrations leave before `entries[i]`, which tells the name of the constraint of a list `oneOf()` gives a column. MySQL
+   * measures in `check()`, SQLite measures nothing. The names of a rename with `indexes: true` come from the catalog and are asked when
+   * their migration runs.
+   */
+  async #assertNamesFit(entries: readonly { file: MigrationFile; connection: string; plan: readonly PlanStep[] }[], starts: readonly SchemaProjection[]): Promise<void> {
+    const byConnection = new Map<string, PgsqlName[]>();
+    for (const [index, { file, connection, plan }] of entries.entries()) {
+      if (this.#driver(connection) !== 'pgsql') continue;
+      byConnection.set(connection, [...(byConnection.get(connection) ?? []), ...pgsqlNames(plan, listCheckOf(starts[index]!, plan, file))]);
+    }
+    for (const [connection, names] of byConnection) await assertNamesFitPgsql(this.#books(connection), names);
   }
 
   /**
