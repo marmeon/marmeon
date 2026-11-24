@@ -456,6 +456,8 @@ them is a breaking change of the framework. The types you augment (`Views`, `Sha
 `ctx.cookies.set(name, value, options)` queues a cookie for whatever response the request ends with, a page, a redirect or an
 error page alike. The [requests](requests.md#cookies) page covers the options and their defaults.
 
+`set()` throws a `TypeError` that names the cookie when the value has half of a surrogate pair, encrypted or not. Check a value with [`wellFormed()`](validation.md#lone-surrogates). The same error follows a `path` or `domain` with `;`, a control character or a character above U+00FF.
+
 ### Downloads
 
 `serveFile()` of `@marmeon/storage` answers with a file of a disk:

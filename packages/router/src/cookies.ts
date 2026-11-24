@@ -47,14 +47,18 @@ export function parseCookies(header: string | null): Map<string, string> {
   return cookies;
 }
 
-/** Builds a `Set-Cookie` header value. The value is URI-encoded, so any string is safe. */
+/**
+ * Builds a `Set-Cookie` header value. The value is URI-encoded. It throws a TypeError for what {@link CookieJar.set} refuses
+ * ([cookies](docs/responses.md#cookies)).
+ */
 export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
-  checkCookie(name, options);
-  const { path = '/', domain, maxAge, expires, secure = false, httpOnly = true, sameSite = 'lax' } = options;
+  const checked = checkCookie(name, options);
+  checkValue(name, value);
+  const { path = '/', domain, maxAge, expires, secure = false, httpOnly = true, sameSite = 'lax' } = checked;
 
   const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${path}`];
   if (domain) parts.push(`Domain=${domain}`);
-  if (maxAge !== undefined) parts.push(`Max-Age=${Math.floor(durationToSeconds(maxAge))}`);
+  if (maxAge !== undefined) parts.push(`Max-Age=${maxAge}`);
   if (expires) parts.push(`Expires=${expires.toUTCString()}`);
   if (httpOnly) parts.push('HttpOnly');
   if (secure) parts.push('Secure');
@@ -68,17 +72,81 @@ const HOST_PREFIX = '__host-';
 /** The prefix with which a browser accepts a cookie only if it is `Secure`. Prefixes match without regard to case. */
 const SECURE_PREFIX = '__secure-';
 
-/** Throws for what `serializeCookie` refuses — an invalid name, `SameSite=None` without `secure` — without building the header. */
-function checkCookie(name: string, options: CookieOptions | undefined): void {
+/** Throws for a value that is not a string or has no UTF-8 form: `encodeURIComponent` would throw a `URIError` later, and the encrypting codec would store U+FFFD instead. */
+function checkValue(name: string, value: string): void {
+  if (typeof value !== 'string') throw new TypeError(`Cookie "${name}": the value must be a string.`);
+  if (!value.isWellFormed()) throw new TypeError(`Cookie "${name}": the value has half of a surrogate pair — check it with wellFormed().`);
+}
+
+/**
+ * `;`, the control characters (C0, DEL, C1) and every UTF-16 unit above U+00FF: `;` would end the attribute, and a `Headers` value takes bytes,
+ * so a character above U+00FF can never be written. No `u` flag: with it an astral character is one code point past the range and would pass, then fail in `Headers`.
+ */
+// eslint-disable-next-line no-control-regex -- the class names the control characters it refuses
+const UNSAFE_ATTRIBUTE = /[;\u0000-\u001f\u007f-\u009f\u0100-\uffff]/;
+
+const SAME_SITE = ['lax', 'strict', 'none'];
+
+/** Reads each option once, so a getter that answers differently later cannot change what was checked (and `{ ...options }` would drop a class's getters). */
+function snapshot(options: CookieOptions | undefined): CookieOptions {
+  const copy: CookieOptions = {};
+  if (!options) return copy;
+  const { path, domain, maxAge, expires, secure, httpOnly, sameSite } = options;
+  if (path !== undefined) copy.path = path;
+  if (domain !== undefined) copy.domain = domain;
+  if (maxAge !== undefined) copy.maxAge = maxAge;
+  if (expires !== undefined) copy.expires = expires;
+  if (secure !== undefined) copy.secure = secure;
+  if (httpOnly !== undefined) copy.httpOnly = httpOnly;
+  if (sameSite !== undefined) copy.sameSite = sameSite;
+  return copy;
+}
+
+/**
+ * Throws for what `serializeCookie` and `CookieJar.set` refuse — an invalid name, a `path` or `domain` that cannot be written, an unknown
+ * `sameSite`, a `maxAge` that is not a span of time, an `expires` that is not a valid date, `SameSite=None` without `secure`, a `__Secure-` or `__Host-` name that does not earn its prefix — without building the header.
+ * Returns a copy of the options (each read once) that holds what was checked: `maxAge` as whole seconds and `expires` as a new `Date`, so the caller's objects
+ * no longer matter.
+ */
+function checkCookie(name: string, given: CookieOptions | undefined, defaults: CookieDefaults = {}): CookieOptions {
   if (!COOKIE_NAME.test(name)) throw new TypeError(`Invalid cookie name "${name}".`);
-  if (options?.sameSite === 'none' && !options.secure) throw new TypeError(`Cookie "${name}": SameSite=None requires secure: true.`);
+  const checked = snapshot(given);
+  if (defaults.secure && checked.secure === undefined) checked.secure = true;
+  for (const key of ['path', 'domain'] as const) {
+    const attribute = checked[key];
+    if (attribute !== undefined && UNSAFE_ATTRIBUTE.test(attribute)) {
+      throw new TypeError(`Cookie "${name}": the ${key} must not contain ";", a control character or a character above U+00FF.`);
+    }
+  }
+  if (checked.maxAge !== undefined) {
+    try {
+      checked.maxAge = Math.floor(durationToSeconds(checked.maxAge));
+    } catch (error) {
+      throw new TypeError(`Cookie "${name}": maxAge is not a span of time — ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (checked.expires !== undefined) {
+    let time = Number.NaN;
+    try {
+      time = Date.prototype.getTime.call(checked.expires); // also a Date of another realm
+    } catch {
+      // not a Date: time stays NaN
+    }
+    if (Number.isNaN(time)) throw new TypeError(`Cookie "${name}": expires is not a valid date.`);
+    checked.expires = new Date(time);
+  }
+  if (checked.sameSite !== undefined && !SAME_SITE.includes(checked.sameSite)) {
+    throw new TypeError(`Cookie "${name}": sameSite must be "lax", "strict" or "none".`);
+  }
+  if (checked.sameSite === 'none' && !checked.secure) throw new TypeError(`Cookie "${name}": SameSite=None requires secure: true.`);
   // A browser refuses a `__Host-` cookie that is not Secure, has a Domain or a Path other than `/`; refusing it here too
   // means the prefix is never set on a cookie that does not earn it.
   const lower = name.toLowerCase();
-  if (lower.startsWith(SECURE_PREFIX) && !options?.secure) throw new TypeError(`Cookie "${name}": the __Secure- prefix requires secure: true.`);
-  if (lower.startsWith(HOST_PREFIX) && (!options?.secure || options.domain || (options.path ?? '/') !== '/')) {
+  if (lower.startsWith(SECURE_PREFIX) && !checked.secure) throw new TypeError(`Cookie "${name}": the __Secure- prefix requires secure: true.`);
+  if (lower.startsWith(HOST_PREFIX) && (!checked.secure || checked.domain || (checked.path ?? '/') !== '/')) {
     throw new TypeError(`Cookie "${name}": the __Host- prefix requires secure: true, path "/" and no domain.`);
   }
+  return checked;
 }
 
 /**
@@ -122,10 +190,17 @@ export class CookieJar {
     return Object.fromEntries(this.#incoming);
   }
 
+  /**
+   * Queues a cookie ([cookies](docs/responses.md#cookies)). Throws a TypeError for an invalid name, a value that is not a string or has half of a
+   * surrogate pair, a `path` or `domain` with `;`, a control character or a character above U+00FF, an unknown `sameSite`, a `maxAge` that is not a span of time, an `expires` that is not a valid date, `SameSite=None` without
+   * `secure`, and a `__Secure-` or `__Host-` name that does not meet its prefix's rules.
+   */
   set(name: string, value: string, given?: CookieOptions): void {
-    // The jar's defaults (`secure` from the session's config) unless the call says otherwise — also `secure: false`.
-    const options = this.#defaults.secure && given?.secure === undefined ? { ...given, secure: true } : given;
-    checkCookie(name, options); // now, where the mistake is made — the header is built once, when the response goes out
+    // Checked now, where the mistake is made — the header is built once, when the response goes out. What is queued is the copy
+    // `checkCookie` returns, so the caller's objects no longer matter. The jar's defaults (`secure` from the session's config) apply
+    // unless the call says otherwise — also `secure: false`.
+    const options = checkCookie(name, given, this.#defaults);
+    checkValue(name, value);
     if (this.#permit && !this.#permit(`cookies.set('${name}')`)) return;
     this.#queued.set(name, { value, options });
   }
@@ -141,7 +216,7 @@ export class CookieJar {
 
   /** Expires the cookie in the browser. Pass the same `path`/`domain` it was set with. */
   delete(name: string, options: Pick<CookieOptions, 'path' | 'domain'> = {}): void {
-    this.set(name, '', { ...options, maxAge: 0, expires: new Date(0) });
+    this.set(name, '', { path: options.path, domain: options.domain, maxAge: 0, expires: new Date(0) });
   }
 
   /**
