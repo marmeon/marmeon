@@ -63,6 +63,8 @@ export const schedule = defineSchedule((s) => {
 The app must register the job: a module lists it in `jobs`, or a package's provider lists it in `static [providerJobs]`. It is queued as a [unique job](queues.md#unique-jobs) until a worker starts it, so
 while the job of the last hour still waits, because the workers are behind or down, the task queues no second one.
 
+A job named `<name>:schedule` meets the unique key of `s.job()` of the job `<name>`: that task fails with a `ScheduleError` until you rename the job `<name>:schedule`.
+
 ### Callable task classes
 
 `s.call(Class)` builds a class through the container, in a scope of its own, and calls its `handle()`:

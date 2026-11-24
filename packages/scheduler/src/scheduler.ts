@@ -464,11 +464,22 @@ export class Scheduler {
         // or down find one waiting job, not one per tick. The lock outlives the next due time (by JOB_UNIQUE_FOR), so a
         // job lost on its way never blocks the task for longer than that.
         const next = nextDue(task.expression, dueAt, task.timeZone);
-        const id = await scope.make(Queue).dispatch(definition.target as JobClass, definition.payload as never, {
-          unique: `schedule:${task.name}`,
-          uniqueUntil: 'processing',
-          uniqueFor: (next === undefined ? 0 : (next - dueAt) / 1000) + JOB_UNIQUE_FOR,
-        });
+        let id: string | undefined;
+        try {
+          id = await scope.make(Queue).dispatch(definition.target as JobClass, definition.payload as never, {
+            unique: `schedule:${task.name}`,
+            uniqueUntil: 'processing',
+            uniqueFor: (next === undefined ? 0 : (next - dueAt) / 1000) + JOB_UNIQUE_FOR,
+          });
+        } catch (error) {
+          // The task's key starts with `schedule:`, so a job named `<job>:schedule` owns the same lock: the dispatch cannot work until that job is renamed.
+          // Loaded defensively: a missing export or a failed import never hides the original error.
+          const { JobKeyLockError: lock } = await import('@marmeon/queue/internal').catch(() => ({ JobKeyLockError: undefined }));
+          if (typeof lock !== 'function' || !(error instanceof lock)) throw error;
+          throw new ScheduleError(
+            withCode('Q5', `The task "${task.name}" queues the job "${error.job}", but the app registers a job named "${error.other}", and the unique key of a scheduled job starts with "schedule:", so both name one lock. Rename "${error.other}" so it does not begin with "${error.job}:". See docs/queues.md#unique-jobs.`),
+          );
+        }
         return id !== undefined;
       }
       case 'command': {

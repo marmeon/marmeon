@@ -15,6 +15,21 @@ export class QueueError extends Error {
 /** `auth.send-welcome-mail`, `billing:invoice.send` — lower case, digits, and `.`, `-`, `_`, `:` between parts. */
 const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
 
+/**
+ * @internal A per-job key that names the lock of another registered job: `job` is the job the key belongs to, `other` the job whose
+ * lock it meets. A `QueueError`, so a caller that catches that class keeps working; the scheduler tells it apart by class.
+ */
+export class JobKeyLockError extends QueueError {
+  override name = 'JobKeyLockError';
+  readonly job: string;
+  readonly other: string;
+  constructor(message: string, job: string, other: string) {
+    super(message);
+    this.job = job;
+    this.other = other;
+  }
+}
+
 /** Names under `marmeon.` belong to the framework's own jobs (queued mails and listeners). */
 export const FRAMEWORK_PREFIX = 'marmeon.';
 

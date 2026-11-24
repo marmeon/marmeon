@@ -15,6 +15,7 @@ import * as v from 'valibot';
 import { readdirSync, readFileSync } from 'node:fs';
 import { Output } from 'marmeon';
 import { afterEach, assert, describe, expect, it, vi } from 'vitest';
+import { ScheduleError } from './cron.ts';
 import { collectTasks } from './schedule.ts';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, type TaskResult } from './index.ts';
 import { ScheduleTester } from './testing.ts';
@@ -1344,6 +1345,72 @@ describe('schedule:list masks secrets', () => {
       expect(stdout.join(''), JSON.stringify(options)).not.toContain('geheim');
       expect(stdout.join('')).toContain('fixture.stats');
     }
+    await app.shutdown();
+  });
+});
+
+describe('s.job() next to a job named <job>:schedule', () => {
+  class ReportsJob {
+    static readonly job = 'reports';
+    static readonly schema = v.object({});
+    handle() {}
+  }
+  class ReportsScheduleJob {
+    static readonly job = 'reports:schedule';
+    static readonly schema = v.object({});
+    handle() {}
+  }
+
+  class PickyJob {
+    static readonly job = 'picky';
+    static readonly schema = v.object({ n: v.number() });
+    handle() {}
+  }
+
+  async function withJobs(jobs: JobClass[], schedule: ModuleDefinition['schedule'] = defineSchedule((s) => void s.job(ReportsJob).everyMinute().name('reports-task'))) {
+    const dir = tempDir('marmeon-schedule-queue-');
+    const booted = await boot(
+      schedule,
+      {
+        providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
+        env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_DRIVER: 'database', CACHE_DRIVER: 'database' },
+        modules: [defineModule({ name: 'jobs', jobs })],
+      },
+    );
+    for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await runMigration(booted.app.container.make(Connections), ((await import(file.href)) as { default: Migration }).default);
+    return booted;
+  }
+
+  it('fails the tick with a ScheduleError that names the task and the job, and not the key', async () => {
+    const { scheduler, clock, app } = await withJobs([ReportsJob, ReportsScheduleJob]);
+    const [run] = await scheduler.tick(clock.now());
+    const result = await run!.done;
+    expect(result).toMatchObject({ task: 'reports-task', outcome: 'failed' });
+    expect(result.error).toBeInstanceOf(ScheduleError);
+    expect((result.error as Error).message).toBe(
+      '[marmeon:Q5] The task "reports-task" queues the job "reports", but the app registers a job named "reports:schedule", and the unique key of a scheduled job starts with "schedule:", so both name one lock. Rename "reports:schedule" so it does not begin with "reports:". See docs/queues.md#unique-jobs.',
+    );
+    expect((result.error as Error).message).not.toContain('schedule:reports-task');
+    expect(await app.container.make(Queue).size()).toBe(0);
+    await app.shutdown();
+  });
+
+  it('keeps the own error of a dispatch that fails for another reason: a QueueError, not a ScheduleError', async () => {
+    const { scheduler, clock, app } = await withJobs([ReportsJob, ReportsScheduleJob, PickyJob], defineSchedule((s) => void s.job(PickyJob, {} as never).everyMinute().name('picky-task')));
+    const [run] = await scheduler.tick(clock.now());
+    const result = await run!.done;
+    expect(result.outcome).toBe('failed');
+    expect(result.error).not.toBeInstanceOf(ScheduleError);
+    expect(result.error).toBeInstanceOf((await import('@marmeon/queue')).QueueError);
+    expect(result.error).toMatchObject({ name: 'JobPayloadError' });
+    await app.shutdown();
+  });
+
+  it('still queues the job when no job is named <job>:schedule', async () => {
+    const { scheduler, clock, app } = await withJobs([ReportsJob]);
+    const [run] = await scheduler.tick(clock.now());
+    expect((await run!.done).outcome).toBe('ran');
+    expect(await app.container.make(Queue).size()).toBe(1);
     await app.shutdown();
   });
 });

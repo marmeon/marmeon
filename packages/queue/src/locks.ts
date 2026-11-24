@@ -2,7 +2,7 @@ import type { Cache, Lock } from '@marmeon/cache';
 import { durationToSeconds, type Duration, type StandardSchemaV1 } from '@marmeon/core';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobMiddleware, JobStatics, SchemaOutput, UniqueDispatchOptions } from './job.ts';
-import { QueueError, type JobRegistry } from './registry.ts';
+import { JobKeyLockError, QueueError, type JobRegistry } from './registry.ts';
 
 // Unique jobs, `withoutOverlapping` and `job.once`: locks and markers in the app's cache (@marmeon/cache, an
 // optional peer — loaded where it is used). Every lock expires, so a crashed worker never blocks a key for good.
@@ -35,13 +35,15 @@ function seconds(value: Duration, what: string): number {
  * is named by the job's name and the key, so `reports` with `daily:7` and `reports:daily` with `7` are one lock. The key
  * must go past `daily:`, because an empty key of the longer job is refused anyway.
  */
-export function keyLockConflict(registry: JobRegistry, job: string, key: string): QueueError | undefined {
+export function keyLockConflict(registry: JobRegistry, job: string, key: string): JobKeyLockError | undefined {
   for (const other of registry.all()) {
     if (typeof other.job !== 'string' || !other.job.startsWith(`${job}:`)) continue;
     const rest = other.job.slice(job.length + 1);
     if (key.startsWith(`${rest}:`) && key.length > rest.length + 1) {
-      return new QueueError(
+      return new JobKeyLockError(
         `A key of the job "${job}" that continues past "${rest}:" names the same lock as a key of the job "${other.job}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`,
+        job,
+        other.job,
       );
     }
   }
