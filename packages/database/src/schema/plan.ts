@@ -1,4 +1,4 @@
-import { withCode } from '@marmeon/core/internal';
+import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
@@ -152,16 +152,16 @@ export async function assertNamesFitPgsql(db: Kysely<any>, names: readonly Pgsql
   } catch (error) {
     const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
     if (typeof code !== 'string' || !UNTRANSLATABLE.has(code)) throw error;
-    const listed = names.filter((entry) => /\P{ASCII}|\0/u.test(entry.name)).map((entry) => `"${entry.name}"`);
+    const listed = names.filter((entry) => /\P{ASCII}|\0/u.test(entry.name)).map((entry) => `"${printable(entry.name)}"`);
     throw new SchemaError(
-      withCode('D5', `One of these names cannot be held in this database's encoding: ${(listed.length ? listed : names.map((entry) => `"${entry.name}"`)).join(', ')}. Give it a name made of characters the database's encoding has.`),
+      withCode('D5', `One of these names cannot be held in this database's encoding: ${(listed.length ? listed : names.map((entry) => `"${printable(entry.name)}"`)).join(', ')}. Give it a name made of characters the database's encoding has.`),
       { cause: error },
     );
   }
   if (rows.length === 0) return;
   const { name, what, hint } = names.find((entry) => entry.name === rows[0]!.n) ?? { name: rows[0]!.n, what: 'name', hint: DEFAULT_NAME_HINT };
   throw new SchemaError(
-    withCode('D5', `The ${what} "${name}" is longer than Postgres's 63 bytes in this database's encoding; Postgres would cut it and so change it silently. ${hint}`),
+    withCode('D5', `The ${what} "${printable(name)}" is longer than Postgres's 63 bytes in this database's encoding; Postgres would cut it and so change it silently. ${hint}`),
   );
 }
 

@@ -163,9 +163,9 @@ async function acquirePostgres(options: LockOptions, owner: string, waitMs: numb
       // also behind a connection pooler in transaction mode, where a session lock would be let go (or shared, as it is re-entrant).
       await client.query('begin');
       await client.query(`select set_config('application_name', $1, true)`, [NAME_PREFIX + owner]);
-      const row = (await client.query<{ locked: boolean }>('select pg_try_advisory_xact_lock($1::bigint) as locked', [key])).rows[0];
-      // Only `true` is the lock: an app's own parser for booleans may turn the answer into a string, and 'f' is truthy.
-      if (row?.locked === true) break;
+      // Whether the lock was taken is the number of rows, not a boolean read: an app's own parser for booleans (global to `pg`) may turn the answer into a string.
+      const taken = await client.query('select 1 from (select pg_try_advisory_xact_lock($1::bigint) as locked) as attempt where attempt.locked', [key]);
+      if (taken.rows.length === 1) break;
       await client.query('rollback');
       if (Date.now() >= deadline) throw new MigrationLockTimeoutError(await postgresHolder(client));
       await sleep(POLL_MS);

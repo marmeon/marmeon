@@ -114,8 +114,8 @@ export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{
     // the check after a migration would take for missing. Here a table without privileges is seen, and the query on it is refused.
     columnRows = await run<ColumnRow>(`select c.relname::text as table_name, a.attname::text as column_name,
           case when t.typname = 'numeric' then 'numeric(' || (case when a.atttypmod = -1 then 0 else ((a.atttypmod - 4) >> 16) & 65535 end) || ', ' || (case when a.atttypmod = -1 then 0 else (a.atttypmod - 4) & 65535 end) || ')' else t.typname::text end as type,
-          not a.attnotnull as nullable,
-          exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') as extension
+          case when a.attnotnull then 0 else 1 end as nullable,
+          case when exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') then 1 else 0 end as extension
           from pg_catalog.pg_class c
             join pg_catalog.pg_namespace n on n.oid = c.relnamespace
             join pg_catalog.pg_attribute a on a.attrelid = c.oid
@@ -141,11 +141,12 @@ export async function tableColumns(run: CatalogQuery, driver: Driver): Promise<{
   const nullable = new Set<string>();
   const extension = new Set<string>();
   for (const row of columnRows) {
-    if (row.extension === true) extension.add(row.table_name);
+    // Numbers, not booleans: an app's own parser for booleans (global to `pg`) may give back strings.
+    if (Number(row.extension) === 1) extension.add(row.table_name);
     let table = types.get(row.table_name);
     if (!table) types.set(row.table_name, (table = new Map()));
     table.set(row.column_name, row.type);
-    if (row.nullable === true || row.nullable === 1) nullable.add(`${row.table_name}\0${row.column_name}`);
+    if (Number(row.nullable) === 1) nullable.add(`${row.table_name}\0${row.column_name}`);
   }
   // `extension`: tables an extension created (PostGIS's `spatial_ref_sys`) belong to no app — not an unknown table of it.
   return { types, nullable, extension };
@@ -155,9 +156,9 @@ interface ColumnRow {
   table_name: string;
   column_name: string;
   type: string;
-  nullable: boolean | number;
+  nullable: number;
   /** Postgres: the relation belongs to an extension. */
-  extension?: boolean;
+  extension?: number;
 }
 
 async function foreignKeyRows(run: CatalogQuery, driver: Driver): Promise<{ table: string; column: string; references: string; referenced: string }[]> {

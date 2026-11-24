@@ -498,9 +498,9 @@ export class Migrator {
     if (driver === 'pgsql') {
       const rows = (
         await sql
-          .raw<{ table_name: string; column_name: string; extension: boolean }>(
+          .raw<{ table_name: string; column_name: string; extension: number }>(
             `select c.relname::text as table_name, a.attname::text as column_name,
-              exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') as extension
+              case when exists (select 1 from pg_catalog.pg_depend d where d.classid = 'pg_catalog.pg_class'::regclass and d.objid = c.oid and d.deptype = 'e') then 1 else 0 end as extension
               from pg_catalog.pg_class c
                 join pg_catalog.pg_namespace n on n.oid = c.relnamespace
                 join pg_catalog.pg_attribute a on a.attrelid = c.oid
@@ -513,8 +513,8 @@ export class Migrator {
       const columns = new Map<string, string[]>();
       const extension = new Set<string>();
       for (const row of rows) {
-        // Only `true` says it: an app's own parser for booleans may give back the text, and 'f' is truthy.
-        if (row.extension === true) extension.add(row.table_name);
+        // A number, not a boolean: an app's own parser for booleans (global to `pg`) may give back a string.
+        if (Number(row.extension) === 1) extension.add(row.table_name);
         const known = columns.get(row.table_name) ?? [];
         if (!known.includes(row.column_name)) known.push(row.column_name);
         columns.set(row.table_name, known);

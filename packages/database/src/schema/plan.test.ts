@@ -571,8 +571,9 @@ describe('asking Postgres whether the names of a plan fit', () => {
       [...names, { name: 'nul\0name', what: 'index name', hint: '' }, { name: 'indéx', what: 'index name', hint: '' }],
     ).then(() => undefined, (caught: unknown) => caught);
     expect(error).toBeInstanceOf(SchemaError);
-    expect((error as SchemaError).message).toContain('"nul\0name", "indéx"');
+    expect((error as SchemaError).message).toContain('"nul\\u0000name", "indéx"');
     expect((error as SchemaError).message).not.toContain('short_index');
+    expect((error as SchemaError).message).not.toContain('\0');
   });
 
   it('lets every other error of the query through unchanged', async () => {
