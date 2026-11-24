@@ -12,7 +12,7 @@ import type { TableActionResult, TableColumn, TableData, TableExportEntry, Table
 import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
 import { isSchema, normalizeOptions } from './helpers.ts';
 import type { ActionInputSource, AnyBulkAction, AnyColumn, AnyFilter, AnyRowAction, KeyType, AnyExport, DataTable, TableDefinition, TableExportInfo, TableProps, TableVisibility } from './define.ts';
-import { parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
+import { isText, parseState, queryKeys, stateQuery, TableQueryError, type TableState } from './state.ts';
 
 /** The request context a table's query needs. */
 export type ContextOfTable<T> = T extends DataTable<any, infer Ctx> ? Ctx : never;
@@ -87,7 +87,7 @@ const CHECKED = new WeakMap<TableDefinition, ReadonlyMap<string, string>>();
 
 type Row = Record<string, unknown>;
 
-const RowKey = v.union([v.pipe(v.number(), v.safeInteger()), v.pipe(v.string(), v.minLength(1), v.maxLength(200))]);
+const RowKey = v.union([v.pipe(v.number(), v.safeInteger()), v.pipe(v.string(), v.minLength(1), v.maxLength(200), v.check(isText, 'No NUL character or half of a surrogate pair.'))]);
 
 /** The body of a row action: the key of the row, and the action's input (checked against its schema, not here). */
 const ActionBody = v.object({ key: RowKey, input: v.optional(v.unknown()) });
@@ -257,6 +257,7 @@ export class DataTables {
    * A bulk action, from its endpoint: chosen keys (`{ keys }`) ∩ the base query ∩ the policy per row — or "all matching"
    * (`{ all: true, query }`: the table's state, parsed again here, never a list the browser made up). More rows than the action's
    * `max` is a 422; rows the policy refuses are left out and counted (`skipped`), keys that are no rows of the table too (`missing`).
+   * A chosen key with a NUL character or half of a surrogate pair refuses the whole request (422): it is neither left out nor counted.
    * @internal
    */
   async runBulk(definition: TableDefinition, name: string, ctx: HttpContext): Promise<unknown> {
