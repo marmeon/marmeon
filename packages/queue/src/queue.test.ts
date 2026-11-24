@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { CacheServiceProvider } from '@marmeon/cache';
+import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { Clock, createApplication, currentLogContext, ErrorReports, EventDispatcher, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
@@ -17,9 +17,10 @@ import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { parseMember } from './drivers/redis.ts';
 import { QueueFake } from './fake.ts';
 import type { JobEvent } from './events.ts';
-import { JobFailed, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
+import { JobFailed, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobMiddlewareContext, type JobPayload } from './index.ts';
 import { QueueManager, RECORD_OPTIONS } from './queue.ts';
 import { JobRegistry, QueueSetupError } from './registry.ts';
+import { withoutOverlapping } from './locks.ts';
 import { cipherContext, JobPayloadError, JobRunner, nextInChain, parseRecord, RECORD_READERS } from './runner.ts';
 import { JobStuckError, Worker } from './worker.ts';
 
@@ -1884,5 +1885,51 @@ describe('a delay on the sync connection', () => {
     await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 31, [RECORD_OPTIONS]: { label: { toString: () => 'x' } } } as never);
     expect(other.seen.entries).toHaveLength(2);
     expect(warnings(sync.lines).map((line) => line.message)).toEqual([said('test.welcome', 30)]);
+  });
+});
+
+describe('job names that can share a lock', () => {
+  const named = (name: string) => class { static readonly job = name; static readonly schema = v.object({}); handle() {} };
+  class Reports extends named('reports') {}
+  class ReportsDaily extends named('reports:daily') {}
+
+  it('names one unique lock for `reports` with the key `daily:7` and `reports:daily` with the key `7`', async () => {
+    await using application = await app({ cache: true, env: { CACHE_DRIVER: 'memory' }, modules: [{ name: 'test', jobs: [Reports, ReportsDaily] }] });
+    const queue = application.container.make(Queue);
+    expect(await queue.dispatch(Reports, {}, { unique: 'daily:7' })).toEqual(expect.any(String));
+    expect(await queue.dispatch(ReportsDaily, {}, { unique: '7' })).toBeUndefined();
+    expect(await queue.dispatch(ReportsDaily, {}, { unique: '8' }), 'another key is another lock').toEqual(expect.any(String));
+  });
+
+  // Runs `handle` of one withoutOverlapping() inside the held lock of another: the inner attempt is released when they name one lock.
+  const blocked = async (application: Application, outer: { job: string; key: string; shared?: boolean }, inner: { job: string; key: string; shared?: boolean }) => {
+    const cache = application.container.make(Cache);
+    const context = (job: string): { context: JobMiddlewareContext; released: unknown[] } => {
+      const released: unknown[] = [];
+      return {
+        released,
+        context: { payload: {}, job: { name: job, release: (delay: unknown) => released.push(delay) }, timeoutSeconds: 60, retryAfterSeconds: 90, cache: async () => cache } as unknown as JobMiddlewareContext,
+      };
+    };
+    const second = context(inner.job);
+    let ran = false;
+    await withoutOverlapping(outer.key, { shared: outer.shared }).handle(context(outer.job).context, async () => {
+      await withoutOverlapping(inner.key, { shared: inner.shared }).handle(second.context, async () => {
+        ran = true;
+      });
+    });
+    return { ran, released: second.released.length };
+  };
+
+  it('names one overlap lock for `reports` with the key `daily:7` and `reports:daily` with the key `7`', async () => {
+    await using application = await app({ cache: true, env: { CACHE_DRIVER: 'memory' } });
+    expect(await blocked(application, { job: 'reports', key: 'daily:7' }, { job: 'reports:daily', key: '7' })).toEqual({ ran: false, released: 1 });
+    expect(await blocked(application, { job: 'reports', key: 'daily:7' }, { job: 'reports:daily', key: '8' }), 'another key is another lock').toEqual({ ran: true, released: 0 });
+  });
+
+  it('names one lock for the shared key `stats:1` and the key `1` of the job `stats`', async () => {
+    await using application = await app({ cache: true, env: { CACHE_DRIVER: 'memory' } });
+    expect(await blocked(application, { job: 'other', key: 'stats:1', shared: true }, { job: 'stats', key: '1' })).toEqual({ ran: false, released: 1 });
+    expect(await blocked(application, { job: 'other', key: 'stats:1', shared: true }, { job: 'stats', key: '2' }), 'another key is another lock').toEqual({ ran: true, released: 0 });
   });
 });

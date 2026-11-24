@@ -311,7 +311,7 @@ Node cannot stop a running promise from outside. A job's `timeout` is therefore 
 
 `retryAfterSeconds`, 90 seconds by default, is how long a claimed job stays with its worker before another worker may take it again. It
 must be longer than every job's `timeout` plus `--stop-timeout`, or a second worker would run a job the first one still runs.
-`queue:work` checks every job of the app at its start and refuses to start with a message that names the jobs and what to change.
+`queue:work` checks every job of the app at its start and refuses to start with a message that names the jobs and what to change. It also warns about job names that can share a lock (see [Unique jobs](#unique-jobs)).
 
 Every server's clock must be synchronised (NTP). Claims, delays, locks and rate-limit windows of the `database` and `file` stores compare times taken on different machines; a clock ahead by more than `retryAfterSeconds − (timeout + --stop-timeout)` runs a job twice.
 
@@ -528,6 +528,7 @@ export class RefreshMemberStats {
 ```
 
 Ten registrations in a burst queue one rebuild. The key belongs to the job class: `stats:1` of one job does not block another job.
+A unique key and a `withoutOverlapping()` key without `shared` are named by the job's name and the key, so `reports` with the key `daily:7` and `reports:daily` with the key `7` name one lock. `queue:work` warns at its start when two job names meet that way. With `reports` and `reports:daily`, keep the keys of `reports` from starting with `daily:`. Renaming one of the jobs works too, but until the old name's waiting jobs are gone, the two names do not see each other's locks.
 A lock in the app's cache holds the key. It is taken at the dispatch, outside any transaction, so every process sees it at once, and
 it is freed again when the transaction around the dispatch rolls back. Otherwise it is freed:
 
@@ -581,7 +582,7 @@ export class RebuildMemberStatsJob {
 An attempt that finds the key taken does not run. It goes back to the queue for `releaseAfter`, 5 seconds by default. That counts
 as an attempt, so a job with this middleware needs `tries`. The key can depend on the payload:
 `` withoutOverlapping<typeof RebuildStatsJob>((payload) => `stats:${payload.userId}`) ``. The lock expires after `expiresAfter`,
-by default the connection's `retryAfterSeconds`. `releaseAfter` and `expiresAfter` take seconds or a duration such as `{ minutes: 1 }`. `shared: true` shares the key with other jobs.
+by default the connection's `retryAfterSeconds`. `releaseAfter` and `expiresAfter` take seconds or a duration such as `{ minutes: 1 }`. `shared: true` shares the key with other jobs. A shared key is the same lock as the per-job key K of a job J whenever it reads `J:K`: the shared key `stats:1` and the key `1` of the job `stats` are one lock.
 
 A middleware of your own implements `handle(context, next)`. `context` holds the `payload`, the `job` context, the job's timeout in `timeoutSeconds`,
 the connection's `retryAfterSeconds` and `cache()`. Call `next()` to run the job, or end the attempt with `context.job.release()` or
