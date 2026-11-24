@@ -26,6 +26,21 @@ export interface ResultOptions {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
+/** Whether `status` is a whole number from 200 to 599 — one a response can carry. */
+export function isResponseStatus(status: unknown): status is number {
+  return Number.isInteger(status) && (status as number) >= 200 && (status as number) <= 599;
+}
+
+/** The status rule of a result, checked where a result is made and again where the server takes its status: a result is plain data and can be changed after. */
+export function assertStatus(name: string, status: unknown, hasBody: boolean): asserts status is number {
+  if (!isResponseStatus(status)) {
+    throw new TypeError(`${name}(): status is a whole number from 200 to 599, not ${typeof status === 'string' ? JSON.stringify(status) : typeof status === 'number' || typeof status === 'bigint' ? String(status) : typeof status}.`);
+  }
+  if (hasBody && (status === 204 || status === 205 || status === 304)) {
+    throw new TypeError(name === 'json' ? `${name}(): status ${status} has no body — pass undefined as the data.` : `${name}(): status ${status} has no body, and a page always has one.`);
+  }
+}
+
 /**
  * The checked `{ status, headers }` of the options, each read once. A number where the options belong is the old positional
  * status — refused with the way out; so is a status no response can carry.
@@ -33,12 +48,7 @@ export interface ResultOptions {
 export function assertResultOptions(name: string, options: unknown, hasBody: boolean): { status: number; headers: Readonly<Record<string, string>> | undefined } {
   if (typeof options !== 'object' || options === null) throw new TypeError(`${name}(): pass the status as { status: 422 }`);
   const { status = 200, headers } = options as ResultOptions;
-  if (!Number.isInteger(status) || status < 200 || status > 599) {
-    throw new TypeError(`${name}(): status is a whole number from 200 to 599, not ${typeof status === 'string' ? JSON.stringify(status) : typeof status === 'number' || typeof status === 'bigint' ? String(status) : typeof status}.`);
-  }
-  if (hasBody && (status === 204 || status === 205 || status === 304)) {
-    throw new TypeError(name === 'json' ? `${name}(): status ${status} has no body — pass undefined as the data.` : `${name}(): status ${status} has no body, and a page always has one.`);
-  }
+  assertStatus(name, status, hasBody);
   return { status, headers };
 }
 
