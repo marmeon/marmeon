@@ -114,6 +114,10 @@ export interface PackageLookup {
   readonly stoppedAt?: string;
   /** Not found, but a package of that name lies in a `node_modules` beyond the bound. */
   readonly above?: boolean;
+  /** The lookup started outside the limit: it looked only in the install tree of the start, up to `installedAt`. */
+  readonly outside?: boolean;
+  /** The last folder the lookup looked in; set only for a start outside the limit. */
+  readonly installedAt?: string;
 }
 
 /** Whether a `node_modules/<name>` lies in `dir` or a parent of it: looked at, never read. */
@@ -181,10 +185,10 @@ export function lookupPackage(name: string, fromDir: string, bound?: LookupBound
     // The install tree of the workspace is the workspace's own: the `.pnpm` store, the hoisted packages.
     (inside && (dir === join(limit, 'node_modules') || isInside(join(limit, 'node_modules'), dir)));
   for (let dir = start; ; dir = dirname(dir)) {
-    if (dir !== start && !vetted(dir) && !trusted(dir, owner)) return { stoppedAt: dir, above: installedFrom(name, dir) };
+    if (dir !== start && !vetted(dir) && !trusted(dir, owner)) return { stoppedAt: dir, above: installedFrom(name, dir), ...(inside ? {} : { outside: true, installedAt: last }) };
     const candidate = join(dir, 'node_modules', name, 'package.json');
     if (existsSync(candidate)) return { found: readPackage(name, candidate) };
-    if (dir === last || dirname(dir) === dir) return { above: installedFrom(name, dirname(dir)) };
+    if (dir === last || dirname(dir) === dir) return { above: installedFrom(name, dirname(dir)), ...(inside ? {} : { outside: true, installedAt: last }) };
   }
 }
 

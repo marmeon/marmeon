@@ -10,7 +10,7 @@ import { ConfigError } from '../environment.ts';
 import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
@@ -21,8 +21,8 @@ export { DiscoveryError };
 export type { PackageSurface };
 import {
   exportedSubpaths,
-  findFoundPackage,
   lookupPackage,
+  printable,
   trusted,
   resolveExports,
   resolveTypes,
@@ -95,6 +95,8 @@ export interface Manifest {
   readonly sources: readonly string[];
   /** Over the bytes of the files in `sources`: differs when one of them changes or is deleted. */
   readonly sourcesHash: string;
+  /** One line per package with a dependency that is installed but out of reach of discovery: the app says it once per process. Paths are relative to the app. */
+  readonly dropped?: readonly string[];
 }
 
 /** Builds the manifest data (without writing it). */
@@ -115,7 +117,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const names: string[] = [];
   // Before the walk reads anything: an edit while it runs leaves a hash of older bytes, so the manifest is stale at the next start, never fresh.
   const hash = manifestHash(root, conditions);
-  const { ordered, visited } = walk(root);
+  const { ordered, visited, dropped } = walk(root);
   const reached = new Map<string, FoundPackage>();
   const bound = { app: realRoot(root), limit: workspaceRoot(root) };
   const namespaces: { package: string; dir: string; namespace: string }[] = [];
@@ -193,6 +195,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
     modules,
     injections,
     providers,
+    ...(dropped.length > 0 ? { dropped } : {}),
     ...workspaceSources(root, [...visited, ...[...reached.values()].filter((pkg) => !visited.some((seen) => seen.dir === pkg.dir))]),
   };
   const unresolvable = injections.filter((entry) => 'unresolvable' in entry).length;
@@ -374,14 +377,40 @@ function walkDependencies(root: string): PackageInfo[] {
   return walk(root).ordered;
 }
 
-/** The walk: `ordered` are the packages with a `marmeon` field; `visited` every package it reached, with or without one. */
-function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] } {
+/**
+ * The walk: `ordered` are the packages with a `marmeon` field; `visited` every package it reached, with or without one; `dropped` one line
+ * per package with a dependency that is installed but out of reach of the lookup (above the app's workspace, behind a folder it refuses, or
+ * beyond the install tree of a package linked from outside it).
+ */
+function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[]; dropped: string[] } {
   const rootJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   // Nothing is looked up above the app's workspace: a name that is not installed nearer stays absent.
-  const bound = { app: realRoot(root), limit: workspaceRoot(root) };
+  const { limit, refusedAt } = workspaceLookup(root);
+  const bound = { app: realRoot(root), limit };
   const seen = new Set<string>();
   const ordered: FoundPackage[] = [];
   const visited: FoundPackage[] = [];
+  const dropped: string[] = [];
+
+  /** Looks `dep` up; one that is installed but out of reach is noted under `who` (only the hard `dependencies` of a package are). */
+  const find = (dep: string, from: string, who: { name: string; unreached: string[] } | undefined) => {
+    const { found, stoppedAt, above, outside, installedAt } = lookupPackage(dep, from, bound);
+    if (!found && above === true && who) {
+      const why =
+        stoppedAt !== undefined
+          ? `the search stopped at ${fromApp(bound.app, stoppedAt)}, which everyone can write to or another user owns`
+          : outside
+            ? `it lies beyond ${fromApp(bound.app, installedAt!)}, where ${who.name} is installed`
+            : refusedAt !== undefined
+              ? `the search stopped at ${fromApp(bound.app, refusedAt)}, which everyone can write to or another user owns`
+              : `it lies above ${fromApp(bound.app, bound.limit)}, the app's workspace`;
+      who.unreached.push(`${dep} (${why})`);
+    }
+    return found;
+  };
+  const report = (who: { name: string; unreached: string[] }) => {
+    if (who.unreached.length > 0) dropped.push(`${who.name} depends on ${who.unreached.join(', ')}: installed, but out of reach of discovery, so not listed.`);
+  };
 
   // A package's peers are what the package depending on it provides (as a package manager resolves them) — looked up from
   // that dependent's directory, not the package's own: in a workspace a package's own node_modules also links its dev
@@ -390,23 +419,32 @@ function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] 
     if (seen.has(pkg.dir)) return;
     seen.add(pkg.dir);
     visited.push(pkg);
-    for (const dep of [...Object.keys(ownRecord(pkg.json, 'dependencies')), ...Object.keys(ownRecord(pkg.json, 'optionalDependencies'))]) {
-      const found = findFoundPackage(dep, pkg.dir, bound);
+    const who = { name: pkg.name, unreached: [] as string[] };
+    for (const dep of Object.keys(ownRecord(pkg.json, 'dependencies'))) {
+      const found = find(dep, pkg.dir, who);
+      if (found) visit(found, pkg.dir);
+    }
+    for (const dep of Object.keys(ownRecord(pkg.json, 'optionalDependencies'))) {
+      const found = find(dep, pkg.dir, undefined);
       if (found) visit(found, pkg.dir);
     }
     for (const dep of Object.keys(ownRecord(pkg.json, 'peerDependencies'))) {
-      const found = findFoundPackage(dep, dependentDir, bound);
+      const found = find(dep, dependentDir, undefined);
       if (found) visit(found, dependentDir);
     }
+    report(who);
     if (marmeonField(pkg)) ordered.push(pkg);
   };
 
   // The app's dev dependencies count too — they are simply absent in production installs.
+  const app = { name: 'the app', unreached: [] as string[] };
+  const hard = new Set(Object.keys(ownRecord(rootJson, 'dependencies')));
   for (const dep of [...dependencyNames(rootJson), ...Object.keys(ownRecord(rootJson, 'devDependencies'))]) {
-    const found = findFoundPackage(dep, root, bound);
+    const found = find(dep, root, hard.has(dep) ? app : undefined);
     if (found) visit(found, root);
   }
-  return { ordered, visited };
+  report(app);
+  return { ordered, visited, dropped };
 }
 
 /** A dependency list of a `package.json`, from its own properties only — never one an altered Object.prototype supplies. */
@@ -441,7 +479,10 @@ interface ResolveContext {
 
 /** `path` relative to the app, with `/`: the manifest holds no absolute path, it is copied between machines. */
 function fromApp(app: string, path: string): string {
-  return relative(app, path).split(sep).join('/') || '.';
+  const inside = relative(app, path);
+  // Another drive on Windows: no relative path exists, and an absolute one does not belong in the manifest.
+  if (isAbsolute(inside)) return basename(path);
+  return inside.split(sep).join('/') || '.';
 }
 
 /** Resolves a constructor parameter type, as written in `location.file`, to a public runtime export. */
@@ -469,13 +510,15 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
       declared = target ? reader.read(target, pkg).exports.get(name) : undefined;
     } else {
       const { name: packageName, subpath } = splitSpecifier(imported.from);
-      const { found, stoppedAt, above } = lookupPackage(packageName, pkg.dir, context.bound); // from the OWNER's directory
+      const { found, stoppedAt, above, outside, installedAt } = lookupPackage(packageName, pkg.dir, context.bound); // from the OWNER's directory
       if (!found) {
         const why =
           stoppedAt !== undefined
             ? `is not found: the lookup stopped at ${fromApp(context.bound.app, stoppedAt)}, which everyone can write to or another user owns`
-            : above
-              ? `is not installed in the app's workspace (${fromApp(context.bound.app, context.bound.limit)})`
+            : above && outside
+              ? `is not installed where ${pkg.name} is installed (${fromApp(context.bound.app, installedAt!)}); a package linked from outside the workspace is looked up only there`
+              : above
+                ? `is not installed in the app's workspace (${fromApp(context.bound.app, context.bound.limit)})`
               : 'is not installed';
         throw new DiscoveryError(`Cannot inject ${where}: package "${packageName}" ${why}.`);
       }
@@ -562,16 +605,6 @@ function isFileAfterLinks(path: string): boolean {
   }
 }
 
-/**
- * The last folder of the way up from the app that can be trusted: the way ends below the first folder above the app that `trusted`
- * refuses, so markers and lockfiles are looked for only up to here. The app folder itself is always accepted.
- */
-function trustedTop(app: string): string {
-  let top = app;
-  for (let dir = dirname(app); dir !== top && trusted(dir); dir = dirname(dir)) top = dir;
-  return top;
-}
-
 /** Whether `dir` declares a workspace: a `pnpm-workspace.yaml`, or `workspaces` in its `package.json` (a list, or an object with `packages`). */
 function declaresWorkspace(dir: string): boolean {
   if (isRegularFile(join(dir, 'pnpm-workspace.yaml'))) return true;
@@ -606,21 +639,29 @@ function trustedTop(app: string): string {
   return top;
 }
 
+/** Whether `dir` holds a lockfile. */
+function hasLockfile(dir: string): boolean {
+  return LOCKFILES.some((name) => existsSync(join(dir, name)));
+}
+
 /**
- * The app's workspace: the nearest folder at or above the app that declares one (a `pnpm-workspace.yaml`, or a `package.json` with
- * `workspaces`); else the folder of the nearest lockfile above the app; else the app folder. The way up, for markers and lockfile alike,
- * ends below the first folder that others can write to or another user (neither the user of the process, root nor the owner of the app)
- * owns: what it holds is no one's to trust. A real path, like the directories of the packages.
+ * The app's workspace: the way up from the app ends at the first folder that declares a workspace (a `pnpm-workspace.yaml`, or a
+ * `package.json` with `workspaces`) or holds a lockfile, whichever comes first; an app with a lockfile of its own is its own root. Without
+ * either, the app folder. The way up ends below the first folder that others can write to or another user (neither the user of the
+ * process, root nor the owner of the app) owns: what it holds is no one's to trust. A real path, like the directories of the packages.
  */
 function workspaceRoot(root: string): string {
+  return workspaceLookup(root).limit;
+}
+
+/** {@link workspaceRoot}, and the refused folder when the app has no workspace marker or lockfile below it: the limit shrank to the app there. */
+function workspaceLookup(root: string): { limit: string; refusedAt?: string } {
   const app = realRoot(root);
   const top = trustedTop(app);
   for (let dir = app; ; dir = dirname(dir)) {
-    if (declaresWorkspace(dir)) return dir;
-    if (dir === top) break;
+    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir };
+    if (dir === top) return dirname(top) === top ? { limit: app } : { limit: app, refusedAt: dirname(top) };
   }
-  const lockfile = findLockfile(app, top);
-  return lockfile === undefined ? app : dirname(lockfile);
 }
 
 /** Whether `file` is a `package.json` that lies in `boundary` by its path and its real path, outside `node_modules`: no link leads out. */
@@ -752,14 +793,17 @@ export interface DiscoveredPackages {
   /** Whether the manifest was (re)generated during this call. */
   readonly regenerated: boolean;
   /**
-   * Set when the manifest was out of date and `.marmeon/` could not be written: the packages were discovered in memory —
-   * once per process, the app logs it (run `marmeon build` or `marmeon discover` where it can write, e.g. in the image's build stage).
+   * One line per notice: an out-of-date manifest that cannot be written (the packages were discovered in memory: run `marmeon build` or
+   * `marmeon discover` where it can write, e.g. in the image's build stage), and, once per process, each package whose dependency is
+   * installed but out of reach of discovery. The app logs it.
    */
   readonly warning?: string;
 }
 
 /** Manifest files a warning was given for — once per process, not once per app (tests boot many). */
 const warned = new Set<string>();
+/** Manifest files the packages left out of the lookup were reported for: once per process too. */
+const warnedDropped = new Set<string>();
 
 /**
  * Loads the manifest — regenerating it first if dependencies or conditions changed,
@@ -843,13 +887,21 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     else target[UNRESOLVABLE] ??= entry.unresolvable;
   }
 
-  let warning: string | undefined;
+  const lines: string[] = [];
   if (unwritable && !warned.has(path)) {
     warned.add(path);
-    warning =
+    lines.push(
       `${relative(options.root, path)} is out of date and .marmeon/ cannot be written (${unwritable.code}): the packages were discovered in memory, ` +
-      'on every start. Run `marmeon build` (or `marmeon discover`) where the app can write — in a Docker image, in its build stage.';
+        'on every start. Run `marmeon build` (or `marmeon discover`) where the app can write — in a Docker image, in its build stage.',
+    );
   }
+  // What the lookup left out: said once per process too, from the manifest, so a fresh one says it at every start.
+  const dropped = Array.isArray(manifest!.dropped) ? manifest!.dropped.filter((line): line is string => typeof line === 'string') : [];
+  if (dropped.length > 0 && !warnedDropped.has(path)) {
+    warnedDropped.add(path);
+    lines.push(...dropped.map((line) => printable(line)));
+  }
+  const warning = lines.length > 0 ? lines.join('\n') : undefined;
   return { providers: manifest!.providers.map(resolve), packages: manifest!.packages, regenerated, ...(warning ? { warning } : {}) };
 }
 
