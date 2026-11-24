@@ -1,11 +1,11 @@
 import { createApplication, defineModule, err, inTransaction, listen, Logger, ok, Redactor, type Container, type LogContext } from '@marmeon/core';
-import { CacheServiceProvider } from '@marmeon/cache';
+import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { Encrypter, EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { ClientHistory, Controller, defineRequest, HttpServiceProvider, type ContextOf, type HttpContext } from '@marmeon/http';
 import { rules as r } from '@marmeon/validation';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
-import { CsrfProtection, Session, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
+import { CsrfProtection, Session, SessionEndings, SessionServiceProvider, sessionKey, SessionStore } from '@marmeon/session';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   AccessTokenStore,
@@ -31,7 +31,9 @@ import {
   type UserOf,
 } from './index.ts';
 import { NO_CLIENT } from './test-helpers/client.ts';
+import { AccountSessions, ANNOUNCE_ENDED } from './account-sessions.ts';
 import { AUTH_SESSION_KEYS, MAX_FLOOR_MS, paddedTo } from './auth.ts';
+import { SIGN_INS_TABLE } from './sign-ins.ts';
 import { COMPLETE_PENDING, READ_PENDING } from './auth.ts';
 import { SessionFingerprints } from './fingerprint.ts';
 import { NoTwoFactorState, TwoFactorState, type SecondFactor } from './two-factor/state.ts';
@@ -237,8 +239,11 @@ class CompletePendingController extends Controller {
 }
 
 const events: object[] = [];
+/** Events the recording listener refuses, as a listener whose queue is down does. */
+const refused = new Set<Function>();
 class RecordEvent {
   handle(event: object) {
+    if (refused.has(event.constructor)) throw new Error('queue unreachable');
     events.push(event);
   }
 }
@@ -855,6 +860,160 @@ describe('remember me', () => {
     expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
   });
 
+  /** A logger whose warn and error throw, as a sink that is down does; `order` sees each call before it throws. */
+  const throwingLogger = (order: string[] = []): Logger => {
+    const logger: Logger = {
+      debug() {},
+      info() {},
+      warn() {
+        order.push('warn');
+        throw new Error('log sink down');
+      },
+      error() {
+        order.push('error');
+        throw new Error('log sink down');
+      },
+      child: () => logger,
+    };
+    return logger;
+  };
+
+  /** An owner with remember-me, and a thief who holds a copy of the cookie and has signed in with it. */
+  const copiedCookie = async (booted: Awaited<ReturnType<typeof boot>>) => {
+    await booted.add(ada);
+    const owner = booted.browser();
+    await rememberLogin(owner.send);
+    const copied = owner.jar.get('marmeon_remember')!;
+    const thief = booted.browser(new Map([['marmeon_remember', copied]]));
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
+    expect(await (await thief.send('/who')).json()).toMatchObject({ id: 1 });
+    return { copied, thief };
+  };
+
+  /** The owner's copy of the cookie, presented after the grace period. */
+  const replayLater = async (booted: Awaited<ReturnType<typeof boot>>, copied: string, path = '/who') => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      return await booted.browser(new Map([['marmeon_remember', copied]])).send(path);
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  const signInRows = async (booted: Awaited<ReturnType<typeof boot>>) => (await booted.application.container.make(Connections).get<any>().selectFrom(SIGN_INS_TABLE).select('id').execute()).length as number;
+
+  describe('a theft is answered whatever the logger does', () => {
+    it('ends the thief\'s session before it logs the theft, so a throwing logger keeps none alive', async () => {
+      const booted = await boot({ logger: throwingLogger() });
+      const { copied, thief } = await copiedCookie(booted);
+      events.length = 0;
+      expect(await (await replayLater(booted, copied)).json(), 'the request is a guest as with a working logger').toEqual({ id: null, viaRemember: false });
+      expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(await (await booted.browser(new Map([['marmeon_remember', thief.jar.get('marmeon_remember')!]])).send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(await signInRows(booted), 'no sign-in row is left in the store').toBe(0);
+      expect(events.filter((event) => event instanceof RememberTokenReused), 'the owner is told').toHaveLength(1);
+    });
+
+    it('ends the sessions first and logs afterwards when the request is not inside a transaction', async () => {
+      const order: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: () => void order.push('warn'), error() {}, child: () => logger };
+      const real = AccountSessions.prototype.end;
+      const spy = vi.spyOn(AccountSessions.prototype, 'end').mockImplementation(function (this: AccountSessions, ...args) {
+        order.push('end');
+        return real.apply(this, args);
+      });
+      try {
+        const booted = await boot({ logger });
+        const { copied } = await copiedCookie(booted);
+        order.length = 0;
+        await replayLater(booted, copied);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(order).toEqual(['end', 'warn']);
+    });
+
+    it('still removes every token and tells the owner when the sessions cannot be ended and the error cannot be logged', async () => {
+      const spy = vi.spyOn(AccountSessions.prototype, 'end').mockRejectedValue(new Error('session store down'));
+      try {
+        const booted = await boot({ logger: throwingLogger() });
+        const { copied } = await copiedCookie(booted);
+        events.length = 0;
+        expect(await (await replayLater(booted, copied)).json()).toEqual({ id: null, viaRemember: false });
+        expect(await signInRows(booted), 'the tokens are gone').toBe(0);
+        expect(events.filter((event) => event instanceof RememberTokenReused)).toHaveLength(1);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('stays a guest and tells nobody when neither the sessions nor the tokens can be ended and nothing can be logged', async () => {
+      const booted = await boot({ logger: throwingLogger() });
+      const { copied } = await copiedCookie(booted);
+      const sessions = vi.spyOn(AccountSessions.prototype, 'end').mockRejectedValue(new Error('session store down'));
+      const tokens = vi.spyOn(booted.application.container.make(SignInStore), 'endAll').mockRejectedValue(new Error('token store down'));
+      try {
+        events.length = 0;
+        const later = await replayLater(booted, copied);
+        expect(await later.json()).toEqual({ id: null, viaRemember: false });
+        expect(events.filter((event) => event instanceof RememberTokenReused), 'announced only once the tokens are gone').toHaveLength(0);
+      } finally {
+        sessions.mockRestore();
+        tokens.mockRestore();
+      }
+    });
+
+    it('ends the sessions when the listener of the event throws and nothing can be logged', async () => {
+      refused.add(RememberTokenReused);
+      try {
+        const booted = await boot({ logger: throwingLogger() });
+        const { copied, thief } = await copiedCookie(booted);
+        expect(await (await replayLater(booted, copied)).json()).toEqual({ id: null, viaRemember: false });
+        expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+        expect(await signInRows(booted)).toBe(0);
+      } finally {
+        refused.delete(RememberTokenReused);
+      }
+    });
+
+    it('reports the sessions ended when the live streams cannot be told and nothing can be logged', async () => {
+      const booted = await boot({ logger: throwingLogger() });
+      const { copied } = await copiedCookie(booted);
+      // The first call is the session store's own (it never fails: the real endings settle every listener); the call that follows is the tidy-up of `AccountSessions`.
+      const told = vi.spyOn(booted.application.container.make(SessionEndings), 'endAccount').mockImplementationOnce(async () => {}).mockRejectedValue(new Error('stream hub down'));
+      events.length = 0;
+      expect(await (await replayLater(booted, copied)).json()).toEqual({ id: null, viaRemember: false });
+      expect(told, 'the streams were to be told').toHaveBeenCalled();
+      const reused = events.filter((event): event is RememberTokenReused => event instanceof RememberTokenReused);
+      expect(reused).toHaveLength(1);
+      expect(reused[0]).toMatchObject({ sessionsEnded: true });
+      told.mockImplementationOnce(async () => {});
+      expect((await booted.application.container.make(AccountSessions).end(1)).ok, 'end() says it worked').toBe(true);
+    });
+
+    it('ends the thief\'s session after the transaction around the stolen cookie, with a logger that throws', async () => {
+      const booted = await boot({ logger: throwingLogger() });
+      const { copied, thief } = await copiedCookie(booted);
+      expect(await (await replayLater(booted, copied, '/who-in-transaction')).json()).toEqual({ id: null });
+      expect(await (await thief.send('/who')).json()).toEqual({ id: null, viaRemember: false });
+      expect(await signInRows(booted)).toBe(0);
+    });
+  });
+
+  describe('a sign-in row that cannot be ended, with a logger that throws', () => {
+    it('signs out all the same and dispatches SignedOut', async () => {
+      const { add, browser } = await boot({ logger: throwingLogger(), end: () => Promise.reject(new Error('store refused')) });
+      await add(ada);
+      const laptop = browser();
+      await rememberLogin(laptop.send);
+      events.length = 0;
+      expect((await laptop.send('/logout', { method: 'POST' })).status, 'a redirect, not a 500').toBe(303);
+      expect(events.some((event) => event instanceof SignedOut)).toBe(true);
+      expect(laptop.jar.has('marmeon_remember')).toBe(false);
+      expect((await laptop.send('/me')).status).toBe(401);
+    });
+  });
+
   it('ends the thief\'s session even when the stolen cookie is presented inside a transaction', async () => {
     const { add, browser } = await boot();
     await add(ada);
@@ -1255,6 +1414,51 @@ describe('password changes and confirmation', () => {
       expect(await tokens.find(alans.plainText), "another user's token").toBeDefined();
       expect((events[0] as PasswordChanged).revokedTokens).toBe(revoke ? 2 : 0);
       if (revoke) expect(users.inTransaction.at(-1), 'the new hash was written outside the transaction').toBe(true);
+    }
+  });
+
+  it('announces a sign-in when the count of password sign-ins cannot be cleared and nothing can be logged', async () => {
+    const down = (): never => {
+      throw new Error('log sink down');
+    };
+    const logger: Logger = { debug() {}, info() {}, warn: down, error: down, child: () => logger };
+    const booted = await boot({ logger });
+    await booted.add(ada);
+    const clear = vi.spyOn(booted.application.container.make(RateLimiter), 'clear').mockRejectedValue(new Error('cache down'));
+    try {
+      events.length = 0;
+      expect((await login(booted.browser().send)).status).toBe(303);
+      expect(clear).toHaveBeenCalled();
+      expect(events.filter((event) => event instanceof SignedIn)).toHaveLength(1);
+    } finally {
+      clear.mockRestore();
+    }
+  });
+
+  it('a change still dispatches PasswordChanged and announces the ending when the other sign-ins cannot be ended and nothing can be logged', async () => {
+    const down = (): never => {
+      throw new Error('log sink down');
+    };
+    // The request line is an info entry of the kernel: only the entry of the revocation (and any warning or error) throws.
+    const logger: Logger = { debug() {}, info: (message) => (message.startsWith('A new password revoked') ? down() : undefined), warn: down, error: down, child: () => logger };
+    const booted = await boot({ logger, env: { AUTH_REVOKE_TOKENS_ON_PASSWORD_CHANGE: '1' } });
+    await booted.add(ada);
+    const laptop = booted.browser();
+    await login(laptop.send);
+    const signIns = booted.application.container.make(SignInStore);
+    const real = signIns.endAll.bind(signIns);
+    // The store of the new password ends the rows first and must work; the clean-up after it is what fails.
+    const endAll = vi.spyOn(signIns, 'endAll').mockImplementationOnce(real).mockRejectedValue(new Error('store down'));
+    const announce = vi.spyOn(AccountSessions.prototype, ANNOUNCE_ENDED);
+    try {
+      events.length = 0;
+      expect(await (await laptop.send('/password', { method: 'POST', json: { password: 'a new secret' } })).json()).toEqual({ changed: true });
+      expect(endAll).toHaveBeenCalledTimes(2);
+      expect(events.filter((event) => event instanceof PasswordChanged)).toHaveLength(1);
+      expect(announce).toHaveBeenCalledTimes(1);
+    } finally {
+      endAll.mockRestore();
+      announce.mockRestore();
     }
   });
 
