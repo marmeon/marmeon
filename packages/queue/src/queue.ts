@@ -3,7 +3,7 @@ import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import { followsTransaction, messageBase, startedByReporter, trace } from '@marmeon/core/internal';
 import type { Transaction } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
-import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvents } from './events.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
 import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './locks.ts';
 import { backoffOf, nameOf, providerSourceOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
@@ -259,7 +259,7 @@ export class QueueManager implements Queue {
       throw error;
     }
     if (!taken) {
-      this.#deps.logger.child({ job: record.job, unique: record.unique.key }).debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`);
+      this.#deps.logger.child({ dispatched: record.job, unique: record.unique.key }).debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`);
       return undefined;
     }
     try {
@@ -393,12 +393,14 @@ export class QueueManager implements Queue {
     return this.#deps.cache();
   };
 
-  async #emit(event: JobEvent): Promise<void> {
+  async #emit(event: JobQueued | JobProcessing | JobProcessed | JobFailed): Promise<void> {
     if (!this.#deps.events) return;
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.child({ job: event.job, jobId: event.jobId }).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
+      // A sync run is the job itself, with its attempt; a `JobQueued` names a job that is not running.
+      const bindings = event instanceof JobQueued ? { dispatched: event.job, dispatchedId: event.jobId } : { job: event.job, jobId: event.jobId, attempt: event.attempt };
+      this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
     }
   }
 

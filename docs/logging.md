@@ -103,6 +103,10 @@ Your app can add fields to every entry with a log context source, and the OpenTe
 `span_id` and `trace_flags` the same way. The [context](context.md#adding-fields-to-every-log-entry) page shows how. A key that a child logger
 is bound with already is written once, not twice.
 
+A queue line about a job that is dispatched and not the one running names it `dispatched`, so `job`, `jobId` and `attempt` always
+describe one job. The "Not queued" line adds `unique`, and the warning about a failing `JobQueued` listener adds `dispatchedId`. The
+warning that a `sync` connection ignores a delay carries only `dispatched`.
+
 ## The request log line
 
 The server writes one `info` entry per request, on the channel `http`: `GET /notes/7 200`, with the route's name and the time it
