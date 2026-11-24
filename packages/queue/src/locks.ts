@@ -41,15 +41,19 @@ export function keyLockConflict(registry: JobRegistry, job: string, key: string)
     const rest = other.job.slice(job.length + 1);
     if (key.startsWith(`${rest}:`) && key.length > rest.length + 1) {
       return new QueueError(
-        `The key "${key}" of the job "${job}" names the same lock as a key of the job "${other.job}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`,
+        `A key of the job "${job}" that continues past "${rest}:" names the same lock as a key of the job "${other.job}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`,
       );
     }
   }
   return undefined;
 }
 
-/** @internal The registry an attempt's job context was built with, for the checks that need the other jobs' names. Keyed by the `JobContext`, which a middleware's copy of its context still carries. */
-export const middlewareRegistries = new WeakMap<object, JobRegistry>();
+/**
+ * @internal The registry the runner puts on the `JobContext` of an attempt, for the checks that need the other jobs' names. An own
+ * enumerable symbol property, so a middleware's copy (`{ ...context.job }`) keeps it. A `handle()` called by hand with a
+ * context that has none (outside a runner) skips the check of {@link keyLockConflict}.
+ */
+export const JOB_REGISTRY = Symbol.for('marmeon.queue.registry');
 
 /** What a unique dispatch stores in the job's record. */
 export function uniqueRecord(job: JobStatics, options: UniqueDispatchOptions, registry: JobRegistry): UniqueRecord {
@@ -143,7 +147,7 @@ export function withoutOverlapping<J extends { readonly schema: StandardSchemaV1
       const name = typeof key === 'string' ? key : key(context.payload);
       if (typeof name !== 'string' || name === '') throw new QueueError(`withoutOverlapping() of ${context.job.name} needs a key, not ${JSON.stringify(name)}.`);
       if (!options.shared) {
-        const registry = middlewareRegistries.get(context.job);
+        const registry = (context.job as { [JOB_REGISTRY]?: JobRegistry })[JOB_REGISTRY];
         const conflict = registry && keyLockConflict(registry, context.job.name, name);
         if (conflict) {
           // The same key conflicts on every attempt: the job fails now instead of using up its tries.

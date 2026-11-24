@@ -3,7 +3,7 @@ import { messageBase, runWithJob, trace, withCode, withoutCode } from '@marmeon/
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobClass, JobContext, JobMiddleware, JobMiddlewareContext } from './job.ts';
-import { middlewareRegistries, runOnce, type CacheSource } from './locks.ts';
+import { JOB_REGISTRY, runOnce, type CacheSource } from './locks.ts';
 import { QueueError, timeoutOf, type JobRegistry } from './registry.ts';
 
 /** Encrypts and decrypts encrypted payloads (`static encrypted`) — the app's `Encrypter`. */
@@ -278,7 +278,7 @@ export class JobRunner {
     attempt: { readonly attempt: number; readonly queue: string; readonly connection: string; readonly signal: AbortSignal; readonly retryAfterSeconds?: number },
     request: (requested: Requested) => void,
   ): JobContext {
-    return {
+    const context: JobContext = {
       id: record.uuid,
       name: record.job,
       attempt: attempt.attempt,
@@ -292,6 +292,8 @@ export class JobRunner {
       once: (key, fn, options = {}) =>
         runOnce(this.#cache, key, fn, { ...(options.for === undefined ? {} : { for: options.for }), lockSeconds: attempt.retryAfterSeconds ?? timeoutOf(job) + 60 }),
     };
+    // Not in the public type; enumerable, so a middleware's `{ ...context.job }` keeps it.
+    return Object.assign(context, { [JOB_REGISTRY]: this.#registry });
   }
 
   /**
@@ -340,7 +342,6 @@ export class JobRunner {
         }
         let called = false;
         const middlewareContext: JobMiddlewareContext = { payload, job: context, timeoutSeconds: timeoutOf(job), retryAfterSeconds: attempt.retryAfterSeconds, cache: this.#cache };
-        middlewareRegistries.set(context, this.#registry);
         // `timeout` is `timeoutSeconds`: reading it throws instead of giving undefined.
         Object.defineProperty(middlewareContext, 'timeout', {
           get() {

@@ -20,7 +20,7 @@ import type { JobEvent } from './events.ts';
 import { JobFailed, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobMiddlewareContext, type JobPayload } from './index.ts';
 import { QueueManager, RECORD_OPTIONS } from './queue.ts';
 import { JobRegistry, QueueError, QueueSetupError } from './registry.ts';
-import { middlewareRegistries, withoutOverlapping } from './locks.ts';
+import { JOB_REGISTRY, withoutOverlapping } from './locks.ts';
 import { cipherContext, JobPayloadError, JobRunner, nextInChain, parseRecord, RECORD_READERS } from './runner.ts';
 import { JobStuckError, Worker } from './worker.ts';
 
@@ -1937,8 +1937,8 @@ describe('a key that names the lock of another job', () => {
   class Reports extends named('reports') {}
   class ReportsDaily extends named('reports:daily') {}
   class Alone extends named('alone') {}
-  const refusal = (key: string, job = 'reports', other = 'reports:daily', rest = 'daily') =>
-    `The key "${key}" of the job "${job}" names the same lock as a key of the job "${other}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`;
+  const refusal = (_key: string, job = 'reports', other = 'reports:daily', rest = 'daily') =>
+    `A key of the job "${job}" that continues past "${rest}:" names the same lock as a key of the job "${other}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`;
   const modules = [{ name: 'test', jobs: [Reports, ReportsDaily, Alone] }];
   const env = { CACHE_DRIVER: 'memory' };
 
@@ -1955,8 +1955,7 @@ describe('a key that names the lock of another job', () => {
   const middlewareContext = (application: Application, job = 'reports') => {
     const failed: unknown[] = [];
     const released: unknown[] = [];
-    const jobContext = { name: job, release: (delay: unknown) => released.push(delay), fail: (reason: unknown) => failed.push(reason) };
-    middlewareRegistries.set(jobContext, application.container.make(JobRegistry));
+    const jobContext = { name: job, release: (delay: unknown) => released.push(delay), fail: (reason: unknown) => failed.push(reason), [JOB_REGISTRY]: application.container.make(JobRegistry) };
     const context = { payload: {}, job: jobContext, timeoutSeconds: 60, retryAfterSeconds: 90, cache: async () => application.container.make(Cache) } as unknown as JobMiddlewareContext;
     return { context, failed, released };
   };
@@ -1973,6 +1972,22 @@ describe('a key that names the lock of another job', () => {
     });
     expect([ran, failed]).toEqual([false, [new QueueError(refusal('daily:7')), new QueueError(refusal('daily:7'))]]);
     await expect(new QueueFake(application.container).dispatch(Reports, {}, { unique: 'daily:7' })).rejects.toThrow(new QueueError(refusal('daily:7')));
+  });
+
+  it('refuses a key through a copy of the context whose job context is copied too, and never prints the key', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const { context, failed } = middlewareContext(application);
+    const copy = { ...context, job: { ...context.job, release: () => {} } } as JobMiddlewareContext;
+    let ran = false;
+    await withoutOverlapping('daily:alice@example.com').handle(copy, async () => {
+      ran = true;
+    });
+    expect(ran, 'the attempt did not run').toBe(false);
+    expect(failed).toEqual([new QueueError(refusal('', 'reports', 'reports:daily', 'daily'))]);
+    const queue = application.container.make(Queue);
+    const error = await queue.dispatch(Reports, {}, { unique: 'daily:alice@example.com' }).catch((caught: unknown) => caught);
+    expect(error).toEqual(new QueueError(refusal('', 'reports', 'reports:daily', 'daily')));
+    expect((error as Error).message).not.toContain('alice@example.com');
   });
 
   it('still refuses `daily::`, but passes `daily:`, `daily`, `dailyx`, `daily-7` and `dailyxy` as a unique key and as a per-job key', async () => {
@@ -1998,7 +2013,7 @@ describe('a key that names the lock of another job', () => {
       static readonly job = 'guarded';
       static readonly schema = v.object({});
       static readonly tries = 3;
-      static readonly middleware = [withoutOverlapping('inner:1')];
+      static readonly middleware = [withoutOverlapping(() => 'inner:alice@example.com')];
       handle() {}
     }
     class GuardedInner extends named('guarded:inner') {}
@@ -2006,7 +2021,9 @@ describe('a key that names the lock of another job', () => {
     const fake = new QueueFake(application.container);
     await fake.dispatch(Guarded, {});
     expect(await fake.work(), 'the job fails after one attempt, not three').toMatchObject({ failed: 1, released: 0 });
-    expect(JSON.stringify(await fake.failed())).toContain('names the same lock as a key of the job');
+    const failures = JSON.stringify(await fake.failed());
+    expect(failures).toContain('names the same lock as a key of the job');
+    expect(failures, 'the key is not in the failed job').not.toContain('alice@example.com');
   });
 
   it('rejects the dispatch on the sync connection when a per-job withoutOverlapping() key names the lock of another job', async () => {
