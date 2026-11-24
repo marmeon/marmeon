@@ -122,6 +122,32 @@ describe('app_overview in an app', { timeout: 120_000 }, () => {
   });
 });
 
+describe('app_overview with a provider that lists jobs', { timeout: 120_000 }, () => {
+  it('names the job of the provider, for the whole app and for the module that lists it', async () => {
+    const app = mcpApp();
+    const file = join(app, 'modules/system/index.ts');
+    writeFileSync(
+      file,
+      readFileSync(file, 'utf8')
+        .replace("import { defineModule } from '@marmeon/core';", [
+          "import { defineModule, providerJobs } from '@marmeon/core';",
+          "class ProcessMediaJob { static job = 'media.process'; static schema = { '~standard': { version: 1, vendor: 'test', validate: (value) => ({ value }) } }; handle() {} }",
+          'class MediaProvider { static [providerJobs] = [ProcessMediaJob]; }',
+        ].join('\n'))
+        .replace("name: 'system',", "name: 'system', providers: [MediaProvider],"),
+    );
+    const session = mcpSession(app, mcpEnv({ NODE_ENV: 'development' }));
+    try {
+      await initialize(session);
+      const expected = [{ provider: 'MediaProvider', jobs: [{ class: 'ProcessMediaJob', job: 'media.process' }] }];
+      expect((await call(session, {})).structuredContent.providerJobs).toEqual(expected);
+      expect((await call(session, { module: 'system' })).structuredContent.providerJobs).toEqual(expected);
+    } finally {
+      await session.close();
+    }
+  });
+});
+
 describe('app_overview when the schedule cannot be read', { timeout: 120_000 }, () => {
   it('answers with the rest and a warning that carries no password', async () => {
     const app = mcpApp();
@@ -219,7 +245,7 @@ describe('app_overview with the child process replaced', () => {
     answer({ document: { ...tasks, tasks: [{ ...tasks.tasks[0], does: 'call Payload{"leaks"}', options: { extra: 'leaks' } }] } });
     const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, unknown>;
     expect(JSON.stringify(result)).not.toContain('leaks');
-    expect(Object.keys(result)).toEqual(['format', 'runtime', 'packages', 'app', 'modules', 'events', 'environment', 'schedules', 'warnings']);
+    expect(Object.keys(result)).toEqual(['format', 'runtime', 'packages', 'app', 'modules', 'providerJobs', 'events', 'environment', 'schedules', 'warnings']);
     // The module a variable belongs to only filters; it is not passed on.
     expect(result.environment).toEqual([{ name: 'N', config: 'c', set: true, required: false, hasDefault: false }]);
     expect(result.schedules).toEqual([{ name: 'n', expression: '* * * * *', timeZone: 'UTC', description: null }]);
@@ -248,6 +274,66 @@ describe('app_overview with the child process replaced', () => {
     answer({ document: overview() });
     const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
     expect(result.environment.map((item: { name: string }) => item.name)).toEqual(['A_KEY', 'B_KEY', 'APP_KEY']);
+  });
+
+  const providerJobs = [
+    { provider: 'P', modules: ['a'], jobs: [{ class: 'ProcessMediaJob', job: 'media.process', secret: 'leaks' }, { class: 'Unnamed', job: null }], extra: 'leaks' },
+    { provider: 'Other', modules: ['b'], jobs: [{ class: 'X', job: 'x' }] },
+  ];
+
+  it('names the jobs each provider lists, equal to the stored file, and drops every other key, `modules` too', async () => {
+    answer({ document: overview({ providerJobs }) });
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
+    expect(JSON.stringify(result)).not.toContain('leaks');
+    expect(result.providerJobs).toHaveLength(2);
+    expect(result.providerJobs.every((item: object) => Object.keys(item).join() === 'provider,jobs')).toBe(true);
+    expect(result).toMatchObject({ ...stored('mcp-app-overview/v1-provider-jobs.json'), providerJobs: [stored('mcp-app-overview/v1-provider-jobs.json').providerJobs[0], { provider: 'Other', jobs: [{ class: 'X', job: 'x' }] }] });
+  });
+
+  it('keeps only the providers the module lists, by class: a provider of the same name in another module stays out', async () => {
+    const twins = [
+      { provider: 'Media', modules: ['a'], jobs: [{ class: 'JobA', job: 'a.job' }] },
+      { provider: 'Media', modules: ['b'], jobs: [{ class: 'JobB', job: 'b.job' }] },
+    ];
+    answer({ document: overview({ providerJobs: twins }) });
+    const result = (await APP_OVERVIEW_TOOL.run({ module: 'b' }, context())) as Record<string, any>;
+    expect(result.providerJobs).toEqual([{ provider: 'Media', jobs: [{ class: 'JobB', job: 'b.job' }] }]);
+  });
+
+  it('has no provider jobs for a module with no providers listed, and for an app provider no module lists', async () => {
+    answer({ document: overview({ providerJobs: [...providerJobs, { provider: 'Free', modules: [], jobs: [{ class: 'F', job: 'f' }] }] }) });
+    expect(((await APP_OVERVIEW_TOOL.run({ module: 'a' }, context())) as Record<string, any>).providerJobs.map((item: { provider: string }) => item.provider)).toEqual(['P']);
+    answer({ document: overview({ providerJobs: [{ provider: 'Free', modules: [], jobs: [{ class: 'F', job: 'f' }] }] }) });
+    expect(((await APP_OVERVIEW_TOOL.run({ module: 'b' }, context())) as Record<string, any>).providerJobs).toEqual([]);
+  });
+
+  it('is an error that names the modules when the module asked for is unknown, whatever the providers list', async () => {
+    answer({ document: overview({ providerJobs }) });
+    expect(await APP_OVERVIEW_TOOL.run({ module: 'nothing' }, context())).toEqual({ failure: 'No module named nothing. Modules: a, b.' });
+  });
+
+  it('reads a document whose lists had holes, written as anonymous entries, not null', async () => {
+    answer({ document: overview({ app: { providers: ['(anonymous)'] }, modules: [{ name: 'a', providers: ['(anonymous)', 'P'], commands: [], jobs: [], notifications: [], seeders: ['(anonymous)'], migrations: null }] }) });
+    const result = (await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>;
+    expect(result.modules[0].providers).toEqual(['(anonymous)', 'P']);
+  });
+
+  it('has no provider jobs for a document that has none, as an older version printed it', async () => {
+    answer({ document: overview() });
+    expect(((await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>).providerJobs).toEqual([]);
+  });
+
+  it('drops the entries of an older document without `modules` when a module is asked for, and shows them otherwise', async () => {
+    const older = [{ provider: 'P', jobs: [{ class: 'J', job: 'j' }] }];
+    answer({ document: overview({ providerJobs: older }) });
+    expect(((await APP_OVERVIEW_TOOL.run({}, context())) as Record<string, any>).providerJobs).toEqual(older);
+    answer({ document: overview({ providerJobs: older }) });
+    expect(((await APP_OVERVIEW_TOOL.run({ module: 'a' }, context())) as Record<string, any>).providerJobs).toEqual([]);
+  });
+
+  it('refuses a document whose provider jobs are not what this version reads', async () => {
+    answer({ document: overview({ providerJobs: [{ provider: 'P', jobs: 'x' }] }) });
+    expect(await APP_OVERVIEW_TOOL.run({}, context())).toEqual({ failure: expect.stringContaining('update marmeon') });
   });
 
   it('names the runtime of this process', async () => {

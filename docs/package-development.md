@@ -360,7 +360,7 @@ export class MediaServiceProvider implements ServiceProvider {
 
 The job class is the one [queues](queues.md#the-job-class) describes. The app checks a provider's jobs when it starts, as it checks a module's. Each class needs a name, a schema and `handle()`. No name may belong to two classes. An encrypted job needs the `EncryptionServiceProvider` of `@marmeon/encryption`.
 
-A `static [providerJobs]` that is no list stops the start with `Q4`. On a provider with nothing else, `K9` refuses an empty list, a string, `null` or a `Set` before that. A plain `static jobs` or `static providerJobs` is never read. `marmeon` reads the list as well, to count the jobs as listed and to name them in tinker. Listing a class twice, in a module and a provider or in two providers, is no error.
+A `static [providerJobs]` that is no list stops the start with `Q4`. On a provider with nothing else, `K9` refuses an empty list, a string, `null` or a `Set` before that. A plain `static jobs` or `static providerJobs` is never read. `marmeon` reads the list as well, to count the jobs as listed, to name them in tinker and to list them in `modules:list`. Listing a class twice, in a module and a provider or in two providers, is no error.
 
 A build with `isolatedDeclarations` refuses the computed key (TS9038). Set the list in a static block there, with `import type { JobClass } from '@marmeon/queue'`: `static { Object.assign(this, { [providerJobs]: [ProcessMediaJob] satisfies readonly JobClass[] }); }`. Keep the `satisfies`, because nothing else checks the list's type. The list is then not in the `.d.ts`: a subclass that sets the key replaces it without a type error, so it sets its list in a static block too and spreads `(Parent as ServiceProviderClass)[providerJobs] ?? []`, with `import type { ServiceProviderClass } from '@marmeon/core'`. Such a build also needs a type on the job's `schema`, such as `StandardSchemaV1<{ mediaId: number }>`.
 
@@ -378,7 +378,7 @@ A build with `isolatedDeclarations` refuses the computed key (TS9038). Set the l
 - **Subclasses:** A provider meant to be extended annotates `static [providerJobs]: readonly JobClass[] = [ProcessMediaJob]`, with `import type { JobClass } from '@marmeon/queue'`. The annotation lets a subclass add a class with another payload. A subclass that adds jobs spreads the parent's: `static override [providerJobs] = [...super[providerJobs], ResizeMediaJob]`. A subclass of a job can give itself another name only where the parent declares `static job: string`. Otherwise, write a job class of its own.
 - **Consent:** Installing a package is consent to run its jobs. Discovery also takes the dependencies of installed packages and the app's `devDependencies` where they are installed. With `discover: false` the app registers none of the installed packages, so you list the providers you want by hand ([without discovery](modules.md#without-discovery)). A waiting or failed record with the job's name runs in the class that has that name now, encrypted records included. The schema check and `static encrypted` still apply.
 
-`marmeon modules:list` and the MCP server list a module's jobs only, not the `static [providerJobs]` of a provider.
+`marmeon modules:list` and the MCP server list the jobs of providers apart from the modules' own, see [listing the modules](modules.md#listing-the-modules).
 
 ## Tables
 
