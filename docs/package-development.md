@@ -85,8 +85,10 @@ A package's providers register after the providers of the packages it depends on
 dependencies. A name in `providers` that the entry does not export stops the app with
 `@acme/marmeon-request-log lists provider "RequestLogServiceProvider" in package.json, but its entry does not export it.`
 
-The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json` or the lockfile
-change. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
+The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json`, the lockfile or the
+resolution conditions change. It also does so when the `package.json` of a package in your workspace changes. Your workspace is the
+folder with `pnpm-workspace.yaml` (or a `package.json` with `workspaces`), else the folder of your lockfile; a package linked from
+outside it is not watched. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
 
 ### Provider statics
 

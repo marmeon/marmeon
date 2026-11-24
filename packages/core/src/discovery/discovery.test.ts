@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, v
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
-import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath, marmeonField, writeManifest } from './discover.ts';
+import { combineDigests, DiscoveryError, fileDigest, generateManifest, loadDiscoveredPackages, manifestPath, marmeonField, writeManifest } from './discover.ts';
 import { findPackage, printable, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -309,6 +309,167 @@ describe('marmeon discover', () => {
       Mailer: Key<{ send(to: string): string }>;
     };
     expect(container.make(mailer.Mailer).send('ada@example.com')).toBe('SMTP → ada@example.com at 09:00');
+  });
+});
+
+describe('the manifest and the package.json of a package in the workspace', () => {
+  interface Layout {
+    /** Where the app lies in the temporary folder `top`, which holds `root` (the workspace candidate) and what lies beside it. */
+    readonly app?: string;
+    /** Files made empty, relative to `top`. */
+    readonly files?: readonly string[];
+    /** The linked package has no `marmeon` field until `write` adds one. */
+    readonly plain?: boolean;
+  }
+
+  /** An app with one package linked from `place` (relative to the app). */
+  function linkedApp(place: string, { app: appPath = 'app', files = [], plain = false }: Layout = {}) {
+    const top = realpathSync(tempDir('marmeon-sources-'));
+    const app = join(top, appPath);
+    const dir = join(app, place);
+    mkdirSync(app, { recursive: true });
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    for (const file of files) {
+      mkdirSync(dirname(join(top, file)), { recursive: true });
+      writeFileSync(join(top, file), '');
+    }
+    writeFileSync(join(dir, 'src/index.ts'), 'export class First {}\nexport class Second {}\n');
+    const write = (provider?: string) =>
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ name: '@acme/linked', type: 'module', exports: { '.': './src/index.ts' }, ...(provider === undefined ? {} : { marmeon: { providers: [provider] } }) }),
+      );
+    write(plain ? undefined : 'First');
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@acme/linked': 'link:./linked' } }));
+    mkdirSync(join(app, 'node_modules/@acme'), { recursive: true });
+    symlinkSync(dir, join(app, 'node_modules/@acme/linked'), 'dir');
+    const manifestFile = manifestPath(app, PROD);
+    const read = (file = manifestFile) => JSON.parse(readFileSync(file, 'utf8')) as { sources: string[]; sourcesHash: string; providers: [number, string][] };
+    return { top, app, dir, write, manifestFile, manifest: () => read() };
+  }
+
+  it('writes the manifest again when the package.json of a linked package changes', async () => {
+    const { app, write, manifest } = linkedApp('linked');
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+    expect(manifest().providers.map(([, name]) => name)).toEqual(['First']);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+
+    write('Second');
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().providers.map(([, name]) => name)).toEqual(['Second']);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('does not list a package outside the workspace, so two boots in a row write once', async () => {
+    const { app, manifest } = linkedApp('../elsewhere');
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual([]);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('regenerates a manifest whose sources name another file than a package.json, and does not read it', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    const secret = join(app, 'secret.txt');
+    writeFileSync(secret, 'secret');
+    // The hash a reader would get from the file's bytes: had it been read, the manifest would count as fresh and nothing would be regenerated.
+    const bytes = combineDigests([fileDigest(readFileSync(secret))]);
+    writeFileSync(manifestFile, JSON.stringify({ ...manifest(), sources: ['secret.txt'], sourcesHash: bytes }));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+  });
+
+  it('regenerates a manifest whose sources name a package.json that links out of the workspace, and does not read it', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    const outside = join(dirname(app), 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'package.json'), '{"name":"outside"}');
+    mkdirSync(join(app, 'leak'));
+    symlinkSync(join(outside, 'package.json'), join(app, 'leak/package.json'));
+    const bytes = combineDigests([fileDigest(readFileSync(join(outside, 'package.json')))]);
+    writeFileSync(manifestFile, JSON.stringify({ ...manifest(), sources: ['leak/package.json'], sourcesHash: bytes }));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+  });
+
+  it('lists the packages of a monorepo outside the app, by the lockfile at its root, and not one beside it', async () => {
+    const layout = { app: 'root/apps/app', files: ['root/pnpm-lock.yaml'] };
+    const inside = linkedApp('../../packages/linked', layout);
+    expect((await loadDiscoveredPackages({ root: inside.app, conditions: PROD })).regenerated).toBe(true);
+    expect(inside.manifest().sources).toEqual(['../../packages/linked/package.json']);
+    expect((await loadDiscoveredPackages({ root: inside.app, conditions: PROD })).regenerated).toBe(false);
+    inside.write('Second');
+    expect((await loadDiscoveredPackages({ root: inside.app, conditions: PROD })).regenerated).toBe(true);
+    expect(inside.manifest().providers.map(([, name]) => name)).toEqual(['Second']);
+
+    const beside = linkedApp('../../../beside', layout);
+    expect((await loadDiscoveredPackages({ root: beside.app, conditions: PROD })).regenerated).toBe(true);
+    expect(beside.manifest().sources).toEqual([]);
+    expect((await loadDiscoveredPackages({ root: beside.app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('takes the folder with pnpm-workspace.yaml as the workspace, though the app has a lockfile of its own', async () => {
+    const { app, manifest } = linkedApp('../../packages/linked', { app: 'root/apps/app', files: ['root/pnpm-workspace.yaml', 'root/apps/app/pnpm-lock.yaml'] });
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(manifest().sources).toEqual(['../../packages/linked/package.json']);
+  });
+
+  it('takes the folder of a package.json with workspaces as the workspace', async () => {
+    const { top, app, manifest } = linkedApp('../../packages/linked', { app: 'root/apps/app' });
+    writeFileSync(join(top, 'root/package.json'), JSON.stringify({ private: true, workspaces: ['apps/*', 'packages/*'] }));
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(manifest().sources).toEqual(['../../packages/linked/package.json']);
+  });
+
+  it('lists a workspace package without a marmeon field, and loads its provider once it names one', async () => {
+    const { app, write, manifest } = linkedApp('linked', { plain: true });
+    const first = await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(first.providers).toEqual([]);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+
+    write('Second');
+    const second = await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(second.regenerated).toBe(true);
+    expect(second.providers.map((provider) => provider.name)).toEqual(['Second']);
+  });
+
+  it('regenerates when a listed package.json is deleted', async () => {
+    const { app, dir } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    rmSync(join(dir, 'package.json'));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+  });
+
+  it('regenerates a manifest of the previous version, whatever its sources say', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    writeFileSync(manifestFile, JSON.stringify({ ...manifest(), version: '3' }));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('lists the packages of an app reached through a symlinked folder', async () => {
+    const { top, app, write } = linkedApp('linked');
+    const through = join(top, 'through');
+    symlinkSync(app, through, 'dir');
+    await loadDiscoveredPackages({ root: through, conditions: PROD });
+    const file = manifestPath(through, PROD);
+    expect(JSON.parse(readFileSync(file, 'utf8')).sources).toEqual([expect.stringMatching(/linked\/package\.json$/)]);
+    expect((await loadDiscoveredPackages({ root: through, conditions: PROD })).regenerated).toBe(false);
+    // The same app by its real path: the entries read alike, so nothing is written again.
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+    write('Second');
+    expect((await loadDiscoveredPackages({ root: through, conditions: PROD })).regenerated).toBe(true);
+  });
+
+  it('regenerates a manifest that has no sources, however fresh its hash is', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    const { sources: _sources, sourcesHash: _hash, ...old } = manifest();
+    writeFileSync(manifestFile, JSON.stringify(old));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
   });
 });
 

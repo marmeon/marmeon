@@ -9,8 +9,8 @@ import { entryInside } from './contain.ts';
 import { ConfigError } from '../environment.ts';
 import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
@@ -21,16 +21,18 @@ export { DiscoveryError };
 export type { PackageSurface };
 import {
   exportedSubpaths,
+  findFoundPackage,
   findPackage,
   resolveExports,
   resolveTypes,
   runtimeConditions,
   splitSpecifier,
+  type FoundPackage,
   type PackageInfo,
 } from './resolve.ts';
 
 /** Bump when the manifest format changes, so old manifests are regenerated. */
-const MANIFEST_VERSION = '3';
+const MANIFEST_VERSION = '4';
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
@@ -83,6 +85,14 @@ export interface Manifest {
     | { readonly class: ExportRef; readonly unresolvable: string; readonly package: string }
   )[];
   readonly providers: readonly ExportRef[];
+  /**
+   * `package.json` files, relative to the app's real path, of the packages the dependency walk reaches that live in the app's workspace
+   * outside `node_modules` (a workspace package, a `link:` inside the workspace), with or without a `marmeon` field; a package outside the
+   * workspace is not listed. Their change makes the manifest stale.
+   */
+  readonly sources: readonly string[];
+  /** Over the bytes of the files in `sources`: differs when one of them changes or is deleted. */
+  readonly sourcesHash: string;
 }
 
 /** Builds the manifest data (without writing it). */
@@ -101,9 +111,12 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const injections: Manifest['injections'][number][] = [];
   const providers: ExportRef[] = [];
   const names: string[] = [];
+  // Before the walk reads anything: an edit while it runs leaves a hash of older bytes, so the manifest is stale at the next start, never fresh.
+  const hash = manifestHash(root, conditions);
+  const { ordered, visited } = walk(root);
   const namespaces: { package: string; dir: string; namespace: string }[] = [];
 
-  for (const pkg of walkDependencies(root)) {
+  for (const pkg of ordered) {
     const ui = marmeonField(pkg);
     if (ui?.namespace !== undefined) {
       namespaces.push({ package: pkg.name, dir: pkg.dir, namespace: ui.namespace });
@@ -171,11 +184,12 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   checkNamespaces(namespaces);
   const manifest: Manifest = {
     version: MANIFEST_VERSION,
-    hash: manifestHash(root, conditions),
+    hash,
     packages: names,
     modules,
     injections,
     providers,
+    ...workspaceSources(root, visited),
   };
   const unresolvable = injections.filter((entry) => 'unresolvable' in entry).length;
   return {
@@ -353,22 +367,29 @@ export function packageTexts({ root, conditions = runtimeConditions() }: Discove
 
 /** Post-order walk over installed dependencies: a package's dependencies come before it. */
 function walkDependencies(root: string): PackageInfo[] {
+  return walk(root).ordered;
+}
+
+/** The walk: `ordered` are the packages with a `marmeon` field; `visited` every package it reached, with or without one. */
+function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] } {
   const rootJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const seen = new Set<string>();
-  const ordered: PackageInfo[] = [];
+  const ordered: FoundPackage[] = [];
+  const visited: FoundPackage[] = [];
 
   // A package's peers are what the package depending on it provides (as a package manager resolves them) — looked up from
   // that dependent's directory, not the package's own: in a workspace a package's own node_modules also links its dev
   // dependencies, and an app with @marmeon/testing would otherwise discover every package testing is tested with.
-  const visit = (pkg: PackageInfo, dependentDir: string) => {
+  const visit = (pkg: FoundPackage, dependentDir: string) => {
     if (seen.has(pkg.dir)) return;
     seen.add(pkg.dir);
+    visited.push(pkg);
     for (const dep of [...Object.keys(ownRecord(pkg.json, 'dependencies')), ...Object.keys(ownRecord(pkg.json, 'optionalDependencies'))]) {
-      const found = findPackage(dep, pkg.dir);
+      const found = findFoundPackage(dep, pkg.dir);
       if (found) visit(found, pkg.dir);
     }
     for (const dep of Object.keys(ownRecord(pkg.json, 'peerDependencies'))) {
-      const found = findPackage(dep, dependentDir);
+      const found = findFoundPackage(dep, dependentDir);
       if (found) visit(found, dependentDir);
     }
     if (marmeonField(pkg)) ordered.push(pkg);
@@ -376,10 +397,10 @@ function walkDependencies(root: string): PackageInfo[] {
 
   // The app's dev dependencies count too — they are simply absent in production installs.
   for (const dep of [...dependencyNames(rootJson), ...Object.keys(ownRecord(rootJson, 'devDependencies'))]) {
-    const found = findPackage(dep, root);
+    const found = findFoundPackage(dep, root);
     if (found) visit(found, root);
   }
-  return ordered;
+  return { ordered, visited };
 }
 
 /** A dependency list of a `package.json`, from its own properties only — never one an altered Object.prototype supplies. */
@@ -487,6 +508,99 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   return hash.digest('hex').slice(0, 16);
 }
 
+/** The real path of the app, the base of `sources`: two spellings of one app (a link, the real path) list the same entries. */
+function realRoot(root: string): string {
+  try {
+    return realpathSync.native(root);
+  } catch {
+    return root;
+  }
+}
+
+/**
+ * The app's workspace: the nearest folder at or above the app with a `pnpm-workspace.yaml` or a `package.json` that has `workspaces`;
+ * else the folder of the nearest lockfile above the app; else the app folder. A real path, like the directories of the packages.
+ */
+function workspaceRoot(root: string): string {
+  const app = realRoot(root);
+  for (let dir = app; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    try {
+      const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as unknown;
+      if (typeof json === 'object' && json !== null && Object.hasOwn(json, 'workspaces')) return dir;
+    } catch {
+      // No package.json here, or none that parses: not a marker.
+    }
+    if (dirname(dir) === dir) break;
+  }
+  const lockfile = findLockfile(app);
+  return lockfile ? dirname(lockfile) : app;
+}
+
+/** Whether `file` is a `package.json` that lies in `boundary` by its path and its real path, outside `node_modules`: no link leads out. */
+function isWorkspaceFile(boundary: string, file: string): boolean {
+  if (basename(file) !== 'package.json') return false;
+  try {
+    return entryInside(boundary, file);
+  } catch {
+    return false;
+  }
+}
+
+/** The `sources` and `sourcesHash` of a manifest: the packages of the walk that lie in the app's workspace, hashed from the bytes the walk parsed. */
+function workspaceSources(root: string, visited: readonly FoundPackage[]): Pick<Manifest, 'sources' | 'sourcesHash'> {
+  const boundary = workspaceRoot(root);
+  const base = realRoot(root);
+  const sources: string[] = [];
+  const digests: (string | undefined)[] = [];
+  for (const pkg of visited) {
+    const file = join(pkg.dir, 'package.json');
+    if (!isWorkspaceFile(boundary, file)) continue;
+    sources.push(relative(base, file).split(sep).join('/'));
+    digests.push(pkg.digest);
+  }
+  return { sources, sourcesHash: combineDigests(digests) };
+}
+
+/**
+ * Changes whenever one of the listed `package.json` files does. `undefined` when an entry is not what generation writes — not a string,
+ * not a `package.json`, or leading out of the workspace: such an entry is never read, and the manifest counts as stale.
+ */
+function currentSourcesHash(root: string, sources: unknown): string | undefined {
+  if (!Array.isArray(sources)) return undefined;
+  const boundary = workspaceRoot(root);
+  const base = realRoot(root);
+  const digests: (string | undefined)[] = [];
+  for (const entry of sources) {
+    if (typeof entry !== 'string') return undefined;
+    const file = resolvePath(base, entry);
+    if (!isWorkspaceFile(boundary, file)) return undefined;
+    try {
+      digests.push(fileDigest(readFileSync(file)));
+    } catch {
+      digests.push(undefined);
+    }
+  }
+  return combineDigests(digests);
+}
+
+function sourcesFresh(root: string, manifest: Manifest): boolean {
+  const current = currentSourcesHash(root, manifest.sources);
+  return current !== undefined && current === manifest.sourcesHash;
+}
+
+/** The digest of one file's bytes, as {@link combineDigests} takes it. */
+export function fileDigest(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+/** SHA-256 (16 hex digits) over the digests of the files in order; a fixed marker stands for a missing one. */
+export function combineDigests(digests: readonly (string | undefined)[]): string {
+  const hash = createHash('sha256');
+  for (const digest of digests) hash.update(digest ?? 'missing').update('\0');
+  return hash.digest('hex').slice(0, 16);
+}
+
 function findLockfile(root: string): string | undefined {
   for (let dir = root; ; dir = dirname(dir)) {
     for (const name of LOCKFILES) {
@@ -576,7 +690,7 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   const unreadable = unreadableGeneratedPath(options.root, path);
   if (unreadable !== undefined) throw new ConfigError(unreadable);
   let manifest = readManifest(path);
-  let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
+  let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION || !sourcesFresh(options.root, manifest);
   // Use what was just generated — re-reading the file could see another process's write.
   if (regenerated) manifest = discover();
 
