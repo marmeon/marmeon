@@ -6,8 +6,8 @@ import { createApplication, defineModule, Logger } from '@marmeon/core';
 import { BROWSER_LOG_EVENT } from '@marmeon/http/protocol';
 import { channels, type BrowserLogMessage } from '@marmeon/core/diagnostics';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { defineRoutes, HttpServiceProvider } from '@marmeon/http';
-import { RouteAccessError } from '@marmeon/router';
+import { defineRoutes, HttpServiceProvider, json } from '@marmeon/http';
+import { everyone, RouteAccessError } from '@marmeon/router';
 import { describe, expect, it, vi } from 'vitest';
 import { startServer } from './kernel.ts';
 import { createViteDevRenderer } from './vite.ts';
@@ -262,6 +262,28 @@ describe('startServer', () => {
       await expect(startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' })).rejects.toBeInstanceOf(RouteAccessError);
       expect(createViteDevRenderer).not.toHaveBeenCalled();
     } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('answers 500 for a route that returns json() with a status outside 200 to 599', async () => {
+    const app = await createApplication({
+      root,
+      discover: false,
+      providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider],
+      modules: [defineModule({ name: 'pages', routes: defineRoutes((Route) => Route.authorize(everyone).get('/zero', () => json({}, { status: 0 }))) })],
+    }, { env: { APP_KEY: generateKey(), PORT: '1' } });
+    const logged: string[] = [];
+    vi.spyOn(app.container.make(Logger), 'error').mockImplementation((message: unknown) => void logged.push(String(message)));
+    const running = await startServer({ app, ssrEntry: 'ssr.ts', host: '127.0.0.1', port: 0, mode: 'development' });
+    const { port } = running.server.address() as AddressInfo;
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/zero`);
+      await response.arrayBuffer();
+      expect(response.status).toBe(500);
+      expect(logged).toEqual(['json(): status is a whole number from 200 to 599, not 0.']);
+    } finally {
+      await running.close();
       await app.shutdown();
     }
   });

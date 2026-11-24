@@ -23,10 +23,12 @@ export interface JsonResult<T = unknown> {
   readonly flash: FlashMethod<JsonResult<T>>;
 }
 
-/** `data` as JSON, with the `status` (default 200) and `headers` of the options. */
+/**
+ * `data` as JSON, with the `status` (default 200) and `headers` of the options. Throws a `TypeError` for a status that is not
+ * a whole number from 200 to 599, and for 204, 205 and 304 with data. See docs/responses.md#json.
+ */
 export function json<T>(data: T, options: ResultOptions = {}): JsonResult<T> {
-  assertResultOptions('json', options);
-  const { status = 200, headers } = options;
+  const { status, headers } = assertResultOptions('json', options, data !== undefined);
   return withFlashMethod({ [JSON_RESULT]: true, kind: 'json', data, status, ...(headers ? { headers } : {}) } as JsonResult<T>);
 }
 

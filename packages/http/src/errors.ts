@@ -32,7 +32,10 @@ export interface ExceptionRenderOptions {
 }
 export const ExceptionHandler = token<ExceptionHandler>('ExceptionHandler');
 
-/** Renders pages and JSON for errors; extend it and call `super.render()` to change what it shows. */
+/**
+ * Renders pages and JSON for errors; extend it and call `super.render()` to change what it shows. For 204, 205 and 304
+ * (`abort(304)`) `super.render()` returns a `Response` without a body.
+ */
 export class DefaultExceptionHandler implements ExceptionHandler {
   render(error: unknown, request: Request, { debug, translator }: ExceptionRenderOptions): unknown {
     if (error instanceof ValidationError) return renderInvalid(translator ? error.translate(translator) : error, request);
@@ -55,6 +58,8 @@ export class DefaultExceptionHandler implements ExceptionHandler {
     // Page or JSON depends on the request's headers: a shared cache must not hand one variant to a client wanting the other.
     const headers = addVary(error instanceof HttpError ? error.headers : {}, ['Accept', PAGE_HEADER]);
 
+    // These statuses carry no body: a page or JSON answer would be refused (view()) or malformed, so the status goes out alone.
+    if (status === 204 || status === 205 || status === 304) return new Response(null, { status, headers });
     if (wantsPage(request)) {
       const props: ErrorPageProps = { status, title, message, exception };
       return view(ERROR_PAGE, { ...props }, { status, headers });
