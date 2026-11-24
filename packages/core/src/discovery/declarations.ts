@@ -41,8 +41,12 @@ export interface DeclarationFile {
   readonly values: Set<string>;
   readonly classes: Map<string, readonly ParamInfo[]>;
   readonly imports: Map<string, ImportInfo>;
-  /** Exported name -> declaration, following `export *` and re-exports. */
+  /** Exported name -> its declaration, following `export *` and re-exports; only names located at a declaration. */
   readonly exports: Map<string, Location>;
+  /** Every name exported as a value, located or not: a name re-exported from another package has no location. */
+  readonly names: Set<string>;
+  /** `export *` of another package or of a file the reader cannot follow, directly or through a file it re-exports with `export *`: the file may export any name. */
+  opaque: boolean;
 }
 
 /**
@@ -67,7 +71,7 @@ export class DeclarationReader {
       throw new DiscoveryError(`${owner.name} has re-exports nested deeper than ${MAX_REEXPORT_DEPTH} levels, so its types cannot be read.`);
     }
 
-    const info: DeclarationFile = { file, values: new Set(), classes: new Map(), imports: new Map(), exports: new Map() };
+    const info: DeclarationFile = { file, values: new Set(), classes: new Map(), imports: new Map(), exports: new Map(), names: new Set(), opaque: false };
     this.#cache.set(file, info); // before following re-exports, so cycles terminate
     try {
       this.#parse(file, owner, depth, info);
@@ -82,90 +86,158 @@ export class DeclarationReader {
   #parse(file: string, owner: Owner, depth: number, info: DeclarationFile): void {
     const source = readFileSync(file, 'utf8');
     const { program } = parseSync(file, source);
+    const body = program.body as Node[];
 
-    for (const node of program.body as Node[]) {
+    // Every import first: an export may stand above the import it names.
+    for (const node of body) {
+      if (node.type !== 'ImportDeclaration') continue;
+      for (const specifier of node.specifiers) {
+        info.imports.set(specifier.local.name, {
+          from: node.source.value,
+          imported:
+            specifier.type === 'ImportNamespaceSpecifier'
+              ? '*'
+              : specifier.type === 'ImportDefaultSpecifier'
+                ? 'default'
+                : (specifier.imported.name ?? specifier.imported.value),
+          typeOnly: node.importKind === 'type' || specifier.importKind === 'type',
+        });
+      }
+    }
+
+    /** Names the file exports itself: they overwrite a name that `export *` brought, and `export *` never overwrites them. */
+    const explicit = new Set<string>();
+    /** An export of this file; without a location the name is a value the reader does not follow to its declaration. */
+    const exportName = (name: string, location?: Location): void => {
+      explicit.add(name);
+      info.names.add(name);
+      if (location) info.exports.set(name, location);
+      else info.exports.delete(name);
+    };
+    /** The export `name` of a file read by a relative path: located, or a value of it that has no location, or no value at all. */
+    const exportFrom = (exported: string, target: DeclarationFile, name: string): void => {
+      const location = target.exports.get(name);
+      if (location) exportName(exported, location);
+      else if (target.names.has(name) || target.opaque) exportName(exported);
+    };
+
+    for (const node of body) {
       switch (node.type) {
-        case 'ImportDeclaration':
-          for (const specifier of node.specifiers) {
-            info.imports.set(specifier.local.name, {
-              from: node.source.value,
-              imported: specifier.type === 'ImportNamespaceSpecifier' ? '*' : (specifier.imported?.name ?? 'default'),
-              typeOnly: node.importKind === 'type' || specifier.importKind === 'type',
-            });
-          }
-          break;
-
         case 'ExportAllDeclaration': {
-          const target = this.#relative(file, node.source.value, owner);
-          if (target && !node.exported) {
-            for (const [name, location] of this.#read(target, owner, depth + 1).exports) if (name !== 'default') info.exports.set(name, location);
+          if (node.exportKind === 'type') break; // `export type * from …` makes no value
+          const specifier: string = node.source.value;
+          if (node.exported) {
+            exportName(node.exported.name ?? node.exported.value); // a namespace: not read, not followed
+            break;
+          }
+          const target = specifier.startsWith('.') ? this.#relative(file, specifier, owner) : undefined;
+          if (!target) {
+            info.opaque = true; // another package, or a file the reader cannot follow: any name may come from it
+            break;
+          }
+          const read = this.#read(target, owner, depth + 1);
+          if (read.opaque) info.opaque = true;
+          for (const name of read.names) {
+            if (name === 'default' || explicit.has(name)) continue;
+            info.names.add(name);
+            const location = read.exports.get(name);
+            if (location) info.exports.set(name, location);
+            else info.exports.delete(name);
           }
           break;
         }
 
         case 'ExportNamedDeclaration':
           if (node.source) {
-            const target = this.#relative(file, node.source.value, owner);
             // `export type { Guards } from …` makes no value: a class exported so cannot be injected, there is nothing to import at runtime.
-            if (target && node.exportKind !== 'type') {
-              const targetExports = this.#read(target, owner, depth + 1).exports;
-              for (const specifier of node.specifiers) {
-                if (specifier.exportKind === 'type') continue;
-                const location = targetExports.get(specifier.local.name ?? specifier.local.value);
-                if (location) info.exports.set(specifier.exported.name ?? specifier.exported.value, location);
-              }
+            if (node.exportKind === 'type') break;
+            const specifier: string = node.source.value;
+            const target = specifier.startsWith('.') ? this.#relative(file, specifier, owner) : undefined;
+            const read = target && this.#read(target, owner, depth + 1);
+            for (const item of node.specifiers) {
+              if (item.exportKind === 'type') continue;
+              const exported = item.exported.name ?? item.exported.value;
+              if (read) exportFrom(exported, read, item.local.name ?? item.local.value);
+              else exportName(exported); // another package, or a file the reader cannot follow: not followed
             }
           } else if (!node.declaration) {
-            for (const specifier of node.specifiers) {
-              if (node.exportKind === 'type' || specifier.exportKind === 'type') continue;
-              info.exports.set(specifier.exported.name ?? specifier.exported.value, { file, name: specifier.local.name });
+            for (const item of node.specifiers) {
+              if (node.exportKind === 'type' || item.exportKind === 'type') continue;
+              this.#exportLocal(file, owner, depth, info, item.exported.name ?? item.exported.value, item.local.name, exportName, exportFrom);
             }
           } else {
-            this.#declare(node.declaration, info, source, true);
+            this.#declare(node.declaration, info, source, (name) => exportName(name, { file, name }));
           }
           break;
 
         case 'ExportDefaultDeclaration': {
           const declaration = node.declaration;
-          if (declaration.type === 'ClassDeclaration' && declaration.id) {
-            this.#declare(declaration, info, source, false);
-            info.exports.set('default', { file, name: declaration.id.name });
+          if (declaration.type === 'ClassDeclaration') {
+            if (declaration.id) {
+              this.#declare(declaration, info, source);
+              exportName('default', { file, name: declaration.id.name });
+            } else {
+              exportName('default'); // a class without a name has no location to give
+            }
           } else if (declaration.type === 'Identifier') {
-            info.exports.set('default', { file, name: declaration.name });
+            this.#exportLocal(file, owner, depth, info, 'default', declaration.name, exportName, exportFrom);
           }
           break;
         }
 
+        case 'ImportDeclaration':
+          break;
+
         default:
-          this.#declare(node, info, source, false);
+          this.#declare(node, info, source);
       }
     }
   }
 
-  #declare(declaration: Node, info: DeclarationFile, source: string, exported: boolean): void {
+  /** `export { local as exported }` without a source: a declaration of this file, or an import exported again. */
+  #exportLocal(
+    file: string,
+    owner: Owner,
+    depth: number,
+    info: DeclarationFile,
+    exported: string,
+    local: string,
+    exportName: (name: string, location?: Location) => void,
+    exportFrom: (exported: string, target: DeclarationFile, name: string) => void,
+  ): void {
+    const imported = info.imports.get(local);
+    if (!imported) return exportName(exported, { file, name: local });
+    if (imported.typeOnly) return; // an `import type` exported again makes no value, like `export type`
+    if (imported.imported === '*' || !imported.from.startsWith('.')) return exportName(exported); // a namespace or another package: not followed
+    const target = this.#relative(file, imported.from, owner);
+    if (target) exportFrom(exported, this.#read(target, owner, depth + 1), imported.imported);
+    else exportName(exported); // a file the reader cannot follow (no declaration file): not followed
+  }
+
+  #declare(declaration: Node, info: DeclarationFile, source: string, onExport?: (name: string) => void): void {
     if (declaration.type === 'VariableDeclaration') {
       for (const declarator of declaration.declarations) {
         info.values.add(declarator.id.name);
-        if (exported) info.exports.set(declarator.id.name, { file: info.file, name: declarator.id.name });
+        onExport?.(declarator.id.name);
       }
     } else if (declaration.type === 'FunctionDeclaration' || declaration.type === 'TSDeclareFunction') {
       info.values.add(declaration.id.name);
-      if (exported) info.exports.set(declaration.id.name, { file: info.file, name: declaration.id.name });
+      onExport?.(declaration.id.name);
     } else if (declaration.type === 'ClassDeclaration' && declaration.id) {
       const name: string = declaration.id.name;
       info.values.add(name);
-      if (exported) info.exports.set(name, { file: info.file, name });
+      onExport?.(name);
       const ctor = declaration.body.body.find((member: Node) => member.kind === 'constructor');
       info.classes.set(name, (ctor?.value.params ?? []).map((param: Node) => paramInfo(param, source)));
     }
   }
 
-  /** `./x.js` → `./x.d.ts` (also `.mjs` → `.d.mts`, extensionless → `.d.ts` or `/index.d.ts`). */
+  /** `./x.js` → `./x.d.ts` (also `.mjs` → `.d.mts`, `.cjs` → `.d.cts`, extensionless → `.d.ts` or `/index.d.ts`). */
   #relative(fromFile: string, specifier: string, owner: Owner): string | undefined {
     if (!specifier.startsWith('.')) return undefined;
     const base = resolve(dirname(fromFile), specifier);
-    const candidates = /\.m?[jt]s$/.test(base)
-      ? [base.replace(/\.m?[jt]s$/, (ext) => (ext.startsWith('.m') ? '.d.mts' : '.d.ts'))]
+    const candidates = /\.[cm]?[jt]s$/.test(base)
+      ? [base.replace(/\.([cm]?)[jt]s$/, (_, kind: string) => `.d.${kind}ts`)]
       : [`${base}.d.ts`, `${base}/index.d.ts`];
     // `..` or `./` names the package's own root: the candidate above it lies outside, `index.d.ts` inside is the one meant.
     let outside = false;
