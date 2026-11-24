@@ -464,6 +464,108 @@ describe('the manifest and the package.json of a package in the workspace', () =
     expect((await loadDiscoveredPackages({ root: through, conditions: PROD })).regenerated).toBe(true);
   });
 
+  describe('where the way up to the workspace ends', () => {
+    const listed = (app: string) => JSON.parse(readFileSync(manifestPath(app, PROD), 'utf8')).sources as string[];
+
+
+
+    it('reads a lockfile above the app only in a folder that others cannot write to', async () => {
+      if (process.platform === 'win32' || process.getuid?.() === 0) return;
+      const { top, app, manifestFile } = linkedApp('linked', { app: 'above/app', files: ['above/pnpm-lock.yaml'] });
+      const lockfile = join(top, 'above/pnpm-lock.yaml');
+      const regenerates = async () => (await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated;
+      expect(await regenerates()).toBe(true);
+      // Trusted folder: the lockfile counts.
+      writeFileSync(lockfile, 'a');
+      expect(await regenerates()).toBe(true);
+      expect(await regenerates()).toBe(false);
+
+      // Open to everyone: the lockfile is not read, so a change of it regenerates nothing.
+      chmodSync(join(top, 'above'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'above'), 0o755));
+      expect(await regenerates()).toBe(true);
+      expect(readFileSync(manifestFile, 'utf8')).toContain('sourcesHash');
+      writeFileSync(lockfile, 'b');
+      expect(await regenerates()).toBe(false);
+    });
+
+    it('reads a lockfile that is a link to a regular file', async () => {
+      const { app } = linkedApp('linked');
+      const target = join(app, 'lock-real.yaml');
+      writeFileSync(target, 'a');
+      symlinkSync(target, join(app, 'pnpm-lock.yaml'));
+      const regenerates = async () => (await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated;
+      expect(await regenerates()).toBe(true);
+      expect(await regenerates()).toBe(false);
+      writeFileSync(target, 'b');
+      expect(await regenerates()).toBe(true);
+    });
+
+    it('does not take a pnpm-workspace.yaml that is a link as a marker', async () => {
+      const { top, app } = linkedApp('../../packages/linked', { app: 'root/apps/app' });
+      writeFileSync(join(top, 'real.yaml'), 'packages: []\n');
+      symlinkSync(join(top, 'real.yaml'), join(top, 'root/pnpm-workspace.yaml'));
+      await loadDiscoveredPackages({ root: app, conditions: PROD });
+      expect(listed(app)).toEqual([]);
+    });
+
+    it('takes "workspaces" as a marker only as a list or an object with packages', async () => {
+      const declared = async (workspaces: unknown) => {
+        const { top, app } = linkedApp('../../packages/linked', { app: 'root/apps/app' });
+        writeFileSync(join(top, 'root/package.json'), JSON.stringify({ private: true, workspaces }));
+        await loadDiscoveredPackages({ root: app, conditions: PROD });
+        return listed(app);
+      };
+      expect(await declared(null)).toEqual([]);
+      expect(await declared('packages/*')).toEqual([]);
+      expect(await declared({})).toEqual([]);
+      expect(await declared({ packages: ['packages/*'] })).toEqual(['../../packages/linked/package.json']);
+    });
+
+    it('ends the way up at a folder that everyone can write to', async () => {
+      if (process.platform === 'win32') return;
+      const { top, app } = linkedApp('../pkgs/linked', { app: 'open/app', files: ['open/pnpm-workspace.yaml'] });
+      chmodSync(join(top, 'open'), 0o777);
+      await loadDiscoveredPackages({ root: app, conditions: PROD });
+      expect(listed(app)).toEqual([]);
+      chmodSync(join(top, 'open'), 0o755);
+      await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
+      expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+    });
+  });
+
+  it('lists a package whose package.json resolution read, though the walk did not reach it', async () => {
+    const top = realpathSync(tempDir('marmeon-sources-'));
+    const app = join(top, 'app');
+    const lay = (dir: string, files: Record<string, string>) => {
+      for (const [name, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(dir, name)), { recursive: true });
+        writeFileSync(join(dir, name), text);
+      }
+    };
+    const entry = (js: string) => JSON.stringify({ name: '@acme/b', type: 'module', exports: { '.': { types: `./dist/${js}.d.ts`, default: `./dist/${js}.js` } } });
+    lay(join(app, 'b'), { 'package.json': entry('index'), 'dist/index.js': 'export class Clock {}\n', 'dist/index.d.ts': 'export declare class Clock {}\n', 'dist/other.js': 'export class Clock {}\n', 'dist/other.d.ts': 'export declare class Clock {}\n' });
+    lay(join(app, 'a'), {
+      'package.json': JSON.stringify({ name: '@acme/a', type: 'module', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } }, devDependencies: { '@acme/b': '*' }, marmeon: { providers: ['AProvider'] } }),
+      'dist/index.js': 'export class Mailer { constructor(clock) {} }\nexport class AProvider {}\n',
+      'dist/index.d.ts': "import { Clock } from '@acme/b';\nexport declare class Mailer { constructor(clock: Clock); }\nexport declare class AProvider {}\n",
+    });
+    mkdirSync(join(app, 'a/node_modules/@acme'), { recursive: true });
+    symlinkSync(join(app, 'b'), join(app, 'a/node_modules/@acme/b'), 'dir');
+    mkdirSync(join(app, 'node_modules/@acme'), { recursive: true });
+    symlinkSync(join(app, 'a'), join(app, 'node_modules/@acme/a'), 'dir');
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@acme/a': '*' } }));
+    const manifest = () => JSON.parse(readFileSync(manifestPath(app, PROD), 'utf8')) as { sources: string[]; modules: string[] };
+
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['a/package.json', 'b/package.json']);
+    expect(manifest().modules).toContain('b/dist/index.js');
+
+    writeFileSync(join(app, 'b/package.json'), entry('other'));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().modules).toContain('b/dist/other.js');
+  });
+
   it('regenerates a manifest that has no sources, however fresh its hash is', async () => {
     const { app, manifestFile, manifest } = linkedApp('linked');
     await loadDiscoveredPackages({ root: app, conditions: PROD });

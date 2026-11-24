@@ -9,7 +9,7 @@ import { entryInside } from './contain.ts';
 import { ConfigError } from '../environment.ts';
 import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
@@ -22,7 +22,6 @@ export type { PackageSurface };
 import {
   exportedSubpaths,
   findFoundPackage,
-  findPackage,
   resolveExports,
   resolveTypes,
   runtimeConditions,
@@ -114,6 +113,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   // Before the walk reads anything: an edit while it runs leaves a hash of older bytes, so the manifest is stale at the next start, never fresh.
   const hash = manifestHash(root, conditions);
   const { ordered, visited } = walk(root);
+  const reached = new Map<string, FoundPackage>();
   const namespaces: { package: string; dir: string; namespace: string }[] = [];
 
   for (const pkg of ordered) {
@@ -161,7 +161,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
             if (!param.type) {
               throw new DiscoveryError(`Cannot inject ${where}: only classes and tokens can be injected.`);
             }
-            const ref = resolveDependency(param.type, location, pkg, { reader, conditions, where });
+            const ref = resolveDependency(param.type, location, pkg, { reached, reader, conditions, where });
             return [moduleIndex(ref.url), ref.exportName];
           });
           injections.push({ class: target, inject, package: pkg.name });
@@ -189,7 +189,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
     modules,
     injections,
     providers,
-    ...workspaceSources(root, visited),
+    ...workspaceSources(root, [...visited, ...[...reached.values()].filter((pkg) => !visited.some((seen) => seen.dir === pkg.dir))]),
   };
   const unresolvable = injections.filter((entry) => 'unresolvable' in entry).length;
   return {
@@ -424,6 +424,8 @@ function firstOptional(params: readonly { optional: boolean }[]): number {
 }
 
 interface ResolveContext {
+  /** Collects the packages resolution reads the `package.json` of, by directory: they decide `sources` too. */
+  readonly reached: Map<string, FoundPackage>;
   readonly reader: DeclarationReader;
   readonly conditions: readonly string[];
   readonly where: string;
@@ -454,8 +456,9 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
       declared = target ? reader.read(target, pkg).exports.get(name) : undefined;
     } else {
       const { name: packageName, subpath } = splitSpecifier(imported.from);
-      const found = findPackage(packageName, pkg.dir); // from the OWNER's directory
+      const found = findFoundPackage(packageName, pkg.dir); // from the OWNER's directory
       if (!found) throw new DiscoveryError(`Cannot inject ${where}: package "${packageName}" is not installed.`);
+      context.reached.set(found.dir, found);
       home = found;
       const js = jsEntryOf(home, subpath, conditions);
       const types = js && typesEntryOf(home, subpath, js);
@@ -503,8 +506,10 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   // Resolution depends on the *set* of conditions, not their order or repetition.
   const hash = createHash('sha256').update(MANIFEST_VERSION).update([...new Set(conditions)].sort().join('\0'));
   hash.update(readFileSync(join(root, 'package.json')));
-  const lockfile = findLockfile(root);
-  if (lockfile) hash.update(readFileSync(lockfile));
+  // The same rule as the way up to the workspace: a lockfile in a folder others can write to, or that is no regular file, counts as absent.
+  const app = realRoot(root);
+  const lockfile = findLockfile(app);
+  hash.update(lockfile !== undefined && (dirname(lockfile) === app || trusted(dirname(lockfile))) && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
   return hash.digest('hex').slice(0, 16);
 }
 
@@ -518,23 +523,70 @@ function realRoot(root: string): string {
 }
 
 /**
- * The app's workspace: the nearest folder at or above the app with a `pnpm-workspace.yaml` or a `package.json` that has `workspaces`;
- * else the folder of the nearest lockfile above the app; else the app folder. A real path, like the directories of the packages.
+ * Whether `dir` may be a root above the app: not writable by everyone (so not `/tmp`, where anyone can plant a marker), and owned by the
+ * user of the process or by root. The same rule as `trusted` in `@marmeon/database`. Windows has no `getuid`, and its `mode` says nothing
+ * about who may write, so there the check passes.
+ */
+function trusted(dir: string): boolean {
+  if (process.platform === 'win32') return true;
+  try {
+    const { mode, uid } = statSync(dir);
+    if (mode & 0o002) return false;
+    const me = process.getuid?.();
+    return me === undefined || uid === me || uid === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `path` is a regular file itself: no FIFO or device that a read could block on, and no link. */
+function isRegularFile(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `path` is a regular file once links are followed (a lockfile may be a link): a FIFO or device at the target is refused. */
+function isFileAfterLinks(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `dir` declares a workspace: a `pnpm-workspace.yaml`, or `workspaces` in its `package.json` (a list, or an object with `packages`). */
+function declaresWorkspace(dir: string): boolean {
+  if (isRegularFile(join(dir, 'pnpm-workspace.yaml'))) return true;
+  const file = join(dir, 'package.json');
+  if (!isRegularFile(file)) return false;
+  try {
+    const { workspaces } = JSON.parse(readFileSync(file, 'utf8')) as { workspaces?: unknown };
+    if (Array.isArray(workspaces)) return true;
+    return typeof workspaces === 'object' && workspaces !== null && Array.isArray((workspaces as { packages?: unknown }).packages);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The app's workspace: the nearest folder at or above the app that declares one (a `pnpm-workspace.yaml`, or a `package.json` with
+ * `workspaces`); else the folder of the nearest lockfile above the app; else the app folder. The way up ends at the first folder that
+ * others can write to or another user owns: what it holds is no one's to trust. A real path, like the directories of the packages.
  */
 function workspaceRoot(root: string): string {
   const app = realRoot(root);
   for (let dir = app; ; dir = dirname(dir)) {
-    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
-    try {
-      const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as unknown;
-      if (typeof json === 'object' && json !== null && Object.hasOwn(json, 'workspaces')) return dir;
-    } catch {
-      // No package.json here, or none that parses: not a marker.
-    }
+    if (dir !== app && !trusted(dir)) break;
+    if (declaresWorkspace(dir)) return dir;
     if (dirname(dir) === dir) break;
   }
   const lockfile = findLockfile(app);
-  return lockfile ? dirname(lockfile) : app;
+  if (lockfile === undefined) return app;
+  const dir = dirname(lockfile);
+  return dir === app || trusted(dir) ? dir : app;
 }
 
 /** Whether `file` is a `package.json` that lies in `boundary` by its path and its real path, outside `node_modules`: no link leads out. */
@@ -549,9 +601,11 @@ function isWorkspaceFile(boundary: string, file: string): boolean {
 
 /** The `sources` and `sourcesHash` of a manifest: the packages of the walk that lie in the app's workspace, hashed from the bytes the walk parsed. */
 function workspaceSources(root: string, visited: readonly FoundPackage[]): Pick<Manifest, 'sources' | 'sourcesHash'> {
+  const sources: string[] = [];
+  // No package reached, nothing to place: an app without dependencies does not look above itself.
+  if (visited.length === 0) return { sources, sourcesHash: combineDigests([]) };
   const boundary = workspaceRoot(root);
   const base = realRoot(root);
-  const sources: string[] = [];
   const digests: (string | undefined)[] = [];
   for (const pkg of visited) {
     const file = join(pkg.dir, 'package.json');
@@ -568,6 +622,8 @@ function workspaceSources(root: string, visited: readonly FoundPackage[]): Pick<
  */
 function currentSourcesHash(root: string, sources: unknown): string | undefined {
   if (!Array.isArray(sources)) return undefined;
+  // Nothing listed: nothing to read, so no walk above the app at start.
+  if (sources.length === 0) return combineDigests([]);
   const boundary = workspaceRoot(root);
   const base = realRoot(root);
   const digests: (string | undefined)[] = [];
