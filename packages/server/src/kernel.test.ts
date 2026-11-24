@@ -657,6 +657,9 @@ describe('createHttpKernel — asset versioning', async () => {
 describe('createHttpKernel — response copies', async () => {
   /** An app may hand out one Response object to every request — a constant without a body. */
   const SHARED = new Response(null, { status: 204, headers: { 'x-own': 'yes' } });
+  /** A constant with a body can be read once. */
+  const WITH_BODY = new Response('hello');
+  const REDIRECT = Response.redirect('https://example.test/elsewhere', 302);
   let visits = 0;
   class SetVisitCookie {
     async handle(ctx: HttpContext, next: Next<{}>) {
@@ -674,6 +677,8 @@ describe('createHttpKernel — response copies', async () => {
         name: 'pages',
         routes: openRoutes((Route) => {
           Route.get('/shared', () => SHARED);
+          Route.get('/with-body', () => WITH_BODY);
+          Route.get('/redirect', () => REDIRECT);
           Route.get('/page', () => view('pages/Show', {}));
         }),
       }),
@@ -718,6 +723,19 @@ describe('createHttpKernel — response copies', async () => {
     expect(answers.map((answer) => answer.headers.get('x-own'))).toEqual(['yes', 'yes']);
     // The constant itself is as the app made it.
     expect([...SHARED.headers]).toEqual([['x-own', 'yes']]);
+  });
+
+  it('answers a constant with a body once — the second request that gets it is a 500', async () => {
+    const first = await app.request('/with-body');
+    expect(first.status).toBe(200);
+    expect(await first.text()).toBe('hello');
+    expect((await app.request('/with-body')).status).toBe(500);
+  });
+
+  it('answers a constant redirect to every request with its location intact', async () => {
+    const answers = [await app.request('/redirect'), await app.request('/redirect')];
+    expect(answers.map((answer) => answer.status)).toEqual([302, 302]);
+    expect(answers.map((answer) => answer.headers.get('location'))).toEqual(['https://example.test/elsewhere', 'https://example.test/elsewhere']);
   });
 });
 
