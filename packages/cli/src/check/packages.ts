@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+import { findPackage } from '@marmeon/core/internal';
 import { EXACT, FRAMEWORK_NAME, isFramework, PROTOCOL, readManifest, resolveFirst, resolveInstalled, type Manifest } from '../framework/manifest.ts';
 import { reportOf, unrunReport, type CheckProblem } from './report.ts';
 import { plainReason, type CheckRun } from './tools.ts';
@@ -15,6 +16,9 @@ const DOCS = 'docs/check.md#the-packages-check';
 
 /** The most directories the strict walk follows unless `maxWalk` says otherwise. */
 const MAX_WALK = 50_000;
+
+/** A path inside a `node_modules` folder: where a package manager installs a package from a registry. */
+const NODE_MODULES = /(^|[\\/])node_modules([\\/]|$)/;
 
 /** A package in the tree of an app that cannot be judged: thrown by the strict walk, the caller refuses with the message. */
 export class UnreadableTree extends Error {}
@@ -219,6 +223,78 @@ export function packageAdvice(root: string, only?: 'copies' | 'versions'): strin
   } catch {
     return [];
   }
+}
+
+/** Whether `dir` lies inside a `node_modules` folder below the part of its path it shares with `root` (the app may itself be checked out under one). */
+function installedBelow(root: string, dir: string): boolean {
+  const base = realpathSync.native(root).split(sep);
+  const parts = dir.split(sep);
+  let shared = 0;
+  while (shared < base.length && shared < parts.length && base[shared] === parts[shared]) shared++;
+  return NODE_MODULES.test(parts.slice(shared).join('/'));
+}
+
+/**
+ * Every second copy of one `@marmeon/*` package in the installed tree an app reaches, as lines of advice in the form of {@link packageAdvice}'s: a copy is a
+ * directory the walk resolves `name` to (by its key or by the `name` of the installed manifest, so an alias counts) other than the one {@link findPackage}
+ * gives the app, the copy the app loads. The walk starts at the app's `dependencies`, `devDependencies`, `optionalDependencies` and `peerDependencies` and follows
+ * the `dependencies`, `optionalDependencies` and `peerDependencies` of every package it finds (and the `devDependencies` of one that lies outside every
+ * `node_modules`, a workspace package), each resolved from that package's real directory as Node does and whatever its version; a package is visited once
+ * per real directory. Reads the disk when called. None when the tree holds one copy.
+ * Unlike {@link packageAdvice} it never looks away: it throws {@link UnreadableTree} when a `package.json` of the app or of an installed package cannot be read,
+ * when the app has no copy of `name` or when the walk exceeds `maxWalk` directories, so a caller that must be sure refuses.
+ */
+export function secondCopies(root: string, name: `@marmeon/${string}`, maxWalk = MAX_WALK): string[] {
+  const app = readManifest(join(root, 'package.json'));
+  if (!app) throw new UnreadableTree('the package.json of the app cannot be read');
+  let mine: ReturnType<typeof findPackage>;
+  try {
+    mine = findPackage(name, root);
+  } catch (error) {
+    throw new UnreadableTree(`the app's copy of ${name} cannot be read (${error instanceof Error ? plain(error.message) : 'unknown error'})`);
+  }
+  if (!mine) throw new UnreadableTree(`the app's copy of ${name} was not found`);
+  const mineVersion = (mine.json as { version?: unknown }).version;
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  const visited = new Set<string>();
+  const manifests = new Map<string, Manifest | undefined>();
+  const queue: { readonly dir: string; readonly label: string; readonly manifest: Manifest }[] = [{ dir: root, label: 'the app', manifest: app }];
+  for (let next = queue.shift(), steps = 0; next !== undefined; next = queue.shift()) {
+    if (++steps > maxWalk) throw new UnreadableTree('the dependencies of the app could not be followed to an end');
+    const { dir, label, manifest } = next;
+    // A package outside every `node_modules` (a workspace package, a `link:` or `file:` one) is installed in place, and its devDependencies with it, which Node loads as well.
+    const inPlace = dir === root || !installedBelow(root, dir);
+    const groups = [
+      ['dependencies', manifest.dependencies],
+      ['optionalDependencies', manifest.optionalDependencies],
+      ['peerDependencies', manifest.peerDependencies],
+      ...(inPlace ? [['devDependencies', manifest.devDependencies] as const] : []),
+    ] as const;
+    for (const [groupName, group] of groups) {
+      if (typeof group !== 'object' || group === null) continue;
+      for (const [key, spec] of Object.entries(group)) {
+        if (typeof spec !== 'string') continue;
+        // Not installed means Node cannot load it either (an optional dependency, a peer left out): there is nothing to judge.
+        const found = resolveFirst(dir, key, undefined, manifests);
+        if (!found) continue;
+        const where = plain(relative(root, found.dir) || found.dir);
+        if (found.manifest === undefined || Array.isArray(found.manifest)) throw new UnreadableTree(`${where} has a package.json that cannot be read`);
+        const realName = typeof found.manifest.name === 'string' ? found.manifest.name : key;
+        if ((key === name || realName === name) && found.dir !== mine.dir && !seen.has(`${label}|${found.dir}`)) {
+          seen.add(`${label}|${found.dir}`);
+          const own = `${label} resolves its own copy of ${name} ${shown(found.manifest.version)}, the app has ${shown(mineVersion)}`;
+          if (key !== name) lines.push(`${label} lists ${name} a second time as ${JSON.stringify(plain(key))} — list it once`);
+          else if (groupName === 'dependencies' && EXACT.test(spec)) lines.push(`${own}: use a version of ${label} that depends on the app's, or override ${name} to ${shown(mineVersion)}`);
+          else lines.push(`${own}: align the peers' versions, then pnpm dedupe`);
+        }
+        if (visited.has(found.dir)) continue;
+        visited.add(found.dir);
+        queue.push({ dir: found.dir, label: plain(typeof found.manifest.name === 'string' ? found.manifest.name : key), manifest: found.manifest });
+      }
+    }
+  }
+  return lines;
 }
 
 /** `packageProblems` as a check: `skipped` when the app has no installed framework package to compare. */

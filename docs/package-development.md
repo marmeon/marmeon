@@ -1202,6 +1202,7 @@ You may see the duplicate in these places:
 - **Container:** `[marmeon:K1] No binding for [Router] (needed by Mailer). Bind it in a service provider.`, with a framework class in place of `Router`.
 - **Container:** `[marmeon:K3] [Application] needs 1 constructor argument(s) but has no injection list …`.
 - **`marmeon check` and `marmeon dev` (at each start):** the warning `ui resolves another copy of @marmeon/storage (the same version, other peers)`. See [the packages check](check.md#the-packages-check).
+- **`marmeon tinker --sandbox`:** refuses with `--sandbox refuses: @marmeon/database is installed more than once, and writes through another copy would not be rolled back.`, and one line for each second copy. See [the sandbox](console.md#trying-things-in-a-sandbox).
 
 The first three messages have other causes too: the check below tells them apart and confirms a duplicate.
 

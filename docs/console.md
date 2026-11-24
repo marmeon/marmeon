@@ -430,6 +430,12 @@ cache, its locks and rate limits, and the sessions write: they use a connection 
 when they share the app's file, they cannot write inside the transaction at all. Tinker says so and suggests giving them a file of
 their own, which the [cache](cache.md#the-database-driver-and-transactions) page explains.
 
+`--sandbox` refuses to open when a second copy of `@marmeon/database` is installed anywhere in your app's dependency tree.
+A package that uses the other copy may write through a connection pool of its own, which the transaction cannot roll back.
+Tinker prints one line for each second copy, like those of [`marmeon check`](check.md#the-packages-check)
+(that check does not report a framework package's own copy in the same version). It also refuses when it cannot check the tree, for example because a `package.json` cannot be read. Install one copy, as
+[one copy of a framework package](package-development.md#one-copy-of-a-framework-package) explains, or leave out `--sandbox`.
+
 > [!WARNING]
 > On SQLite, a sandbox session that wrote holds the file's write lock until it ends. The dev server and the worker still read,
 > but their writes wait five seconds and then fail with `database is locked`. Keep sandbox sessions short there.

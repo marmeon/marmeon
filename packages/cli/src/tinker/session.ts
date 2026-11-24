@@ -7,6 +7,7 @@ import { EventDispatcher, EventRegistry, providerJobs, Translator, type Applicat
 import { belongsTo, findPackage, importPackage, isInside, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { appListedProviders } from '../app-providers.ts';
+import { secondCopies, UnreadableTree } from '../check/packages.ts';
 
 /** A helper of the session — what `.ls` lists. */
 export interface Helper {
@@ -304,7 +305,8 @@ export class TinkerSession {
 
   /**
    * Resolves the app's own classes and tokens of the helpers and, with `--sandbox`, opens the transaction; call it before anything
-   * else — the helpers and the banner refuse until it ran.
+   * else — the helpers and the banner refuse until it ran. With `--sandbox` it throws when the app's @marmeon/database cannot be used (not listed,
+   * not loadable, its provider not registered) and when the installed tree holds a second copy of it, or cannot be checked for one.
    */
   async open(): Promise<void> {
     await this.#resolveOwn();
@@ -312,6 +314,7 @@ export class TinkerSession {
     const own = this.#own();
     const problem = this.#problem(own.Connections, '--sandbox', '@marmeon/database', 'Connections');
     if (problem !== undefined) throw new Error(problem.message);
+    this.#refuseSecondCopy();
     const connections = this.#connections()!;
     const inside = Promise.withResolvers<<R>(fn: () => R) => R>();
     const end = Promise.withResolvers<void>();
@@ -401,6 +404,26 @@ export class TinkerSession {
   }
 
   // -- Internals ---------------------------------------------------------------------------------------------------
+
+  /**
+   * Refuses the sandbox when the installed tree holds another copy of @marmeon/database than the one tinker loaded: that copy writes through a pool of
+   * its own, which the sandbox's transaction cannot roll back. Refuses as well when the tree cannot be checked, and when discovery listed the package
+   * more than once (one name per real directory). Reads the disk now, after boot: an install that runs in between is not seen.
+   */
+  #refuseSecondCopy(): void {
+    const name = '@marmeon/database';
+    const lead = `--sandbox refuses: ${name} is installed more than once, and writes through another copy would not be rolled back.`;
+    let lines: string[];
+    try {
+      lines = secondCopies(this.app.root, name);
+    } catch (error) {
+      if (!(error instanceof UnreadableTree)) throw error;
+      throw new Error(`--sandbox refuses: the install could not be checked for a second copy of ${name} (${error.message}).`);
+    }
+    if (lines.length === 0 && this.app.packages.filter((listed) => listed === name).length > 1) lines = [`discovery found ${name} in more than one directory`];
+    if (lines.length === 0) return;
+    throw new Error([lead, ...lines.map((line) => `  ${line}`), 'Install one copy: docs/package-development.md#one-copy-of-a-framework-package'].join('\n'));
+  }
 
   #own(): OwnExports {
     if (!this.#resolved) throw new Error('TinkerSession: call open() first.');

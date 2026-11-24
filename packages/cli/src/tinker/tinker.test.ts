@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,6 +7,7 @@ import { createApplication, defineModule, listen, providerJobs, token, type Appl
 import { defineRoutes, Router } from '@marmeon/router';
 import { TinkerCommand } from '../commands/tinker.ts';
 import { completer, interactive } from './repl.ts';
+import { secondCopies, UnreadableTree } from '../check/packages.ts';
 import { TinkerSession } from './session.ts';
 import { toJavaScript } from './typescript.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -387,6 +388,233 @@ describe('the jobs a provider lists in a tinker session', () => {
     const tinker = new TinkerSession(app, { sandbox: true });
     await expect(tinker.open()).rejects.toThrow(NEEDS('--sandbox', '@marmeon/database', 'database'));
     expect(built(root)).toBe(0);
+  });
+
+  describe('with a second copy of @marmeon/database', () => {
+    const NAME = '@marmeon/database';
+    const LEAD = `--sandbox refuses: ${NAME} is installed more than once, and writes through another copy would not be rolled back.`;
+    const FIX = 'Install one copy: docs/package-development.md#one-copy-of-a-framework-package';
+    const UNKNOWN = 'in a version that cannot be read';
+    const line = (holder: string, copy: string, fix = "align the peers' versions, then pnpm dedupe") => `  ${holder} resolves its own copy of ${NAME} ${copy}, the app has 1.0.0: ${fix}`;
+    const put = (dir: string, manifest: object | string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), typeof manifest === 'string' ? manifest : JSON.stringify(manifest));
+    };
+    const list = (root: string, group: string, deps: Record<string, string>) => {
+      const file = join(root, 'package.json');
+      const json = JSON.parse(readFileSync(file, 'utf8')) as Record<string, Record<string, string> | undefined>;
+      writeFileSync(file, JSON.stringify({ ...json, [group]: { ...json[group], ...deps } }));
+    };
+    /** An app whose @marmeon/database is the one tinker loads (version 1.0.0), and what `build` installs besides. */
+    async function layout(build: (root: string) => void, under = '') {
+      const base = realpathSync(tempDir('marmeon-tinker-copies-'));
+      const root = under ? join(base, under) : base;
+      mkdirSync(root, { recursive: true });
+      const { Connections } = await installOwnPackage(root, 'database', ['Connections', 'Database']);
+      put(join(root, 'node_modules/@marmeon/database'), { name: NAME, version: '1.0.0', type: 'module', exports: './index.js' });
+      build(root);
+      const calls: string[] = [];
+      const app = await ownApp(root, (container) => {
+        container.instance(Connections, { transaction: (fn: () => Promise<unknown>) => (calls.push('transaction'), fn()), options: () => ({ driver: 'sqlite', database: 'x' }) });
+      });
+      return { app, calls };
+    }
+    const message = async (app: Application): Promise<string> => {
+      const error = await new TinkerSession(app, { sandbox: true }).open().then(
+        () => undefined,
+        (reason: unknown) => reason,
+      );
+      return error instanceof Error ? error.message : 'opened';
+    };
+    const copyIn = (dir: string, version?: string) => put(join(dir, 'node_modules/@marmeon/database'), { name: NAME, ...(version ? { version } : {}) });
+    const holder = (root: string, name: string, manifest: object, at = root) => put(join(at, 'node_modules', name), { name, version: '2.0.0', ...manifest });
+
+    it.each([
+      [
+        'a holder that pins another exact version',
+        (root: string) => {
+          holder(root, 'acme', { dependencies: { [NAME]: '0.9.0' } });
+          copyIn(join(root, 'node_modules/acme'), '0.9.0');
+          list(root, 'dependencies', { acme: '2.0.0' });
+        },
+        [line('acme', '0.9.0', `use a version of acme that depends on the app's, or override ${NAME} to 1.0.0`)],
+      ],
+      [
+        'a transitive holder',
+        (root: string) => {
+          holder(root, 'acme-x', { dependencies: { 'acme-y': '1.0.0' } });
+          holder(root, 'acme-y', { peerDependencies: { [NAME]: '1.0.0' } }, join(root, 'node_modules/acme-x'));
+          copyIn(join(root, 'node_modules/acme-x/node_modules/acme-y'), '1.0.0');
+          list(root, 'dependencies', { 'acme-x': '2.0.0' });
+        },
+        [line('acme-y', '1.0.0')],
+      ],
+      [
+        'a holder the app lists under optionalDependencies',
+        (root: string) => {
+          holder(root, 'acme', { peerDependencies: { [NAME]: '1.0.0' } });
+          copyIn(join(root, 'node_modules/acme'), '1.0.0');
+          list(root, 'optionalDependencies', { acme: '2.0.0' });
+        },
+        [line('acme', '1.0.0')],
+      ],
+      [
+        'a holder the app lists under peerDependencies',
+        (root: string) => {
+          holder(root, 'acme', { peerDependencies: { [NAME]: '1.0.0' } });
+          copyIn(join(root, 'node_modules/acme'), '1.0.0');
+          list(root, 'peerDependencies', { acme: '2.0.0' });
+        },
+        [line('acme', '1.0.0')],
+      ],
+      [
+        'an alias key the app lists',
+        (root: string) => {
+          put(join(root, 'node_modules/mdb'), { name: NAME, version: '1.0.0' });
+          list(root, 'dependencies', { mdb: `npm:${NAME}@1.0.0` });
+        },
+        [`  the app lists ${NAME} a second time as "mdb" — list it once`],
+      ],
+      [
+        'a holder and a copy without a version',
+        (root: string) => {
+          put(join(root, 'node_modules/acme'), { name: 'acme', peerDependencies: { [NAME]: '1.0.0' } });
+          copyIn(join(root, 'node_modules/acme'));
+          list(root, 'dependencies', { acme: '2.0.0' });
+        },
+        [line('acme', UNKNOWN)],
+      ],
+      [
+        'a holder the app lists under devDependencies',
+        (root: string) => {
+          holder(root, 'acme', { peerDependencies: { [NAME]: '1.0.0' } });
+          copyIn(join(root, 'node_modules/acme'), '1.0.0');
+          list(root, 'devDependencies', { acme: '2.0.0' });
+        },
+        [line('acme', '1.0.0')],
+      ],
+      [
+        'a holder that declares it in dependencies and in peerDependencies',
+        (root: string) => {
+          holder(root, 'acme', { dependencies: { [NAME]: '1.0.0' }, peerDependencies: { [NAME]: '1.0.0' } });
+          copyIn(join(root, 'node_modules/acme'), '1.0.0');
+          list(root, 'dependencies', { acme: '2.0.0' });
+        },
+        [line('acme', '1.0.0', `use a version of acme that depends on the app's, or override ${NAME} to 1.0.0`)],
+      ],
+      [
+        'a workspace package that lists it only in devDependencies',
+        (root: string) => {
+          put(join(root, 'packages/ui'), { name: 'ui', version: '1.0.0', devDependencies: { [NAME]: '1.0.1' } });
+          copyIn(join(root, 'packages/ui'), '1.0.1');
+          mkdirSync(join(root, 'node_modules'), { recursive: true });
+          symlinkSync(join(root, 'packages/ui'), join(root, 'node_modules/ui'), 'dir');
+          list(root, 'dependencies', { ui: 'workspace:*' });
+        },
+        [line('ui', '1.0.1')],
+      ],
+      [
+        'a copy declared only in optionalDependencies',
+        (root: string) => {
+          holder(root, 'acme', { optionalDependencies: { [NAME]: '1.0.0' } });
+          copyIn(join(root, 'node_modules/acme'), '1.0.0');
+          list(root, 'dependencies', { acme: '2.0.0' });
+        },
+        [line('acme', '1.0.0')],
+      ],
+    ])('refuses --sandbox for %s, naming the copy and calling no transaction', async (_label, build, lines) => {
+      const { app, calls } = await layout(build);
+      expect(await message(app)).toBe([LEAD, ...lines, FIX].join('\n'));
+      expect(calls).toEqual([]);
+    });
+
+    it('refuses --sandbox when discovery lists @marmeon/database from more than one directory', async () => {
+      const { app, calls } = await layout(() => {});
+      Object.defineProperty(app, 'packages', { value: [NAME, NAME] });
+      expect(await message(app)).toBe([LEAD, `  discovery found ${NAME} in more than one directory`, FIX].join('\n'));
+      expect(calls).toEqual([]);
+    });
+
+    it('refuses --sandbox for a workspace package that lists it only in devDependencies, in an app checked out under a node_modules folder', async () => {
+      const { app, calls } = await layout((root) => {
+        put(join(root, 'packages/ui'), { name: 'ui', version: '1.0.0', devDependencies: { [NAME]: '1.0.1' } });
+        copyIn(join(root, 'packages/ui'), '1.0.1');
+        mkdirSync(join(root, 'node_modules'), { recursive: true });
+        symlinkSync(join(root, 'packages/ui'), join(root, 'node_modules/ui'), 'dir');
+        list(root, 'dependencies', { ui: 'workspace:*' });
+      }, 'node_modules/checkout/app');
+      expect(await message(app)).toBe([LEAD, line('ui', '1.0.1'), FIX].join('\n'));
+      expect(calls).toEqual([]);
+    });
+
+    it('refuses --sandbox, saying the install could not be checked, for a package.json on the walk that cannot be read', async () => {
+      const { app, calls } = await layout((root) => {
+        put(join(root, 'node_modules/acme'), '{ not json');
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      expect(await message(app)).toBe(`--sandbox refuses: the install could not be checked for a second copy of ${NAME} (node_modules/acme has a package.json that cannot be read).`);
+      expect(calls).toEqual([]);
+    });
+
+    it('opens --sandbox when a holder has a second copy of another package but one @marmeon/database', async () => {
+      const { app, calls } = await layout((root) => {
+        put(join(root, 'node_modules/@marmeon/storage'), { name: '@marmeon/storage', version: '1.0.0' });
+        holder(root, 'acme', { peerDependencies: { [NAME]: '1.0.0', '@marmeon/storage': '1.0.0' } });
+        put(join(root, 'node_modules/acme/node_modules/@marmeon/storage'), { name: '@marmeon/storage', version: '1.0.0' });
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      const tinker = new TinkerSession(app, { sandbox: true });
+      await tinker.open();
+      expect(calls).toEqual(['transaction']);
+      await tinker.close();
+    });
+
+    it('opens --sandbox for a pnpm store of symlinks that leads to one copy', async () => {
+      const { app, calls } = await layout((root) => {
+        const store = join(root, 'node_modules/.pnpm/acme@2.0.0/node_modules');
+        put(join(store, 'acme'), { name: 'acme', version: '2.0.0', peerDependencies: { [NAME]: '1.0.0' } });
+        mkdirSync(join(store, '@marmeon'), { recursive: true });
+        symlinkSync(join(root, 'node_modules/@marmeon/database'), join(store, '@marmeon/database'), 'dir');
+        symlinkSync(join(store, 'acme'), join(root, 'node_modules/acme'), 'dir');
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      const tinker = new TinkerSession(app, { sandbox: true });
+      await tinker.open();
+      expect(calls).toEqual(['transaction']);
+      await tinker.close();
+    });
+
+    it('cannot check a tree that is deeper than the step limit, nor an app without a copy', async () => {
+      const { app } = await layout((root) => {
+        holder(root, 'acme', { peerDependencies: { [NAME]: '1.0.0' } });
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      expect(() => secondCopies(app.root, NAME, 1)).toThrow(new UnreadableTree('the dependencies of the app could not be followed to an end'));
+      const bare = realpathSync(tempDir('marmeon-tinker-copies-'));
+      put(bare, { name: 'bare' });
+      expect(() => secondCopies(bare, NAME)).toThrow(new UnreadableTree(`the app's copy of ${NAME} was not found`));
+    });
+
+    it('opens --sandbox when every package resolves the one copy', async () => {
+      const { app, calls } = await layout((root) => {
+        holder(root, 'acme', { peerDependencies: { [NAME]: '1.0.0' } });
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      const tinker = new TinkerSession(app, { sandbox: true });
+      await tinker.open();
+      expect(calls).toEqual(['transaction']);
+      await tinker.close();
+    });
+
+    it('opens without --sandbox, whatever the tree holds', async () => {
+      const { app, calls } = await layout((root) => {
+        holder(root, 'acme', { dependencies: { [NAME]: '0.9.0' } });
+        copyIn(join(root, 'node_modules/acme'), '0.9.0');
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      await new TinkerSession(app).open();
+      expect(calls).toEqual([]);
+    });
   });
 
   it('never imports a package that only a parent directory reaches and the app does not list', async () => {
