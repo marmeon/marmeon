@@ -57,6 +57,8 @@ export class DeclarationReader {
   readonly #cache = new Map<string, DeclarationFile>();
   /** Files whose reading failed: asking again throws the same error at once, so a hostile chain is parsed once, not once per class. */
   readonly #failed = new Map<string, DiscoveryError>();
+  /** Files being parsed: one handed out while it is here has not seen all its own names yet. */
+  readonly #parsing = new Set<string>();
 
   read(file: string, owner: Owner): DeclarationFile {
     return this.#read(file, owner, 0);
@@ -73,12 +75,15 @@ export class DeclarationReader {
 
     const info: DeclarationFile = { file, values: new Set(), classes: new Map(), imports: new Map(), exports: new Map(), names: new Set(), opaque: false };
     this.#cache.set(file, info); // before following re-exports, so cycles terminate
+    this.#parsing.add(file);
     try {
       this.#parse(file, owner, depth, info);
     } catch (error) {
       this.#cache.delete(file); // half read: a later read must not take it for complete
       if (error instanceof DiscoveryError) this.#failed.set(file, error);
       throw error;
+    } finally {
+      this.#parsing.delete(file);
     }
     return info;
   }
@@ -116,6 +121,8 @@ export class DeclarationReader {
     };
     /** The export `name` of a file read by a relative path: located, or a value of it that has no location, or no value at all. */
     const exportFrom = (exported: string, target: DeclarationFile, name: string): void => {
+      // A file still being parsed (a cycle) may yet export the name again, or shadow it: it has no location to take.
+      if (this.#parsing.has(target.file)) return exportName(exported);
       const location = target.exports.get(name);
       if (location) exportName(exported, location);
       else if (target.names.has(name) || target.opaque) exportName(exported);
@@ -136,11 +143,12 @@ export class DeclarationReader {
             break;
           }
           const read = this.#read(target, owner, depth + 1);
-          if (read.opaque) info.opaque = true;
+          const partial = this.#parsing.has(read.file); // a file still being parsed may yet export any name, and shadow the ones it has
+          if (read.opaque || partial) info.opaque = true;
           for (const name of read.names) {
             if (name === 'default' || explicit.has(name)) continue;
             info.names.add(name);
-            const location = read.exports.get(name);
+            const location = partial ? undefined : read.exports.get(name);
             if (location) info.exports.set(name, location);
             else info.exports.delete(name);
           }
@@ -238,8 +246,9 @@ export class DeclarationReader {
     const base = resolve(dirname(fromFile), specifier);
     const candidates = /\.[cm]?[jt]s$/.test(base)
       ? [base.replace(/\.([cm]?)[jt]s$/, (_, kind: string) => `.d.${kind}ts`)]
-      : [`${base}.d.ts`, `${base}/index.d.ts`];
-    // `..` or `./` names the package's own root: the candidate above it lies outside, `index.d.ts` inside is the one meant.
+      : base === resolve(owner.dir)
+        ? [`${base}/index.d.ts`] // `..` or `./` names the package's own root: only its `index.d.ts` is meant, `${base}.d.ts` lies above it
+        : [`${base}.d.ts`, `${base}/index.d.ts`];
     let outside = false;
     for (const candidate of candidates) {
       if (!entryInside(owner.dir, candidate)) {

@@ -200,7 +200,7 @@ needs one there throws. The [configuration](configuration.md#configuration-and-t
 
 The app builds a package's classes through the container like its own. Their constructors list what they need, and the lists of
 what to inject come from the build: `marmeon package:build` writes them into the compiled files. Without it, the app derives them
-at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export. Every parameter
+at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export. The app imports a subpath that exports an injected class, in either form, when it starts, and takes a class that the entry exports as well from the entry. Every parameter
 must be a class or a token, as the [service container](container.md#constructor-injection) page explains. A class in a `browser`
 glob gets no list, so no injection code reaches a client bundle. `marmeon package:build` also marks a controller that answers with an
 [island](deferred-props.md#the-islands-route); a package built before that mark existed answers an island's request with a 404 until
@@ -374,7 +374,7 @@ A build with `isolatedDeclarations` refuses the computed key (TS9038). Set the l
   export { MediaServiceProvider } from './MediaServiceProvider.ts';
   ```
 
-  An import that the entry exports again is followed when it is relative and inside the package. An import from another package, or from a file without a declaration file, is not followed, so that class gets no injection list (`K3` when the job first runs); a relative import that leads out of the package stops the start with `K7`.
+  An import that the entry exports again is followed when it is relative and inside the package. An import from another package, or from a file without a declaration file, is not followed, so that class gets no injection list (`K3` when the job first runs); a relative import that leads out of the package stops the start with `K7`. The app imports a subpath that exports an injected class, in either form, when it starts, and takes a class that the entry exports as well from the entry.
 - **Subclasses:** A provider meant to be extended annotates `static [providerJobs]: readonly JobClass[] = [ProcessMediaJob]`, with `import type { JobClass } from '@marmeon/queue'`. The annotation lets a subclass add a class with another payload. A subclass that adds jobs spreads the parent's: `static override [providerJobs] = [...super[providerJobs], ResizeMediaJob]`. A subclass of a job can give itself another name only where the parent declares `static job: string`. Otherwise, write a job class of its own.
 - **Consent:** Installing a package is consent to run its jobs. Discovery also takes the dependencies of installed packages and the app's `devDependencies` where they are installed. With `discover: false` the app registers none of the installed packages, so you list the providers you want by hand ([without discovery](modules.md#without-discovery)). A waiting or failed record with the job's name runs in the class that has that name now, encrypted records included. The schema check and `static encrypted` still apply.
 

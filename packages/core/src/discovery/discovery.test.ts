@@ -731,11 +731,64 @@ describe('a hostile package.json and its declarations', () => {
       'y.js': 'export class Q {}\n',
     };
 
-    it('find a provider through an "export *" cycle, whatever file the reader meets first', () => {
+    it('find a provider through an "export *" cycle, from the entry or from a subpath read before it', () => {
       expect(providersOf({}, { ...cycle, 'index.d.ts': "export { Q } from './y.js';\nexport * from './x.js';\n" }, 'P')).toEqual(['P']);
       expect(
         providersOf({ exports: { './y': './y.js', '.': './index.js' } }, { ...cycle, 'index.d.ts': "export * from './x.js';\n" }, 'P'),
       ).toEqual(['P']);
+      const swapped = { ...cycle, 'y.d.ts': "export * from './x.js';\nexport * from './p.js';\nexport declare class Q {}\n" };
+      expect(providersOf({}, { ...swapped, 'index.d.ts': "export { Q } from './y.js';\nexport * from './x.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({ exports: { './y': './y.js', '.': './index.js' } }, { ...swapped, 'index.d.ts': "export * from './x.js';\n" }, 'P')).toEqual(['P']);
+    });
+
+    it('find a provider that a file declares after the "export *" and the import that lead back to the file being read', () => {
+      const files = {
+        'index.d.ts': "export { helper } from './a.js';\nexport * from './b.js';\n",
+        'a.d.ts': "import { B } from './b.js';\nexport { B };\nexport declare function helper(): void;\nexport declare class P {\n    register(): void;\n}\n",
+        'b.d.ts': "export * from './a.js';\nexport declare class B {}\n",
+      };
+      expect(providersOf({}, files, 'P')).toEqual(['P']);
+    });
+
+    it('find a provider of a file that imports and exports a class of the file a subpath reads before it', () => {
+      const files = {
+        'token.js': 'export class Token {}\n',
+        'index.js': 'export class Prov {\n  register() {}\n}\n',
+        'index.d.ts': "import { Token } from './token.js';\nexport { Token };\nexport declare class Prov {\n    register(): void;\n}\n",
+        'token.d.ts': "import { Prov } from './index.js';\nexport { Prov };\nexport declare class Token {}\n",
+      };
+      expect(providersOf({ main: './token.js', types: './token.d.ts', exports: { './index': './index.js', '.': './token.js' } }, files, 'Prov')).toEqual(['Prov']);
+    });
+
+    it('take no location from a file still being read: a later export of its own may shadow the one it shows now', () => {
+      const { manifest } = generateManifest({
+        root: appWith(
+          { exports: { './q': './q.js', './p': './p.js', '.': './index.js' } },
+          {
+            'index.js': 'export class Clock {}\nexport class Key {}\nexport class Mailer {}\n',
+            'q.js': 'export class Clock {}\n',
+            'p.js': 'export class Mailer {}\n',
+            'index.d.ts':
+              "export * from './s.js';\nexport { helper } from './h.js';\nexport declare class Clock {}\nexport declare class Key {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n",
+            's.d.ts': "import { Key } from './index.js';\nexport declare class Mailer {\n    constructor(k: Key);\n}\n",
+            'h.d.ts': "export declare function helper(): void;\nexport * from './p.js';\n",
+            'p.d.ts': "export { Mailer } from './index.js';\n",
+            'q.d.ts': "import { Clock } from './index.js';\nexport { Clock };\n",
+          },
+        ).app,
+        conditions: PROD,
+      });
+      const lists = manifest.injections.filter((item) => item.class[1] === 'Mailer' && 'inject' in item).map((item) => ('inject' in item ? item.inject.map(([, name]) => name) : []));
+      expect(lists.length).toBeGreaterThan(0);
+      for (const list of lists) expect(list).toEqual(['Clock']);
+    });
+
+    it('leave a package whose root has no declaration file alone when its types import ".."', () => {
+      const { app } = appWith(
+        { main: './dist/index.js', types: './dist/index.d.ts' },
+        { 'dist/index.js': 'export const v = 1;\n', 'dist/index.d.ts': "import { v } from '..';\nexport { v };\n" },
+      );
+      expect(generateManifest({ root: app, conditions: PROD }).summary.packages).toEqual(['hostile']);
     });
 
     it('keep the list of a local class when the default export of another file takes its public name', () => {
