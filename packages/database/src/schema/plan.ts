@@ -105,30 +105,112 @@ function fits(driver: Driver, name: string, what: string, hint = DEFAULT_NAME_HI
   if (driver === 'mysql') fitsMysql(name, what, hint);
 }
 
-/** A name a migration gives, to be asked of Postgres: `what` says which kind it is, `hint` how to give it one that fits. */
+/** A name to be asked of Postgres, one a plan gives or one it only acts on: `what` says which kind it is, `hint` how to give it one that fits. */
 export interface PgsqlName {
   readonly name: string;
   readonly what: string;
   readonly hint: string;
+  /** The clause after the name in the message; the default says Postgres would cut a name the migration gives. Set it for a name the plan only acts on. Starts with a comma, ends with a period. */
+  readonly effect?: string;
+}
+
+/** The parts of a table name as Kysely sends them: `schema.table` is two identifiers (only the first dot splits, a third part is dropped), a name without a dot is one, untrimmed. */
+function tableParts(name: string): { kind: 'schema' | 'table'; name: string }[] {
+  const [node] = (sql.table(name).toOperationNode() as unknown as { parameters: { table: { schema?: { name: string }; identifier: { name: string } } }[] }).parameters;
+  const { schema, identifier } = node!.table;
+  return [...(schema ? [{ kind: 'schema' as const, name: schema.name }] : []), { kind: 'table' as const, name: identifier.name }];
 }
 
 /**
- * The names `check()` would measure on MySQL, collected for Postgres, which alone knows where it cuts one (63 bytes of the database's
- * encoding). Nothing is measured here: pass them to {@link assertNamesFitPgsql}.
+ * The names a plan gives, and those it acts on, that Postgres may cut: it alone knows where it cuts one (63 bytes of the database's
+ * encoding), so nothing is measured here: pass them to {@link assertNamesFitPgsql}. The names a plan gives are those `check()` measures on MySQL.
+ *
+ * A name a plan only acts on is collected when a step names a table, column, index or check constraint that Postgres would take for the
+ * one its first 63 bytes name: the table of `drop`, `rename` (its `from`) and `alter` (each part of a qualified name), the columns of
+ * `dropColumn`, `renameColumn` (its `from`), `notNull`, `nullable` and a `oneOf` change, and the names of `dropIndex`, `dropUnique` and
+ * `dropCheck`. Not those an earlier step of the plan made (created, renamed to, added), which the plan holds under the long name. A name in
+ * `raw()` and `data()` steps is not collected.
  */
 export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): PgsqlName[] {
   const names: PgsqlName[] = [];
-  const add = (name: string, what: string, hint = DEFAULT_NAME_HINT) => names.push({ name, what, hint });
+  const add = (name: string, what: string, hint = DEFAULT_NAME_HINT, effect?: string) => names.push({ name, what, hint, ...(effect ? { effect } : {}) });
+  // What the plan has made so far, which a later step may name as it was given: the tables (by the whole string, as given), the columns added to each table, and the indexes and check constraints.
+  const created = new Set<string>();
+  const added = new Map<string, Set<string>>();
+  const indexes = new Set<string>();
+  // Check constraint names are scoped by table in Postgres, unlike index names.
+  const checks = new Map<string, Set<string>>();
+  const checksOf = (table: string) => checks.get(table) ?? checks.set(table, new Set()).get(table)!;
+  const columnsOf = (table: string) => added.get(table) ?? added.set(table, new Set()).get(table)!;
+  const acts = (kind: string, method: string, name: string, known: boolean, parts: readonly { kind: string; name: string }[] = [{ kind, name }]) => {
+    if (known) return;
+    for (const part of parts) add(part.name, part.kind, `Name the ${part.kind} as Postgres stored it.`, `, so ${method} would act on the ${part.kind} its first 63 bytes name.`);
+  };
+  const actsOnTable = (method: string, table: string) => acts('table', method, table, created.has(table), tableParts(table));
   for (const [index, step] of steps.entries()) {
+    if (step.kind === 'drop') {
+      actsOnTable(step.ifExists ? 'dropIfExists()' : 'drop()', step.table);
+      created.delete(step.table);
+      added.delete(step.table);
+      checks.delete(step.table);
+    }
+    if (step.kind === 'rename') {
+      actsOnTable('rename()', step.from);
+      const columns = added.get(step.from);
+      const constraints = checks.get(step.from);
+      created.delete(step.from);
+      added.delete(step.from);
+      checks.delete(step.from);
+      if (constraints) checks.set(step.to, constraints);
+      created.add(step.to);
+      if (columns) added.set(step.to, columns);
+    }
     if (step.kind !== 'create' && step.kind !== 'alter') continue;
-    for (const index of step.blueprint.allIndexes()) add(index.name, 'index name');
     const parts = blueprintParts(step.blueprint);
-    for (const spec of parts.columns) if (spec.oneOf) add(oneOfName(step.table, spec.name), 'check constraint name');
-    for (const { name } of parts.checks) add(name, 'check constraint name');
+    if (step.kind === 'create') {
+      created.add(step.table);
+      added.set(step.table, new Set());
+    } else actsOnTable('alter()', step.table);
+    const columns = columnsOf(step.table);
+    // An alter runs, in this order: the drops of indexes and checks, the renames, the additions, nullability, the lists, and last the drops of columns.
+    for (const name of step.kind === 'alter' ? parts.dropIndexes : []) {
+      acts('index', parts.dropUniques.includes(name) ? 'dropUnique()' : 'dropIndex()', name, indexes.has(name));
+      indexes.delete(name);
+    }
+    for (const name of step.kind === 'alter' ? parts.dropChecks : []) {
+      acts('check constraint', 'dropCheck()', name, checksOf(step.table).has(name));
+      checksOf(step.table).delete(name);
+    }
+    for (const { from, to } of step.kind === 'alter' ? parts.renames : []) {
+      acts('column', 'renameColumn()', from, columns.has(from));
+      columns.delete(from);
+      columns.add(to);
+    }
+    for (const spec of parts.columns) columns.add(spec.name);
+    for (const { column, nullable } of step.kind === 'alter' ? parts.nullability : []) acts('column', nullable ? 'nullable()' : 'notNull()', column, columns.has(column));
+    for (const { column } of step.kind === 'alter' ? parts.oneOfChanges : []) acts('column', 'oneOf()', column, columns.has(column));
+    for (const column of step.kind === 'alter' ? parts.drops : []) {
+      acts('column', 'dropColumn()', column, columns.has(column));
+      columns.delete(column);
+    }
+    for (const index of step.blueprint.allIndexes()) {
+      add(index.name, 'index name');
+      indexes.add(index.name);
+    }
+    for (const spec of parts.columns) {
+      if (!spec.oneOf) continue;
+      add(oneOfName(step.table, spec.name), 'check constraint name');
+      checksOf(step.table).add(oneOfName(step.table, spec.name));
+    }
+    for (const { name } of parts.checks) {
+      add(name, 'check constraint name');
+      checksOf(step.table).add(name);
+    }
     for (const { column } of parts.foreignKeys) add(foreignKeyName(step.table, column), 'foreign key name', 'Use a shorter table or column name.');
     // The constraint a oneOf() gives a column that has no list yet: the migrations know its name before the run.
     for (const { column } of step.kind === 'alter' ? parts.oneOfChanges : []) {
       const found = listCheck?.(index, step.table, column);
+      if (found) checksOf(step.table).add(found.name);
       if (found && !hadList(found, parts, column)) add(found.name, 'check constraint name');
     }
   }
@@ -139,7 +221,7 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
 const UNTRANSLATABLE = new Set(['22P05', '22021']);
 
 /**
- * Refuses (D5) the first of `names` that Postgres would cut at 63 bytes without a word. The server measures: casting to `name` clips at
+ * Refuses (D5) the first of `names` that Postgres would cut at 63 bytes without a word, whether a migration gives it or only acts on it. The server measures: casting to `name` clips at
  * the limit in the encoding of the database, which is the cut every statement makes, so no guess about the encoding is made here. Only
  * the names that differ after the cast come back, so what a driver makes of a boolean is of no consequence. A name the encoding cannot hold
  * is refused too (D5); any other error of the query is not caught: the plan then does not run.
@@ -159,9 +241,9 @@ export async function assertNamesFitPgsql(db: Kysely<any>, names: readonly Pgsql
     );
   }
   if (rows.length === 0) return;
-  const { name, what, hint } = names.find((entry) => entry.name === rows[0]!.n) ?? { name: rows[0]!.n, what: 'name', hint: DEFAULT_NAME_HINT };
+  const { name, what, hint, effect } = names.find((entry) => entry.name === rows[0]!.n) ?? { name: rows[0]!.n, what: 'name', hint: DEFAULT_NAME_HINT, effect: undefined };
   throw new SchemaError(
-    withCode('D5', `The ${what} "${printable(name)}" is longer than Postgres's 63 bytes in this database's encoding; Postgres would cut it and so change it silently. ${hint}`),
+    withCode('D5', `The ${what} "${printable(name)}" is longer than Postgres's 63 bytes in this database's encoding${effect ?? '; Postgres would cut it and so change it silently.'} ${hint}`),
   );
 }
 

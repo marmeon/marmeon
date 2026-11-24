@@ -583,8 +583,130 @@ describe('asking Postgres whether the names of a plan fit', () => {
 
   it('collects the name a oneOf() gives a column that had no list, from what the migrations know', () => {
     const steps = planOf({ up: (schema) => schema.alter('items', (table) => table.oneOf('state', ['a', 'b'])) }, 'up');
-    expect(pgsqlNames(steps, () => ({ name: 'items_state_check', had: false })).map((entry) => entry.name)).toEqual(['items_state_check']);
-    expect(pgsqlNames(steps, () => ({ name: 'items_state_check', had: true }))).toEqual([]);
-    expect(pgsqlNames(steps)).toEqual([]);
+    const given = (listCheck?: Parameters<typeof pgsqlNames>[1]) => pgsqlNames(steps, listCheck).filter((entry) => entry.what === 'check constraint name').map((entry) => entry.name);
+    expect(given(() => ({ name: 'items_state_check', had: false }))).toEqual(['items_state_check']);
+    expect(given(() => ({ name: 'items_state_check', had: true }))).toEqual([]);
+    expect(given()).toEqual([]);
+  });
+
+  describe('collects what a plan only acts on, unless an earlier step of the plan made it', () => {
+    const collected = (up: (schema: any) => void) => pgsqlNames(planOf({ up }, 'up'));
+    const effect = (kind: string, method: string) => `, so ${method} would act on the ${kind} its first 63 bytes name.`;
+    const entry = (kind: string, name: string, method: string) => ({ name, what: kind, hint: `Name the ${kind} as Postgres stored it.`, effect: effect(kind, method) });
+
+    it('names the table of a drop and a rename, and the column of a column drop and rename', () => {
+      expect(collected((schema) => { schema.dropIfExists('old'); schema.drop('older'); schema.rename('moved', 'now'); })).toEqual([
+        entry('table', 'old', 'dropIfExists()'),
+        entry('table', 'older', 'drop()'),
+        entry('table', 'moved', 'rename()'),
+      ]);
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.renameColumn('a', 'b'); table.dropColumn('c'); }))).toEqual([
+        entry('table', 'items', 'alter()'),
+        entry('column', 'a', 'renameColumn()'),
+        entry('column', 'c', 'dropColumn()'),
+      ]);
+    });
+
+    it('names the columns of notNull(), nullable() and a oneOf change, after the same alter adds its own', () => {
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.string('own'); table.notNull('own'); table.notNull('a'); table.nullable('b'); table.oneOf('c', ['x']); }))).toEqual([
+        entry('table', 'items', 'alter()'),
+        entry('column', 'a', 'notNull()'),
+        entry('column', 'b', 'nullable()'),
+        entry('column', 'c', 'oneOf()'),
+      ]);
+    });
+
+    it('names the index, unique index and check constraint that dropIndex(), dropUnique() and dropCheck() name', () => {
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.dropIndex('i'); table.dropUnique('u'); table.dropCheck('c'); })).slice(1)).toEqual([
+        entry('index', 'i', 'dropIndex()'),
+        entry('index', 'u', 'dropUnique()'),
+        entry('check constraint', 'c', 'dropCheck()'),
+      ]);
+    });
+
+    it('asks each part of a qualified table name, as Kysely sends it, and a name without a dot whole', () => {
+      expect(collected((schema) => schema.dropIfExists('analytics.old')).map((one) => [one.what, one.name])).toEqual([['schema', 'analytics'], ['table', 'old']]);
+      expect(collected((schema) => schema.rename('analytics.old', 'analytics.new')).map((one) => [one.what, one.name])).toEqual([['schema', 'analytics'], ['table', 'old']]);
+      expect(collected((schema) => schema.drop(' a . b ')).map((one) => one.name)).toEqual(['a', 'b']);
+      expect(collected((schema) => schema.drop(' plain ')).map((one) => one.name)).toEqual([' plain ']);
+      // A name that is one identifier for an index, a check or a column keeps its dot.
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.dropIndex('s.i'); table.dropColumn('a.b'); })).slice(1).map((one) => one.name)).toEqual(['s.i', 'a.b']);
+    });
+
+    it('does not name what the plan created, renamed to or added, whatever the table is called by then', () => {
+      expect(collected((schema) => {
+        schema.create('made', (table: any) => table.string('x'));
+        schema.alter('made', (table: any) => { table.string('y'); table.renameColumn('x', 'z'); });
+        schema.alter('made', (table: any) => { table.dropColumn('y'); table.dropColumn('z'); });
+        schema.rename('made', 'later');
+        schema.alter('later', (table: any) => table.string('w'));
+        schema.drop('later');
+      }).map((one) => one.what)).toEqual([]);
+      expect(collected((schema) => { schema.create('analytics.made', (table: any) => table.string('x')); schema.drop('analytics.made'); })).toEqual([]);
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.string('y'); table.string('own'); table.notNull('own'); table.dropColumn('y'); })).map((one) => one.what)).toEqual(['table']);
+      expect(collected((schema) => {
+        schema.create('items', (table: any) => { table.string('a'); table.index(['a'], 'items_a_index'); table.string('s').oneOf('p'); table.check('items_c', 'true'); });
+        schema.alter('items', (table: any) => { table.dropIndex('items_a_index'); table.dropCheck('items_c'); table.dropCheck('items_s_check'); });
+      }).filter((one) => one.effect)).toEqual([]);
+      // An index added under a long name and dropped in a later alter of the same plan.
+      expect(collected((schema) => {
+        schema.alter('items', (table: any) => table.index(['a'], 'i'.repeat(70)));
+        schema.alter('items', (table: any) => table.dropIndex('i'.repeat(70)));
+      }).filter((one) => one.what === 'index')).toEqual([]);
+    });
+
+    it('names what an earlier step of the plan took away or never made', () => {
+      expect(collected((schema) => { schema.create('made', (table: any) => table.string('x')); schema.rename('made', 'later'); schema.drop('made'); })).toEqual([entry('table', 'made', 'drop()')]);
+      expect(collected((schema) => {
+        schema.create('made', (table: any) => table.string('x'));
+        schema.alter('made', (table: any) => table.renameColumn('x', 'z'));
+        schema.alter('made', (table: any) => table.dropColumn('x'));
+      })).toEqual([entry('column', 'x', 'dropColumn()')]);
+      expect(collected((schema) => {
+        schema.alter('items', (table: any) => table.dropColumn('y'));
+        schema.alter('items', (table: any) => table.dropColumn('y'));
+      }).filter((one) => one.what === 'column')).toEqual([entry('column', 'y', 'dropColumn()'), entry('column', 'y', 'dropColumn()')]);
+      expect(collected((schema) => {
+        schema.alter('items', (table: any) => table.string('y'));
+        schema.alter('items', (table: any) => table.dropColumn('y'));
+        schema.alter('items', (table: any) => table.dropColumn('y'));
+      }).filter((one) => one.what === 'column')).toEqual([entry('column', 'y', 'dropColumn()')]);
+      // Created by the plan and dropped twice: the second drop names what the database holds.
+      expect(collected((schema) => {
+        schema.alter('items', (table: any) => table.index(['a'], 'made_index'));
+        schema.alter('items', (table: any) => table.dropIndex('made_index'));
+        schema.alter('items', (table: any) => table.dropIndex('made_index'));
+      }).filter((one) => one.what === 'index')).toEqual([entry('index', 'made_index', 'dropIndex()')]);
+      expect(collected((schema) => {
+        schema.alter('items', (table: any) => table.check('c', 'true'));
+        schema.alter('items', (table: any) => table.dropCheck('c'));
+        schema.alter('items', (table: any) => table.dropCheck('c'));
+      }).filter((one) => one.what === 'check constraint')).toEqual([entry('check constraint', 'c', 'dropCheck()')]);
+      // A check made before a rename follows the table; one made before a drop does not outlive it.
+      expect(collected((schema) => {
+        schema.create('t', (table: any) => { table.string('a'); table.check('c', 'true'); });
+        schema.rename('t', 'u');
+        schema.alter('u', (table: any) => table.dropCheck('c'));
+      }).filter((one) => one.what === 'check constraint')).toEqual([]);
+      expect(collected((schema) => {
+        schema.create('t', (table: any) => { table.string('a'); table.check('c', 'true'); });
+        schema.drop('t');
+        schema.create('t', (table: any) => table.string('a'));
+        schema.alter('t', (table: any) => table.dropCheck('c'));
+      }).filter((one) => one.what === 'check constraint')).toEqual([entry('check constraint', 'c', 'dropCheck()')]);
+      // The constraint a oneOf() gives an existing column, dropped in a later step on the same table: the plan made it.
+      const listed = { name: 'items_state_check', had: false };
+      const withList = (step2: (table: any) => void, table2 = 'items') => planOf({ up: (schema) => { schema.alter('items', (table: any) => table.oneOf('state', 'a')); schema.alter(table2, step2); } }, 'up');
+      expect(pgsqlNames(withList((table) => table.dropCheck('items_state_check')), (at) => (at === 0 ? listed : undefined)).filter((one) => one.what === 'check constraint')).toEqual([]);
+      // Check names belong to a table: the same name on another table is the database's.
+      expect(pgsqlNames(withList((table) => table.dropCheck('items_state_check'), 'other'), (at) => (at === 0 ? listed : undefined)).filter((one) => one.what === 'check constraint')).toEqual([entry('check constraint', 'items_state_check', 'dropCheck()')]);
+      expect(collected((schema) => { schema.create('gone', (table: any) => table.string('x')); schema.drop('gone'); schema.drop('gone'); })).toEqual([entry('table', 'gone', 'drop()')]);
+      expect(collected((schema) => {
+        schema.create('made', (table: any) => table.string('x'));
+        schema.rename('made', 'later');
+        schema.alter('later', (table: any) => table.dropColumn('x'));
+        schema.alter('made', (table: any) => table.dropColumn('x'));
+      })).toEqual([entry('table', 'made', 'alter()'), entry('column', 'x', 'dropColumn()')]);
+    });
   });
 });
