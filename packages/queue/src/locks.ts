@@ -2,7 +2,7 @@ import type { Cache, Lock } from '@marmeon/cache';
 import { durationToSeconds, type Duration, type StandardSchemaV1 } from '@marmeon/core';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobMiddleware, JobStatics, SchemaOutput, UniqueDispatchOptions } from './job.ts';
-import { QueueError } from './registry.ts';
+import { QueueError, type JobRegistry } from './registry.ts';
 
 // Unique jobs, `withoutOverlapping` and `job.once`: locks and markers in the app's cache (@marmeon/cache, an
 // optional peer — loaded where it is used). Every lock expires, so a crashed worker never blocks a key for good.
@@ -30,11 +30,34 @@ function seconds(value: Duration, what: string): number {
   return result;
 }
 
+/**
+ * The error for a per-job key `key` of the job `job` that names the lock of another registered job — or `undefined`: a lock
+ * is named by the job's name and the key, so `reports` with `daily:7` and `reports:daily` with `7` are one lock. The key
+ * must go past `daily:`, because an empty key of the longer job is refused anyway.
+ */
+export function keyLockConflict(registry: JobRegistry, job: string, key: string): QueueError | undefined {
+  for (const other of registry.all()) {
+    if (typeof other.job !== 'string' || !other.job.startsWith(`${job}:`)) continue;
+    const rest = other.job.slice(job.length + 1);
+    if (key.startsWith(`${rest}:`) && key.length > rest.length + 1) {
+      return new QueueError(
+        `The key "${key}" of the job "${job}" names the same lock as a key of the job "${other.job}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`,
+      );
+    }
+  }
+  return undefined;
+}
+
+/** @internal The registry an attempt's job context was built with, for the checks that need the other jobs' names. Keyed by the `JobContext`, which a middleware's copy of its context still carries. */
+export const middlewareRegistries = new WeakMap<object, JobRegistry>();
+
 /** What a unique dispatch stores in the job's record. */
-export function uniqueRecord(job: JobStatics, options: UniqueDispatchOptions): UniqueRecord {
+export function uniqueRecord(job: JobStatics, options: UniqueDispatchOptions, registry: JobRegistry): UniqueRecord {
   if (typeof options.unique !== 'string' || options.unique === '') throw new QueueError(`unique must be a non-empty key, like \`stats:\${userId}\` (dispatching ${job.job}).`);
   const until = options.uniqueUntil ?? 'done';
   if (until !== 'processing' && until !== 'done') throw new QueueError(`uniqueUntil is 'processing' or 'done', not ${JSON.stringify(until)}.`);
+  const conflict = keyLockConflict(registry, job.job, options.unique);
+  if (conflict) throw conflict;
   return {
     lock: `queue:unique:${job.job}:${options.unique}`,
     key: options.unique,
@@ -103,6 +126,8 @@ export interface WithoutOverlappingOptions {
  * that finds the key taken does not run; it goes back to the queue for `releaseAfter` (an attempt counts); on `sync` the job fails with a `QueueError`. See
  * `docs/queues.md#job-middleware`.
  *
+ * A per-job key (without `shared`) that would name the lock of another job — the job `reports` with `daily:7` while `reports:daily` exists — fails the job at once, without retrying, with a `QueueError`: it goes to the failed jobs (on `sync`, the dispatch call throws).
+ *
  * The type argument types the payload (the class is not known yet where its own static field is written). Only its
  * `schema` is looked at — a constraint on the whole job class would refer to the field being written.
  */
@@ -117,6 +142,15 @@ export function withoutOverlapping<J extends { readonly schema: StandardSchemaV1
     async handle(context, next) {
       const name = typeof key === 'string' ? key : key(context.payload);
       if (typeof name !== 'string' || name === '') throw new QueueError(`withoutOverlapping() of ${context.job.name} needs a key, not ${JSON.stringify(name)}.`);
+      if (!options.shared) {
+        const registry = middlewareRegistries.get(context.job);
+        const conflict = registry && keyLockConflict(registry, context.job.name, name);
+        if (conflict) {
+          // The same key conflicts on every attempt: the job fails now instead of using up its tries.
+          context.job.fail(conflict);
+          return;
+        }
+      }
       const lockName = options.shared ? `queue:overlap:${name}` : `queue:overlap:${context.job.name}:${name}`;
       const lock = (await context.cache()).lock(lockName, expiresAfter ?? context.retryAfterSeconds ?? context.timeoutSeconds + 60);
       if (!(await lock.get())) {

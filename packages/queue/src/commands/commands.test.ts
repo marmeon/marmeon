@@ -161,7 +161,7 @@ describe('the queue commands', () => {
       return lines.filter((line) => line.startsWith('! '));
     };
     const message = (short: string, shortClass: string, long: string, longClass: string, rest: string) =>
-      `! The jobs "${short}" (${shortClass}) and "${long}" (${longClass}) can share a lock: "${short}" with the key "${rest}:<key>" and "${long}" with the key "<key>" name one lock, for a unique key as for a withoutOverlapping() key without shared. Keep the keys of "${short}" from starting with "${rest}:", or rename one job so it does not begin with the other's name and a colon (keep the old name registered until its waiting jobs are gone; until then the two names do not see each other's locks). See docs/queues.md#unique-jobs.`;
+      `! The jobs "${short}" (${shortClass}) and "${long}" (${longClass}) can share a lock: "${short}" with the key "${rest}:<key>" and "${long}" with the key "<key>" name one lock, for a unique key as for a withoutOverlapping() key without shared. The queue refuses such a unique key of "${short}" with a QueueError at dispatch, and fails the job at once, without retrying, when its withoutOverlapping() key does: it goes to the failed jobs (on sync, the dispatch call throws). Rename one of the jobs so it does not begin with the other's name and a colon (keep the old name registered until its waiting jobs are gone), or build the keys of "${short}" so they do not start with "${rest}:". See docs/queues.md#unique-jobs.`;
 
     it('warns once at the start, right after the start line, when one job name is another followed by a colon', async () => {
       class ReportsJob extends job('reports') {}

@@ -168,7 +168,7 @@ export type DispatchResult<O> = O extends { readonly unique: string } ? string |
  * ```
  */
 export interface UniqueDispatchOptions extends Omit<DispatchOptions, 'unique'> {
-  /** The key (per job class): `stats:${userId}`. */
+  /** The key (per job class): `stats:${userId}`. A key that would name the lock of another job — `reports` with `daily:7` while `reports:daily` exists — is refused with a `QueueError`. */
   readonly unique: string;
   /** Seconds (or a duration) the lock holds at most — then a lost or stuck job no longer blocks new ones. Default 3600. */
   readonly uniqueFor?: Duration;

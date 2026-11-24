@@ -3,7 +3,7 @@ import { messageBase, runWithJob, trace, withCode, withoutCode } from '@marmeon/
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import type { JobRecord, UniqueRecord } from './driver.ts';
 import type { JobClass, JobContext, JobMiddleware, JobMiddlewareContext } from './job.ts';
-import { runOnce, type CacheSource } from './locks.ts';
+import { middlewareRegistries, runOnce, type CacheSource } from './locks.ts';
 import { QueueError, timeoutOf, type JobRegistry } from './registry.ts';
 
 /** Encrypts and decrypts encrypted payloads (`static encrypted`) — the app's `Encrypter`. */
@@ -340,6 +340,7 @@ export class JobRunner {
         }
         let called = false;
         const middlewareContext: JobMiddlewareContext = { payload, job: context, timeoutSeconds: timeoutOf(job), retryAfterSeconds: attempt.retryAfterSeconds, cache: this.#cache };
+        middlewareRegistries.set(context, this.#registry);
         // `timeout` is `timeoutSeconds`: reading it throws instead of giving undefined.
         Object.defineProperty(middlewareContext, 'timeout', {
           get() {

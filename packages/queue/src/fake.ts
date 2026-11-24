@@ -306,7 +306,7 @@ export class QueueFake implements Queue {
         throw new QueueError('A unique job cannot follow a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): its lock could not be freed when the transaction rolls back. Dispatch it inside connections.transaction() instead.');
       }
     }
-    const unique = options.unique === undefined ? undefined : uniqueRecord(jobs[0]![0], options as UniqueDispatchOptions);
+    const unique = options.unique === undefined ? undefined : uniqueRecord(jobs[0]![0], options as UniqueDispatchOptions, deps.registry);
     // Checked like a real dispatch — registered, JSON, the schema — before any is recorded.
     const prepared = await Promise.all(
       jobs.map(([job, payload]) => prepareRecord(deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}), ...(traceparent ? { traceparent } : {}) })),

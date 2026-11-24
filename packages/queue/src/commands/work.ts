@@ -104,7 +104,7 @@ export class QueueWorkCommand {
       for (const [short, long] of lockNamePairs([...classes.keys()])) {
         try {
           output.warn(
-            `The jobs "${short}" (${classes.get(short)}) and "${long}" (${classes.get(long)}) can share a lock: "${short}" with the key "${long.slice(short.length + 1)}:<key>" and "${long}" with the key "<key>" name one lock, for a unique key as for a withoutOverlapping() key without shared. Keep the keys of "${short}" from starting with "${long.slice(short.length + 1)}:", or rename one job so it does not begin with the other's name and a colon (keep the old name registered until its waiting jobs are gone; until then the two names do not see each other's locks). See docs/queues.md#unique-jobs.`,
+            `The jobs "${short}" (${classes.get(short)}) and "${long}" (${classes.get(long)}) can share a lock: "${short}" with the key "${long.slice(short.length + 1)}:<key>" and "${long}" with the key "<key>" name one lock, for a unique key as for a withoutOverlapping() key without shared. The queue refuses such a unique key of "${short}" with a QueueError at dispatch, and fails the job at once, without retrying, when its withoutOverlapping() key does: it goes to the failed jobs (on sync, the dispatch call throws). Rename one of the jobs so it does not begin with the other's name and a colon (keep the old name registered until its waiting jobs are gone), or build the keys of "${short}" so they do not start with "${long.slice(short.length + 1)}:". See docs/queues.md#unique-jobs.`,
           );
         } catch {
           // This pair's line cannot be made or printed: the next pair is still checked.
