@@ -4,7 +4,7 @@ import { glob } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { EventDispatcher, EventRegistry, providerJobs, Translator, type Application, type Container, type Key } from '@marmeon/core';
-import { belongsTo, findPackage, isInside, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
+import { belongsTo, findPackage, importPackage, isInside, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { appListedProviders } from '../app-providers.ts';
 
@@ -14,8 +14,10 @@ export interface Helper {
   /** How it is used, for `.ls`. */
   readonly usage: string;
   readonly description: string;
-  /** Whether the app has what it needs (false: `.ls` names the package, using it says what to install). */
+  /** Whether the app has what it needs (false: `.ls` says why, using it says what to do). */
   readonly available: boolean;
+  /** Why it is not available, where a package of the app's is behind it: not installed or not listed, installed but not loadable, loaded but not registered. */
+  readonly problem?: 'missing' | 'unloadable' | 'unregistered';
   /** Builds the value — on first use. */
   readonly value: () => unknown;
 }
@@ -62,7 +64,7 @@ function listedDependencies(root: string): Set<string> {
  * One export of a package the app's `package.json` lists, found the way discovery finds the copy it binds for the app (`findPackage` from the
  * app root, which walks `node_modules` directories only — never `NODE_PATH` — and the entry through `exports` under the process's
  * conditions), and only a copy the app lists, never one that only another package depends on. The entry must lie in the package, by its path
- * and by its real path, so a package cannot make tinker run another one's code. A class (`Connections`) or a token (`Database`, `Queue`,
+ * and by its real path (no `node_modules` of the package below it either), so a package cannot make tinker run another one's code. A class (`Connections`) or a token (`Database`, `Queue`,
  * `Mailer`) of that copy; a class or token of the same name anywhere else is no stand-in. See {@link Own} for the two ways there is none.
  */
 async function ownExport(root: string, listed: ReadonlySet<string>, pkg: string, name: string): Promise<Own> {
@@ -71,8 +73,11 @@ async function ownExport(root: string, listed: ReadonlySet<string>, pkg: string,
     const found = findPackage(pkg, root);
     if (!found) return 'missing';
     const entry = resolveExports(found, '.', runtimeConditions());
-    if (!entry || !belongsTo(resolve(found.dir), resolve(entry)) || !isInside(found.dir, realpathSync.native(entry))) return 'unloadable';
-    const value = ((await import(pathToFileURL(entry).href)) as Record<string, unknown>)[name];
+    if (!entry || !belongsTo(resolve(found.dir), resolve(entry))) return 'unloadable';
+    const real = realpathSync.native(entry);
+    if (!isInside(found.dir, real) || !belongsTo(found.dir, real)) return 'unloadable';
+    // The URL discovery imports, so a package linked from outside `node_modules` in a test runner is the instance discovery loaded.
+    const value = (await importPackage(pathToFileURL(entry).href, (file) => import(file)))[name];
     return typeof value === 'function' || (typeof value === 'object' && value !== null) ? (value as Key) : 'unloadable';
   } catch {
     return 'unloadable';
@@ -133,8 +138,9 @@ export class TinkerSession {
       const problem = this.#problem(key, label, pkg, name);
       return {
         available: problem === undefined,
+        ...(problem && { problem: problem.kind }),
         value: () => {
-          if (problem !== undefined) throw new Error(problem);
+          if (problem !== undefined) throw new Error(problem.message);
           return this.scope.make(key as Key<unknown>);
         },
       };
@@ -156,8 +162,9 @@ export class TinkerSession {
         usage: 'repos.<table>',
         description: 'the repositories (*Repository.ts), by table: repos.users',
         available: repos === undefined,
+        ...(repos && { problem: repos.kind }),
         value: () => {
-          if (repos !== undefined) throw new Error(repos);
+          if (repos !== undefined) throw new Error(repos.message);
           return this.#repositoryObject();
         },
       },
@@ -304,7 +311,7 @@ export class TinkerSession {
     if (!this.sandbox || this.#done) return;
     const own = this.#own();
     const problem = this.#problem(own.Connections, '--sandbox', '@marmeon/database', 'Connections');
-    if (problem !== undefined) throw new Error(problem);
+    if (problem !== undefined) throw new Error(problem.message);
     const connections = this.#connections()!;
     const inside = Promise.withResolvers<<R>(fn: () => R) => R>();
     const end = Promise.withResolvers<void>();
@@ -338,6 +345,18 @@ export class TinkerSession {
     this.#inside = undefined;
     this.#end?.();
     return this.#done ?? Promise.resolve();
+  }
+
+  /**
+   * Why {@link database} says nothing although the container binds a `Connections` of some kind: that one is not the copy of
+   * `@marmeon/database` your app's `package.json` lists, so the session never uses it for the sandbox or `db` — it can still be reached by
+   * `make('Connections')`. Only a warning: the name resolves nothing.
+   */
+  databaseWarning(): string | undefined {
+    const problem = this.#problem(this.#own().Connections, 'db', '@marmeon/database', 'Connections');
+    if (!problem || !this.app.container.keys().some((key) => key.name === 'Connections')) return undefined;
+    const reason = { missing: '@marmeon/database is not in your package.json, or not installed', unloadable: '@marmeon/database could not be loaded', unregistered: 'its provider is not registered' }[problem.kind];
+    return `db not shown (${reason}; make('Connections') may still reach one)`;
   }
 
   /** What the banner says about the default connection — the driver and where, never credentials. */
@@ -389,10 +408,10 @@ export class TinkerSession {
   }
 
   /** Why the app's `key` of `pkg` is no use to `label`: no such package of the app's, one that cannot be loaded, or a provider that is not registered. Undefined when it is usable. */
-  #problem(key: Own, label: string, pkg: string, name: string): string | undefined {
-    if (key === 'missing') return `${label} needs ${pkg} in your app's package.json, installed (marmeon add ${pkg.replace('@marmeon/', '')}, or install your dependencies).`;
-    if (key === 'unloadable') return `${label} needs ${pkg}: it is installed, but it could not be loaded or lacks ${name} (reinstall it at your app's version).`;
-    if (!this.app.container.has(key)) return `${label} needs ${pkg}: it is installed, but its provider is not registered (marmeon discover).`;
+  #problem(key: Own, label: string, pkg: string, name: string): { readonly kind: 'missing' | 'unloadable' | 'unregistered'; readonly message: string } | undefined {
+    if (key === 'missing') return { kind: 'missing', message: `${label} needs ${pkg} in your app's package.json, installed (marmeon add ${pkg.replace('@marmeon/', '')}, or install your dependencies).` };
+    if (key === 'unloadable') return { kind: 'unloadable', message: `${label} needs ${pkg}: it is installed, but it could not be loaded or lacks ${name} (reinstall it at your app's version).` };
+    if (!this.app.container.has(key)) return { kind: 'unregistered', message: `${label} needs ${pkg}: it is installed, but its provider is not registered (marmeon discover).` };
     return undefined;
   }
 

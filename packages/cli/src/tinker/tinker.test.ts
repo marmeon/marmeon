@@ -333,6 +333,14 @@ describe('the jobs a provider lists in a tinker session', () => {
         symlinkSync(join(root, 'outside-mailer.js'), join(dir, 'index.js'));
       }));
 
+    it('by a symlink into a package nested in its own node_modules', () =>
+      refused((_root, dir, code) => {
+        mkdirSync(join(dir, 'node_modules/other'), { recursive: true });
+        writeFileSync(join(dir, 'node_modules/other/index.js'), code);
+        rmSync(join(dir, 'index.js'));
+        symlinkSync(join(dir, 'node_modules/other/index.js'), join(dir, 'index.js'));
+      }));
+
     it('by exports into a package nested in its own node_modules', () =>
       refused((_root, dir, code) => {
         mkdirSync(join(dir, 'node_modules/other'), { recursive: true });
@@ -391,6 +399,60 @@ describe('the jobs a provider lists in a tinker session', () => {
     await tinker.open();
     expect(existsSync(marker)).toBe(false);
     expect(availability(tinker).jobs).toBe(false);
+  });
+
+  describe('the banner of a database the app does not list', () => {
+    const connectionsOf = (root: string) => installOwnPackage(root, 'database', ['Connections', 'Database'], { listed: false });
+    const bind = (Connections: Key) => (container: Binder) => {
+      container.instance(Connections, { options: () => ({ driver: 'sqlite', database: 'x' }), transaction: () => 'ran' });
+    };
+
+    it('warns, naming nothing of the database, for a registered copy the app does not list', async () => {
+      const root = tempDir('marmeon-tinker-own-');
+      await installOwnPackage(root, 'auth', ['Auth']);
+      const { Connections } = await connectionsOf(root);
+      const tinker = new TinkerSession(await ownApp(root, bind(Connections)));
+      await tinker.open();
+      expect(tinker.database()).toBeUndefined();
+      expect(tinker.databaseWarning()).toBe("db not shown (@marmeon/database is not in your package.json, or not installed; make('Connections') may still reach one)");
+    });
+
+    it('is unchanged for a listed, bound copy, and silent where nothing is named Connections', async () => {
+      const listed = tempDir('marmeon-tinker-own-');
+      const { Connections } = await installOwnPackage(listed, 'database', ['Connections', 'Database']);
+      const own = new TinkerSession(await ownApp(listed, bind(Connections)));
+      await own.open();
+      expect(own.database()).toBe('sqlite (x)');
+      expect(own.databaseWarning()).toBeUndefined();
+      const bare = new TinkerSession(await ownApp(tempDir('marmeon-tinker-own-')));
+      await bare.open();
+      expect(bare.databaseWarning()).toBeUndefined();
+    });
+  });
+
+  it('says in .ls why a helper is not available: not installed, not loadable or not registered', async () => {
+    const root = tempDir('marmeon-tinker-own-');
+    await installOwnPackage(root, 'database', ['Connections', 'Database']);
+    await installOwnPackage(root, 'mail', [], { code: "throw new Error('boom');\n" });
+    const tinker = new TinkerSession(await ownApp(root));
+    await tinker.open();
+    expect(Object.fromEntries(tinker.helpers().map((helper) => [helper.name, helper.problem]))).toMatchObject({ db: 'unregistered', repos: 'unregistered', mail: 'unloadable', jobs: 'missing' });
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let text = '';
+    const listed = Promise.withResolvers<void>();
+    output.on('data', (chunk: Buffer) => {
+      text += chunk.toString();
+      if (text.includes('Names (')) listed.resolve();
+    });
+    const done = interactive(tinker, { history: undefined, input, output });
+    input.write('.ls\n');
+    await listed.promise;
+    input.end('.exit\n');
+    await done;
+    expect(text).toMatch(/Kysely on the default connection\s+\S*\(not registered\)/);
+    expect(text).toMatch(/the Mailer\s+\S*\(not loadable\)/);
+    expect(text).toMatch(/the Queue\s+\S*\(not installed\)/);
   });
 
   it('refuses the helpers and the banner until open() ran', async () => {

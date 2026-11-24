@@ -247,7 +247,7 @@ async function listHelpers(session: TinkerSession, write: (text?: string) => voi
   const helpers = session.helpers();
   const width = Math.max(...helpers.map((helper) => helper.usage.length));
   for (const helper of helpers) {
-    const missing = helper.available ? '' : style('yellow', '  (not installed)');
+    const missing = helper.available ? '' : style('yellow', `  (${helper.problem === 'unloadable' ? 'not loadable' : helper.problem === 'unregistered' ? 'not registered' : 'not installed'})`);
     write(`  ${style('green', helper.usage.padEnd(width))}  ${helper.description}${missing}`);
   }
   try {
