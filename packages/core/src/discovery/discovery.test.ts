@@ -783,6 +783,47 @@ describe('a hostile package.json and its declarations', () => {
       for (const list of lists) expect(list).toEqual(['Clock']);
     });
 
+    describe('an injected class that the entry and a subpath both export', () => {
+      const files = {
+        'index.js': 'export class Clock {}\nexport class Mailer {}\n',
+        'extra.js': 'export class Clock {}\nexport class Mailer {}\n',
+        'index.d.ts': 'export declare class Clock {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n',
+        'extra.d.ts': "export { Clock, Mailer } from './index.js';\n",
+      };
+      const found = (exports: Record<string, string>, more: Record<string, string> = {}) => {
+        const { manifest } = generateManifest({ root: appWith({ exports }, { ...files, ...more }).app, conditions: PROD });
+        const file = (index: number) => manifest.modules[index]!.replace(/^.*\//, '');
+        const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+        return {
+          modules: manifest.modules.map((url) => url.replace(/^.*\//, '')),
+          class: mailer && [file(mailer.class[0]), mailer.class[1]],
+          inject: mailer && 'inject' in mailer ? mailer.inject.map(([index, name]) => [file(index), name]) : undefined,
+        };
+      };
+
+      it('comes from the first of them in the order of "exports"', () => {
+        expect(found({ './extra': './extra.js', '.': './index.js' })).toEqual({
+          modules: ['extra.js'],
+          class: ['extra.js', 'Mailer'],
+          inject: [['extra.js', 'Clock']],
+        });
+        expect(found({ '.': './index.js', './extra': './extra.js' })).toEqual({
+          modules: ['index.js'],
+          class: ['index.js', 'Mailer'],
+          inject: [['index.js', 'Clock']],
+        });
+      });
+
+      it('comes from a subpath when the entry does not export it', () => {
+        const entry = { 'entry.js': 'export const v = 1;\n', 'entry.d.ts': 'export declare const v: number;\n' };
+        expect(found({ './extra': './extra.js', '.': './entry.js' }, entry)).toEqual({
+          modules: ['extra.js'],
+          class: ['extra.js', 'Mailer'],
+          inject: [['extra.js', 'Clock']],
+        });
+      });
+    });
+
     it('leave a package whose root has no declaration file alone when its types import ".."', () => {
       const { app } = appWith(
         { main: './dist/index.js', types: './dist/index.d.ts' },
