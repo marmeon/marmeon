@@ -99,7 +99,9 @@ export default function Index({ notes }: PageProps<ListNotesController>) {
 ```
 
 A [localized route](routing.md#routes-under-a-locale) needs no `locale` in the browser: it takes the locale of the page on screen,
-and `params={{ locale: 'de' }}` or `route('about', { locale: 'de' })` chooses another. Only the page's own value is trusted:
+and `params={{ locale: 'de' }}` or `route('about', { locale: 'de' })` chooses another. With
+[the default locale without a prefix](routing.md#the-default-locale-without-a-prefix) the page sends how the app prefixes its locales, so
+the first segment is left out for the default locale: when that is `en`, `route('about', { locale: 'en' })` is `/about`. Only the page's own value is trusted:
 a locale you write is encoded into the path's first segment like any parameter, so it can lead to a page of this site that does
 not exist, never to another host. On the server, `router.url()` keeps `locale` required.
 
@@ -243,6 +245,10 @@ export class ShareLinks {
 The signature is an HMAC-SHA-256 over the path and the sorted query, with the expiry in it. Parameters the path does not take go
 into the query and are signed with it. `signature` and `expires` are reserved and throw as parameter names. `base` puts your
 address in front, for an absolute link.
+
+A localized route signs the address it answers. With [the default locale without a prefix](routing.md#the-default-locale-without-a-prefix),
+the link of a page in that locale signs `/about`, not `/en/about`. A link signed before the switch names the prefixed address, which now
+leads to a `301`: the signature does not fit the new path, and `signed()` answers 403. Send new links after switching.
 
 `expiresIn` is required: `signedRoute()` and `signedPath()` refuse a call without it, in the types and at run time. A link that
 must work for good, such as an unsubscribe link in a mail already sent, says so with `foreverSignedRoute()`; its URL has no

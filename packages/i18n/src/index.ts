@@ -178,8 +178,8 @@ export interface LocalePreference {
 export const LocalePreference = token<LocalePreference>('LocalePreference');
 
 /**
- * What a request's chain chose, by request: the unprefixed address of a localized route (a redirect) asks the visitor's locale
- * from the root, where no scoped service is at hand. Keyed by the request object, so it dies with it.
+ * What a request's chain chose, by request: the redirect from the address without a locale of a localized route asks the
+ * visitor's locale from the root, where no scoped service is at hand. Keyed by the request object, so it dies with it.
  */
 const preferredOf = new WeakMap<Request, string>();
 
