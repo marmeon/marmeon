@@ -567,6 +567,19 @@ describe('the manifest and the package.json of a package in the workspace', () =
       }
     });
 
+    it('reads the lockfile of the workspace root into the manifest hash, though the app holds a lockfile of a tool it does not read', () => {
+      const top = realpathSync(tempDir('marmeon-sources-'));
+      const app = join(top, 'app');
+      mkdirSync(app);
+      writeFileSync(join(top, 'pnpm-workspace.yaml'), 'packages: [app]');
+      writeFileSync(join(top, 'pnpm-lock.yaml'), 'a');
+      writeFileSync(join(app, 'package.json'), '{}');
+      writeFileSync(join(app, 'deno.lock'), '{}');
+      const before = manifestHash(app, PROD);
+      writeFileSync(join(top, 'pnpm-lock.yaml'), 'b');
+      expect(manifestHash(app, PROD)).not.toBe(before);
+    });
+
     it('does not read a lockfile behind a folder that everyone can write to into the manifest hash', () => {
       if (process.platform === 'win32') return;
       const { top, app } = linkedApp('linked', { app: 'open/app', files: ['pnpm-lock.yaml'] });

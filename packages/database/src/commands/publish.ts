@@ -21,8 +21,8 @@ type StubManifest = NonNullable<Extract<ReturnType<typeof readStubManifest>, { o
 
 /**
  * The installed package `name` of the app: in `node_modules` of the app, or of a directory above it up to the first one with a
- * lockfile (a workspace root, where the package manager hoists). Never further — a `node_modules` next to the home directory is
- * not the app's.
+ * lockfile (a workspace root, where the package manager hoists). The way up ends below the first folder that others can write to or
+ * that a user other than this user, root or the owner of the app owns (see `installRoot`) — a `node_modules` next to the home directory is not the app's.
  */
 function locate(name: string, root: string): Package | undefined {
   const top = installRoot(root);

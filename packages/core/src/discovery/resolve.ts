@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { withCode } from '../error-codes.ts';
 import { isInside } from './contain.ts';
+import { appOwner, trusted } from './trusted-folders.ts';
 
 export interface PackageInfo {
   readonly name: string;
@@ -72,24 +73,6 @@ const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
 /** Finds a package the way Node does: `node_modules/<name>` in `fromDir` and every parent. */
 export function findPackage(name: string, fromDir: string): PackageInfo | undefined {
   return findFoundPackage(name, fromDir);
-}
-
-/**
- * Whether `dir` may be a root above the app: not writable by everyone (so not `/tmp`, where anyone can plant a marker), and owned by the
- * user of the process, by root or by `owner` (the owner of the app: a deploy user owns the code, another user runs the service). The same
- * rule as `trusted` in `@marmeon/database`, plus `owner`. Windows has no `getuid`, and its `mode` says nothing about who may write, so
- * there the check passes.
- */
-export function trusted(dir: string, owner?: number): boolean {
-  if (process.platform === 'win32') return true;
-  try {
-    const { mode, uid } = statSync(dir);
-    if (mode & 0o002) return false;
-    const me = process.getuid?.();
-    return me === undefined || uid === me || uid === 0 || uid === owner;
-  } catch {
-    return false;
-  }
 }
 
 function realDir(dir: string): string {
@@ -174,10 +157,7 @@ export function lookupPackage(name: string, fromDir: string, bound?: LookupBound
   const { app, limit } = bound;
   const inside = start === limit || isInside(limit, start);
   const last = inside ? limit : installRoot(start);
-  let owner: number | undefined;
-  try {
-    owner = statSync(app).uid;
-  } catch {}
+  const owner = appOwner(app);
   const vetted = (dir: string) =>
     dir === app ||
     isInside(app, dir) ||

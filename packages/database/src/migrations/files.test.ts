@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:f
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { workspaceRoot } from '../workspace.ts';
 import { migrationDirectories, migrationFiles, refusedSource } from './files.ts';
@@ -110,6 +110,20 @@ describe('migrationDirectories', () => {
     const { base, root } = monorepo();
     const workspace = migrations(base, 'packages', 'perm', 'migrations');
     chmodSync(base, 0o777);
+    expect(() => migrationDirectories(app(root, mod('perm', workspace)))).toThrow(/D20.*outside the app and its workspace/s);
+  });
+
+  it.skipIf(process.platform === 'win32')('refuses a workspace package when a folder that everyone can write to lies between the app and the workspace root', () => {
+    const { base } = monorepo();
+    chmodSync(base, 0o755);
+    const open = join(base, 'open');
+    const root = join(open, 'app');
+    mkdirSync(root, { recursive: true });
+    chmodSync(open, 0o777);
+    onTestFinished(() => chmodSync(open, 0o755));
+    const workspace = migrations(base, 'packages', 'perm', 'migrations');
+    expect(() => migrationDirectories(app(root, mod('perm', workspace)))).toThrow(/D20.*outside the app and its workspace/s);
+    writeFileSync(join(open, 'pnpm-lock.yaml'), '');
     expect(() => migrationDirectories(app(root, mod('perm', workspace)))).toThrow(/D20.*outside the app and its workspace/s);
   });
 

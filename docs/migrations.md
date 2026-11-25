@@ -115,7 +115,10 @@ the workspace is refused too.
 `migrate` also names a migration whose file changed after it ran ([see below](#a-migration-that-changed-after-it-ran)), but it sees only the file, not what the file imports.
 
 The workspace of an app is the directory of its lockfile when that declares one (`pnpm-workspace.yaml`, or `workspaces` in its
-`package.json`). A package of your own monorepo is fine, with the lockfile in the root of the monorepo. Without a declaration, or with
+`package.json`).
+The search for the lockfile stops below the first folder above your app that everyone can write to or that a user other than you, root or the owner of your app owns.
+A lockfile behind such a folder does not count, and neither does one planted in it.
+A package of your own monorepo is fine, with the lockfile in the root of the monorepo. Without a declaration, or with
 the workspace of a tool Marmeon does not read (Deno, Rush, Nx, Lerna), only the app's own directory counts. A package manager that
 keeps packages outside the repository (a cache, a global store, `link:` to another repository) puts them out of reach.
 A package cache inside the app, such as `DENO_DIR` or Bun's cache directory, is not recognised: keep it outside the app.
@@ -1385,7 +1388,9 @@ migrations, with what each lacks: `@acme/permissions — lacks 1: add_grants_tab
 `marmeon publish <package> [--module=<name>]` copies the migrations of one package without asking. The package must be in the
 `dependencies` or `devDependencies` of your app's `package.json` and installed in its `node_modules`: a package that only
 another package brought is not copied; the package is looked for in the `node_modules` of the app and, in a workspace, of the
-directories above it up to the first one with a lockfile. The module is `--module`; else the module whose `index.ts` carries the line `publish` writes when it creates a module for the
+directories above it up to the first one with a lockfile.
+The search stops below the first folder above your app that everyone can write to or that a user other than you, root or the owner of your app owns.
+The module is `--module`; else the module whose `index.ts` carries the line `publish` writes when it creates a module for the
 package; else the one the package proposes. With such a module, every file of the package that your app has must lie in it:
 a file in another module stops the command with exit code 1, also when nothing is missing, because it is either a module you
 moved the files to or a package that ships a name your app already uses. Without one, a file of the package in another module
