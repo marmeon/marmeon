@@ -94,7 +94,7 @@ import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveVa
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { devHosts, hostAllowed } from '@marmeon/core/dev';
-import { checkHealthPaths, createHealthEndpoints, readyPathOf } from './health.ts';
+import { checkHealthPaths, createHealthEndpoints, healthPathsOf } from './health.ts';
 import { ServerConfig } from './provider.ts';
 import { forwardedRequest, proxyMatcher } from './proxies.ts';
 import { serveAssets } from './assets.ts';
@@ -135,7 +135,8 @@ export interface KernelOptions {
   islandTimeoutMs?: number;
   /**
    * The health endpoints' path: `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
-   * `ServerConfig.health` (env `SERVER_HEALTH_PATH`, `/up`); `false`: none.
+   * `ServerConfig.health` (env `SERVER_HEALTH_PATH`, `/up`); `false`: none. `router.claimedBy()` sees this value only once the kernel
+   * exists; before that it sees `SERVER_HEALTH_PATH`.
    */
   health?: string | false;
 }
@@ -284,8 +285,10 @@ export function createHttpKernel(
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   // The locales a localized route can name (`@marmeon/i18n`); the start stops without them, and on a route they would shadow.
   const urlLocales = container.has(UrlLocales) ? container.make(UrlLocales) : undefined;
-  // What the server answers besides routes — the locales a localized route's path names, the health check — for `claimedBy`.
-  router.bindServerPaths({ locales: urlLocales?.supported, health: health === false ? [] : [health, readyPathOf(health)] });
+  // What the server answers besides routes, for `claimedBy`. The providers bound both at boot; bound again because the `health` option
+  // may override the configuration, and an app may supply `UrlLocales` without `@marmeon/i18n`.
+  if (urlLocales) router.bindUrlLocales(urlLocales);
+  router.bindHealthPaths(healthPathsOf(health));
   checkLocalizedRoutes(router, urlLocales, (route) => redactor.path(route.path, route.path));
   // A route no request reaches, because an earlier one has its method and path: a warning in development, the start goes on.
   if (environment.isDevelopment()) {
