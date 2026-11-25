@@ -1219,6 +1219,40 @@ describe.runIf(drivers.includes('pgsql' as never))('names Postgres measures in t
           expect(await tablesOf(own.connections)).toEqual(['migrations', 'orders_archive']);
         });
 
+        it('runs a plan that creates and drops tables of 80 and 40 bytes that Postgres keeps apart (the first is cut to 62)', async () => {
+          const body = [plain('é'.repeat(40)), plain('é'.repeat(20)), `    schema.drop(${q('é'.repeat(40))});`, `    schema.drop(${q('é'.repeat(20))});`, plain('survivor')].join('\n');
+          expect((await migrate({ [`${stamp(1)}_wide`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_wide`]);
+          expect(await tablesOf(own.connections)).toEqual(['migrations', 'survivor']);
+        });
+
+        it('runs a plan that adds and drops columns of 80 and 40 bytes that Postgres keeps apart', async () => {
+          const body = [
+            `    schema.create('wide_columns', (table: any) => { table.string(${q('é'.repeat(40))}); table.string(${q('é'.repeat(20))}); table.string('other'); });`,
+            alters(`table.dropColumn(${q('é'.repeat(40))}); table.dropColumn(${q('é'.repeat(20))});`, 'wide_columns'),
+          ].join('\n');
+          expect((await migrate({ [`${stamp(1)}_wide_columns`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_wide_columns`]);
+          expect(await columnsOf('wide_columns')).toEqual(['other']);
+        });
+
+        it('runs an alter that adds a long column, indexes it under a short name, and drops it', async () => {
+          const long = 'c'.repeat(70);
+          const body = [plain('indexed'), alters(`table.string(${q(long)}); table.index([${q(long)}], 'indexed_short_ix'); table.dropColumn(${q(long)});`, 'indexed')].join('\n');
+          expect((await migrate({ [`${stamp(1)}_indexed`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_indexed`]);
+          expect(await columnsOf('indexed')).toEqual(['a']);
+          expect((await sql<{ name: string }>`select indexname as name from pg_indexes where tablename = 'indexed' and indexname = 'indexed_short_ix'`.execute(own.connections.get<any>())).rows).toEqual([]);
+        });
+
+        it.each([
+          ['ASCII', 'x'.repeat(70), 'x'.repeat(63)],
+          ['non-ASCII (the server measures the bytes)', 'é'.repeat(40), 'é'.repeat(31)],
+        ])('refuses a drop by a long name after the plan took its cut for another table, %s, and changes nothing', async (_kind, long, stored) => {
+          const body = [plain(long), plain(stored), `    schema.drop(${q(long)});`].join('\n');
+          const error = await failure(migrator(own.connections, moduleOf({ [`${stamp(1)}_withdrawn`]: source(body) })).migrate());
+          expect(error.message).toBe(acting('table', 'drop()', long));
+          expect(await tablesOf(own.connections)).toEqual(['migrations']);
+          expect(await recordOf(own.connections)).toEqual([]);
+        });
+
         describe('a qualified table name', () => {
           const schemaName = `marmeon_cutnames_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}`.toLowerCase();
           const inSchema = (name: string) => `${schemaName}.${name}`;

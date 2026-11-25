@@ -9,7 +9,7 @@ import type { Connections } from '../connections.ts';
 import { Migrator } from '../index.ts';
 import { runMigration } from '../migrations/run.ts';
 import type { Blueprint } from './blueprint.ts';
-import { assertNamesFitPgsql, pgsqlNames, planOf } from './plan.ts';
+import { assertNamesFitPgsql, executePlan, pgsqlCompared, pgsqlCuts, pgsqlNames, planOf, type PlanStep } from './plan.ts';
 import { Schema, SchemaError } from './schema.ts';
 
 describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => {
@@ -545,6 +545,19 @@ function answering(answer: () => unknown[]): Kysely<any> {
   });
 }
 
+/** What a UTF-8 database makes of a name: whole characters up to 63 bytes. */
+function clipped(name: string): string {
+  let kept = '';
+  for (const char of name) {
+    if (Buffer.byteLength(kept + char) > 63) break;
+    kept += char;
+  }
+  return kept;
+}
+
+/** The cuts of every name `pgsqlNames` compares in `steps`, as a UTF-8 database makes them. */
+const cutsOf = (steps: readonly PlanStep[]) => new Map(pgsqlCompared(steps).map((name) => [name, clipped(name)]));
+
 describe('asking Postgres whether the names of a plan fit', () => {
   const names = [
     { name: 'short_index', what: 'index name', hint: 'Shorten it.' },
@@ -586,6 +599,68 @@ describe('asking Postgres whether the names of a plan fit', () => {
     expect((error as SchemaError).message).not.toContain('\0');
   });
 
+  it('refuses the plan when the query for the cuts fails, before any statement of it runs', async () => {
+    const failure = Object.assign(new Error('connection lost'), { code: '08006' });
+    const steps = planOf({ up: (schema) => { schema.create('made', (table: any) => table.string('a')); schema.drop('made'); } }, 'up');
+    let asked = 0;
+    await expect(executePlan(answering(() => { asked++; throw failure; }), 'pgsql', steps)).rejects.toBe(failure);
+    expect(asked).toBe(1);
+  });
+
+  it('does not read a name it has no cut for', () => {
+    const compared = planOf({ up: (schema) => { schema.create('made', (table: any) => table.string('a')); schema.drop('old'); } }, 'up');
+    expect(() => pgsqlNames(compared, new Map())).toThrow(/No cut of the name "/);
+  });
+
+  describe('the cuts of the names a plan compares', () => {
+    const hex = (text: string) => Buffer.from(text).toString('hex');
+    const steps = planOf({ up: (schema) => { schema.create('made', (table: any) => table.string('a')); schema.drop('old'); } }, 'up');
+
+    it('matches the rows to the names by position', async () => {
+      const cuts = await pgsqlCuts(answering(() => [{ c: hex('1') }, { c: hex('2') }, { c: hex('3') }]), steps);
+      expect([...cuts]).toEqual(pgsqlCompared(steps).map((name, index) => [name, hex(String(index + 1))]));
+      expect(pgsqlCompared(steps)).toEqual(['made', 'a', 'old']);
+    });
+
+    it('keys a name with a lone surrogate by its place, though a client may send it back changed', async () => {
+      const lone = planOf({ up: (schema) => { schema.create('made', (table: any) => table.string('a')); schema.drop('lone\ud800'); } }, 'up');
+      const cuts = await pgsqlCuts(answering(() => [{ c: 'aa' }, { c: 'bb' }, { c: 'cc' }]), lone);
+      expect(cuts.get('lone\ud800')).toBe('cc');
+    });
+
+    it('asks nothing for a plan that compares no name', async () => {
+      let asked = 0;
+      const raw = planOf({ up: (schema) => { schema.raw({ pgsql: sql`select 1` }); schema.data(async () => {}); } }, 'up');
+      expect((await pgsqlCuts(answering(() => (asked++, [])), raw)).size).toBe(0);
+      expect(asked).toBe(0);
+    });
+
+    it.each(['22P05', '22021'])('refuses a name the encoding cannot hold (%s) with D5 and the names, and keeps the error as the cause', async (code) => {
+      const failure = Object.assign(new Error('character has no equivalent'), { code });
+      const wide = planOf({ up: (schema) => { schema.create('made', (table: any) => table.string('a')); schema.drop('indéx_日本'); schema.drop('nul\0name'); } }, 'up');
+      const error = await pgsqlCuts(answering(() => { throw failure; }), wide).then(() => undefined, (caught: unknown) => caught);
+      expect(error).toBeInstanceOf(SchemaError);
+      expect((error as SchemaError).message).toMatch(/^\[marmeon:D5\] One of these names cannot be held in this database's encoding: "indéx_日本", "nul\\u0000name"\./);
+      expect((error as SchemaError).cause).toBe(failure);
+    });
+
+    it('refuses an answer with another number of rows than names', async () => {
+      await expect(pgsqlCuts(answering(() => [{ c: 'aa' }]), steps)).rejects.toThrow(/answered 1 cuts for 3 names/);
+    });
+
+    it('withdraws what the plan holds under a name the server cuts to the same name', async () => {
+      const long = 'x'.repeat(70);
+      const withdrawing = planOf({ up: (schema) => {
+        schema.create(long, (table: any) => table.string('a'));
+        schema.rename('x'.repeat(63), 'keep');
+        schema.create('x'.repeat(63), (table: any) => table.string('a'));
+        schema.drop(long);
+      } }, 'up');
+      const cuts = await pgsqlCuts(answering(() => pgsqlCompared(withdrawing).map((name) => ({ c: hex(clipped(name)) }))), withdrawing);
+      expect(pgsqlNames(withdrawing, cuts).map((one) => [one.what, one.name])).toEqual([['table', 'x'.repeat(63)], ['table', long]]);
+    });
+  });
+
   it('lets every other error of the query through unchanged', async () => {
     const failure = Object.assign(new Error('connection lost'), { code: '08006' });
     await expect(assertNamesFitPgsql(answering(() => { throw failure; }), names)).rejects.toBe(failure);
@@ -593,14 +668,17 @@ describe('asking Postgres whether the names of a plan fit', () => {
 
   it('collects the name a oneOf() gives a column that had no list, from what the migrations know', () => {
     const steps = planOf({ up: (schema) => schema.alter('items', (table) => table.oneOf('state', ['a', 'b'])) }, 'up');
-    const given = (listCheck?: Parameters<typeof pgsqlNames>[1]) => pgsqlNames(steps, listCheck).filter((entry) => entry.what === 'check constraint name').map((entry) => entry.name);
+    const given = (listCheck?: Parameters<typeof pgsqlNames>[2]) => pgsqlNames(steps, cutsOf(steps), listCheck).filter((entry) => entry.what === 'check constraint name').map((entry) => entry.name);
     expect(given(() => ({ name: 'items_state_check', had: false }))).toEqual(['items_state_check']);
     expect(given(() => ({ name: 'items_state_check', had: true }))).toEqual([]);
     expect(given()).toEqual([]);
   });
 
   describe('collects what a plan only acts on, unless an earlier step of the plan made it', () => {
-    const collected = (up: (schema: any) => void) => pgsqlNames(planOf({ up }, 'up'));
+    const collected = (up: (schema: any) => void) => {
+      const steps = planOf({ up }, 'up');
+      return pgsqlNames(steps, cutsOf(steps));
+    };
     const effect = (kind: string, method: string) => `, so ${method} would act on the ${kind} its first 63 bytes name.`;
     const entry = (kind: string, name: string, method: string) => ({ name, what: kind, hint: `Name the ${kind} as Postgres stored it.`, effect: effect(kind, method) });
 
@@ -687,7 +765,7 @@ describe('asking Postgres whether the names of a plan fit', () => {
       expect(collected((schema) => schema.alter('items', (table: any) => { table.string('c'); table.unique(['c'], 'short_uq'); })).filter((one) => one.what === 'column')).toEqual([]);
     });
 
-    it('withdraws what the plan holds under a name that shares its first characters with one a step takes or gives', () => {
+    it('withdraws what the plan holds under a name that Postgres cuts to the same name as one a step takes or gives', () => {
       const long = 'x'.repeat(70);
       const stored = 'x'.repeat(63);
       expect(collected((schema) => {
@@ -739,6 +817,57 @@ describe('asking Postgres whether the names of a plan fit', () => {
       }).filter((one) => one.name === long)).toEqual([entry('table', long, 'drop()')]);
     });
 
+    it('keeps two names apart that Postgres keeps apart, whatever their size in bytes', () => {
+      // 40 and 20 characters of two bytes are 80 and 40 bytes: the first is cut to 31 characters, so the two are different tables and columns.
+      expect(collected((schema) => {
+        schema.create('é'.repeat(40), (table: any) => table.string('a'));
+        schema.create('é'.repeat(20), (table: any) => table.string('a'));
+        schema.drop('é'.repeat(40));
+        schema.drop('é'.repeat(20));
+      })).toEqual([]);
+      expect(collected((schema) => {
+        schema.create('items', (table: any) => table.string('é'.repeat(40)));
+        schema.alter('items', (table: any) => { table.string('é'.repeat(20)); table.dropColumn('é'.repeat(40)); table.dropColumn('é'.repeat(20)); });
+      })).toEqual([]);
+    });
+
+    it('still withdraws what the plan holds under a name whose cut is the same, though the names differ in bytes', () => {
+      const first = `${'é'.repeat(32)}a`;
+      const second = 'é'.repeat(31);
+      expect(collected((schema) => {
+        schema.create(first, (table: any) => table.string('a'));
+        schema.rename(second, 'keep');
+        schema.create(second, (table: any) => table.string('a'));
+        schema.drop(first);
+      }).filter((one) => one.what === 'table')).toEqual([entry('table', second, 'rename()'), entry('table', first, 'drop()')]);
+    });
+
+    it('does not name a column an alter adds, indexes under a short name, and drops', () => {
+      const long = 'c'.repeat(70);
+      expect(collected((schema) => schema.alter('items', (table: any) => { table.string(long); table.index([long], 'short_ix'); table.dropColumn(long); })).filter((one) => one.what === 'column')).toEqual([]);
+    });
+
+    it('keeps the tables of two schemas apart, and still reads `public.S` as the table S', () => {
+      const long = 'x'.repeat(70);
+      expect(collected((schema) => {
+        schema.create(`a.${long}`, (table: any) => table.string('a'));
+        schema.create(`b.${long}`, (table: any) => table.string('a'));
+        schema.drop(`a.${long}`);
+        schema.drop(`b.${long}`);
+      })).toEqual([]);
+      // A step on `b.<cut>` is not one on `a.<long>`; one on `<cut>` without a schema may be any schema, so `public.<long>` is withdrawn.
+      expect(collected((schema) => {
+        schema.create(`a.${long}`, (table: any) => table.string('a'));
+        schema.rename(`b.${'x'.repeat(63)}`, 'keep');
+        schema.drop(`a.${long}`);
+      }).filter((one) => one.name === long)).toEqual([]);
+      expect(collected((schema) => {
+        schema.create(`public.${long}`, (table: any) => table.string('a'));
+        schema.rename('x'.repeat(63), 'keep');
+        schema.drop(`public.${long}`);
+      }).filter((one) => one.name === long)).toEqual([entry('table', long, 'drop()')]);
+    });
+
     it('names what an earlier step of the plan took away or never made', () => {
       expect(collected((schema) => { schema.create('made', (table: any) => table.string('x')); schema.rename('made', 'later'); schema.drop('made'); })).toEqual([entry('table', 'made', 'drop()')]);
       expect(collected((schema) => {
@@ -781,9 +910,9 @@ describe('asking Postgres whether the names of a plan fit', () => {
       // The constraint a oneOf() gives an existing column, dropped in a later step on the same table: the plan made it.
       const listed = { name: 'items_state_check', had: false };
       const withList = (step2: (table: any) => void, table2 = 'items') => planOf({ up: (schema) => { schema.alter('items', (table: any) => table.oneOf('state', 'a')); schema.alter(table2, step2); } }, 'up');
-      expect(pgsqlNames(withList((table) => table.dropCheck('items_state_check')), (at) => (at === 0 ? listed : undefined)).filter((one) => one.what === 'check constraint')).toEqual([]);
+      expect(pgsqlNames(withList((table) => table.dropCheck('items_state_check')), cutsOf(withList((table) => table.dropCheck('items_state_check'))), (at) => (at === 0 ? listed : undefined)).filter((one) => one.what === 'check constraint')).toEqual([]);
       // Check names belong to a table: the same name on another table is the database's.
-      expect(pgsqlNames(withList((table) => table.dropCheck('items_state_check'), 'other'), (at) => (at === 0 ? listed : undefined)).filter((one) => one.what === 'check constraint')).toEqual([entry('check constraint', 'items_state_check', 'dropCheck()')]);
+      expect(pgsqlNames(withList((table) => table.dropCheck('items_state_check'), 'other'), cutsOf(withList((table) => table.dropCheck('items_state_check'), 'other')), (at) => (at === 0 ? listed : undefined)).filter((one) => one.what === 'check constraint')).toEqual([entry('check constraint', 'items_state_check', 'dropCheck()')]);
       expect(collected((schema) => { schema.create('gone', (table: any) => table.string('x')); schema.drop('gone'); schema.drop('gone'); })).toEqual([entry('table', 'gone', 'drop()')]);
       expect(collected((schema) => {
         schema.create('made', (table: any) => table.string('x'));

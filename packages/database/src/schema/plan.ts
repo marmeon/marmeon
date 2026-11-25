@@ -77,7 +77,7 @@ export async function executePlan(
   tablesAt?: TablesAt,
 ): Promise<void> {
   check(driver, steps);
-  if (driver === 'pgsql') await assertNamesFitPgsql(db, pgsqlNames(steps));
+  if (driver === 'pgsql') await assertNamesFitPgsql(db, pgsqlNames(steps, await pgsqlCuts(db, steps)));
   if (driver === 'mysql') {
     checkMysqlLists(steps, listCheck);
     const tables = mysqlStateTables(steps);
@@ -117,7 +117,8 @@ export interface PgsqlName {
 
 /**
  * The names a plan gives, and those it acts on, that Postgres may cut: it alone knows where it cuts one (63 bytes of the database's
- * encoding), so nothing is measured here: pass them to {@link assertNamesFitPgsql}. The names a plan gives are those `check()` measures on MySQL.
+ * encoding), so nothing is measured here: `cuts` holds what Postgres makes of each name the plan compares ({@link pgsqlCuts}, or
+ * {@link pgsqlCompared} for the names), and the result goes to {@link assertNamesFitPgsql}. The names a plan gives are those `check()` measures on MySQL.
  *
  * A name a plan only acts on is collected when a step names a table, column, index or check constraint that Postgres would take for the
  * one its first 63 bytes name: the table of `drop`, `rename` (its `from`) and `alter` (each part of a qualified name), the columns of
@@ -125,8 +126,13 @@ export interface PgsqlName {
  * `dropCheck`, the table and column a foreign key points at, and the columns of an index and of its `where`. Not those an earlier step of the plan made (created, renamed to, added), which the plan holds under the long name. A name in
  * `raw()` and `data()` steps is not collected.
  */
-export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): PgsqlName[] {
+export function pgsqlNames(steps: readonly PlanStep[], cuts: ReadonlyMap<string, string>, listCheck?: ListCheck): PgsqlName[] {
   const names: PgsqlName[] = [];
+  const cut = (name: string) => {
+    const found = cuts.get(name);
+    if (found === undefined) throw new Error(`No cut of the name "${printable(name)}" was given to pgsqlNames(); ask for every name pgsqlCompared() lists.`);
+    return found;
+  };
   const add = (name: string, what: string, hint = DEFAULT_NAME_HINT, effect?: string) => names.push({ name, what, hint, ...(effect ? { effect } : {}) });
   // What the plan has made so far, which a later step may name as it was given: the tables (by the whole string, as given), the columns added to each table, and the indexes and check constraints.
   const created = new Set<string>();
@@ -140,21 +146,19 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
     if (known) return;
     for (const part of parts) add(part.name, part.kind, `Name the ${part.kind} as Postgres stored it.`, `, so ${method} would act on the ${part.kind} its first 63 bytes name.`);
   };
-  // Postgres reads a short name as a longer one only when it is the other's cut, or is itself cut: it keeps whole characters up to 63 bytes (ASCII 1 byte, any other character counted as 4), so the short name must leave no room for the long one's next character.
-  const bytes = (text: string) => [...text].reduce((sum, char) => sum + (char.charCodeAt(0) < 128 ? 1 : 4), 0);
-  const alike = (a: string, b: string) => {
-    const [short, long] = a.length <= b.length ? [a, b] : [b, a];
-    if (!long.startsWith(short)) return false;
-    const [next = ''] = long.slice(short.length);
-    return bytes(short) + bytes(next) > 63;
+  // Two names are the same object for Postgres when they are equal once it has cut them; the server says where, not this code.
+  const sameName = (a: string, b: string) => cut(a) === cut(b);
+  // Two tables are the same object when their table parts are, and their schemas: a name without a schema may resolve to any schema of the search path, so it matches every one (`public.S` is the table S).
+  const sameTable = (a: string, b: string) => {
+    const [x, y] = [tableParts(a), tableParts(b)];
+    const [xs, ys] = [x.find((part) => part.kind === 'schema'), y.find((part) => part.kind === 'schema')];
+    return sameName(x.at(-1)!.name, y.at(-1)!.name) && (!xs || !ys || sameName(xs.name, ys.name));
   };
-  // A step on a name withdraws what the plan holds under one Postgres would read as it. A table is compared by its own name: `public.S` is the table S.
+  // A step on a name withdraws what the plan holds under one Postgres would read as it.
   const withdraw = (set: Set<string>, name: string, table = false) => {
-    const own = table ? tableParts(name).at(-1)!.name : name;
     for (const entry of set) {
       if (entry === name) continue;
-      const other = table ? tableParts(entry).at(-1)!.name : entry;
-      if (other === own || alike(other, own)) set.delete(entry);
+      if (table ? sameTable(entry, name) : sameName(entry, name)) set.delete(entry);
     }
   };
   const actsOnTable = (method: string, table: string) => acts('table', method, table, created.has(table), tableParts(table));
@@ -187,7 +191,7 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
       added.set(step.table, new Set());
     } else actsOnTable('alter()', step.table);
     const columns = columnsOf(step.table);
-    // An alter runs, in this order: the drops of indexes and checks, the renames, the additions, nullability, the lists, and last the drops of columns.
+    // An alter runs, in this order: the drops of indexes and checks, the renames, the additions, nullability, foreign keys, the lists, checks, the indexes, and last the drops of columns; the walk below follows it.
     for (const name of step.kind === 'alter' ? parts.dropIndexes : []) {
       acts('index', parts.dropUniques.includes(name) ? 'dropUnique()' : 'dropIndex()', name, indexes.has(name));
       indexes.delete(name);
@@ -209,11 +213,6 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
     }
     for (const { column, nullable } of step.kind === 'alter' ? parts.nullability : []) acts('column', nullable ? 'nullable()' : 'notNull()', column, columns.has(column));
     for (const { column } of step.kind === 'alter' ? parts.oneOfChanges : []) acts('column', 'oneOf()', column, columns.has(column));
-    for (const column of step.kind === 'alter' ? parts.drops : []) {
-      acts('column', 'dropColumn()', column, columns.has(column));
-      withdraw(columns, column);
-      columns.delete(column);
-    }
     // What a foreign key points at, and the columns an index covers (the projection reads these in an up(), not in a down()).
     for (const { references } of [...parts.columns, ...(step.kind === 'alter' ? parts.foreignKeys : [])]) {
       if (!references) continue;
@@ -241,12 +240,78 @@ export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): P
       if (found) checksOf(step.table).add(found.name);
       if (found && !hadList(found, parts, column)) add(found.name, 'check constraint name');
     }
+    // The drops of columns run last, after the foreign keys, indexes and checks that may still name the column.
+    for (const column of step.kind === 'alter' ? parts.drops : []) {
+      acts('column', 'dropColumn()', column, columns.has(column));
+      withdraw(columns, column);
+      columns.delete(column);
+    }
   }
   return names;
 }
 
+/**
+ * The names `pgsqlNames` compares to tell whether Postgres reads two of them as one object: each part of the tables of create, drop,
+ * rename (`from` and `to`) and alter steps, and the column names of the blueprints (added, renamed from and to, dropped).
+ */
+export function pgsqlCompared(steps: readonly PlanStep[]): string[] {
+  const found = new Set<string>();
+  const table = (name: string) => tableParts(name).forEach((part) => found.add(part.name));
+  for (const step of steps) {
+    if (step.kind === 'drop') table(step.table);
+    if (step.kind === 'rename') {
+      table(step.from);
+      table(step.to);
+    }
+    if (step.kind !== 'create' && step.kind !== 'alter') continue;
+    table(step.table);
+    const parts = blueprintParts(step.blueprint);
+    for (const { name } of parts.columns) found.add(name);
+    for (const { from, to } of parts.renames) {
+      found.add(from);
+      found.add(to);
+    }
+    for (const column of parts.drops) found.add(column);
+  }
+  return [...found];
+}
+
+/**
+ * What Postgres makes of each name of {@link pgsqlCompared}: the server casts it to `name`, which clips at 63 bytes in the encoding of the
+ * database, the cut every statement makes. The cut comes back as the hex of the bytes the server holds, so two cuts are equal exactly when
+ * Postgres reads the two names as one, whatever a client makes of bytes that are no character of the encoding; it is only ever compared,
+ * never shown. The rows are matched to the names by position, not by the text they carry back, which a client may change (a lone surrogate).
+ * Asked of `db`, the connection the plan runs on. A name the encoding cannot hold is refused (D5); any other error of the query is not
+ * caught, and an answer that is not one row per name is an error too: the plan then does not run.
+ */
+export async function pgsqlCuts(db: Kysely<any>, steps: readonly PlanStep[]): Promise<Map<string, string>> {
+  const asked = pgsqlCompared(steps);
+  const cuts = new Map<string, string>();
+  if (asked.length === 0) return cuts;
+  let rows: { c: string }[];
+  try {
+    ({ rows } = await sql<{ c: string }>`select encode(convert_to(n::name::text, current_setting('server_encoding')), 'hex') as c from unnest(${asked}::text[]) with ordinality as t(n, i) order by i`.execute(db));
+  } catch (error) {
+    throw untranslatable(error, asked);
+  }
+  if (rows.length !== asked.length) throw new Error(`Postgres answered ${rows.length} cuts for ${asked.length} names.`);
+  for (const [index, name] of asked.entries()) cuts.set(name, rows[index]!.c);
+  return cuts;
+}
+
 /** The SQLSTATEs of a name the encoding of the database cannot hold: a character the encoding does not have, or a byte sequence it does not allow. */
 const UNTRANSLATABLE = new Set(['22P05', '22021']);
+
+/** The D5 for a name the encoding cannot hold; any other error of a query asking the server is returned as it is, to be thrown: the plan then does not run. */
+function untranslatable(error: unknown, names: readonly string[]): unknown {
+  const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
+  if (typeof code !== 'string' || !UNTRANSLATABLE.has(code)) return error;
+  const listed = names.filter((name) => /\P{ASCII}|\0/u.test(name)).map((name) => `"${printable(name)}"`);
+  return new SchemaError(
+    withCode('D5', `One of these names cannot be held in this database's encoding: ${(listed.length ? listed : names.map((name) => `"${printable(name)}"`)).join(', ')}. Give it a name made of characters the database's encoding has.`),
+    { cause: error },
+  );
+}
 
 /**
  * Refuses (D5) the first of `names` that Postgres would cut at 63 bytes without a word, whether a migration gives it or only acts on it. The server measures: casting to `name` clips at
@@ -260,13 +325,7 @@ export async function assertNamesFitPgsql(db: Kysely<any>, names: readonly Pgsql
   try {
     ({ rows } = await sql<{ n: string }>`select n from unnest(${names.map((entry) => entry.name)}::text[]) with ordinality as t(n, i) where n::name::text is distinct from n order by i limit 1`.execute(db));
   } catch (error) {
-    const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
-    if (typeof code !== 'string' || !UNTRANSLATABLE.has(code)) throw error;
-    const listed = names.filter((entry) => /\P{ASCII}|\0/u.test(entry.name)).map((entry) => `"${printable(entry.name)}"`);
-    throw new SchemaError(
-      withCode('D5', `One of these names cannot be held in this database's encoding: ${(listed.length ? listed : names.map((entry) => `"${printable(entry.name)}"`)).join(', ')}. Give it a name made of characters the database's encoding has.`),
-      { cause: error },
-    );
+    throw untranslatable(error, names.map((entry) => entry.name));
   }
   if (rows.length === 0) return;
   const { name, what, hint, effect } = names.find((entry) => entry.name === rows[0]!.n) ?? { name: rows[0]!.n, what: 'name', hint: DEFAULT_NAME_HINT, effect: undefined };

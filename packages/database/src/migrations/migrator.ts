@@ -10,7 +10,7 @@ import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsT
 import { migratorConnection } from '../migrator-connection.ts';
 import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
-import { assertNamesFitPgsql, assertRawFitsMysql, check, executePlan, planOf, pgsqlNames, type PgsqlName, type PlanStep } from '../schema/plan.ts';
+import { assertNamesFitPgsql, assertRawFitsMysql, check, executePlan, planOf, pgsqlCuts, pgsqlNames, type PgsqlName, type PlanStep } from '../schema/plan.ts';
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
 import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, tablesAtOf, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
@@ -785,9 +785,11 @@ export class Migrator {
    */
   async #assertNamesFit(entries: readonly { file: MigrationFile; connection: string; plan: readonly PlanStep[] }[], starts: readonly SchemaProjection[]): Promise<void> {
     const byConnection = new Map<string, PgsqlName[]>();
+    // The cuts are asked of the connection the plan runs on, the one its names are then checked against.
     for (const [index, { file, connection, plan }] of entries.entries()) {
       if (this.#driver(connection) !== 'pgsql') continue;
-      byConnection.set(connection, [...(byConnection.get(connection) ?? []), ...pgsqlNames(plan, listCheckOf(starts[index]!, plan, file))]);
+      const cuts = await pgsqlCuts(this.#books(connection), plan);
+      byConnection.set(connection, [...(byConnection.get(connection) ?? []), ...pgsqlNames(plan, cuts, listCheckOf(starts[index]!, plan, file))]);
     }
     for (const [connection, names] of byConnection) await assertNamesFitPgsql(this.#books(connection), names);
   }
