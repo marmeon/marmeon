@@ -299,6 +299,24 @@ describe('NewPassword after a reset it leaves alone', () => {
     expect(unhandled).toEqual([]);
   });
 
+  it('tries the warning again at the next reset when the logger threw, and says it once when it works', async () => {
+    let attempts = 0;
+    const throwing = {
+      warn: () => {
+        attempts++;
+        throw new Error('log sink down');
+      },
+    } as unknown as Logger;
+    const failing = setup({ state: source(['passkey']), logger: throwing });
+    await failing.reset({ id: 1 });
+    await failing.reset({ id: 1 });
+    expect(attempts, 'tried again after the sink threw').toBe(2);
+    const working = setup({ state: source(['passkey']) });
+    await working.reset({ id: 1 });
+    await working.reset({ id: 1 });
+    expect(working.logged.filter((entry) => entry.level === 'warn')).toHaveLength(1);
+  });
+
   it('does not warn where no factor source is bound', async () => {
     const { reset, logged } = setup({ state: new NoTwoFactorState() });
     await reset({ id: 1 });

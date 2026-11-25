@@ -170,8 +170,7 @@ export class NewPassword {
   /** A user without `email_verified_at` is never treated as unconfirmed — which with factors bound means the rule is off, and the app should know. */
   #warnVerificationUnknown(): void {
     if (this.#warnedUnknownVerification || this.#guard.factors() instanceof NoTwoFactorState) return;
-    this.#warnedUnknownVerification = true;
-    logQuietly(this.#guard.logger(), 'warn', 'The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
+    this.#warnedUnknownVerification = logQuietly(this.#guard.logger(), 'warn', 'The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
   }
 }
 

@@ -305,6 +305,18 @@ describe('a policy of the app on a route of a package guard', () => {
     await application.shutdown();
   });
 
+  it('tries the warning again at the next check when the logger threw', async () => {
+    current = policies();
+    vi.stubEnv('NODE_ENV', 'development');
+    let attempts = 0;
+    const throwing = { debug() {}, info() {}, warn: () => (attempts++, (() => { throw new Error('log sink down'); })()), error() {}, child: () => throwing } as unknown as Logger;
+    const { signedIn, application } = await running(throwing);
+    const both = await signedIn('app', 'office');
+    for (let i = 0; i < 2; i++) expect(await json(await both.call('/o/ask', { 'x-how': 'allows' })), 'the answer is no all the same').toEqual(denied('allows', 'update'));
+    expect(attempts, 'tried again after the sink threw').toBe(2);
+    await application.shutdown();
+  });
+
   it('is judged on its own guard where no guard names the route: the page of the app\'s user is the user\'s, and the editor is no one', async () => {
     current = policies();
     const { signedIn, application } = await running();

@@ -185,8 +185,7 @@ export class Gate {
     if (!environment.isDevelopment()) return;
     const seen = WARNED.get(policy) ?? new Set<string>();
     if (seen.has(routeGuard)) return;
-    WARNED.set(policy, seen.add(routeGuard));
-    logQuietly(
+    const said = logQuietly(
       this.#resolve(Logger),
       'warn',
       withCode(
@@ -195,6 +194,8 @@ export class Gate {
           'See docs/authorization.md#policies-of-a-guard.',
       ),
     );
+    // A sink that threw said nothing: the next check tries again.
+    if (said) WARNED.set(policy, seen.add(routeGuard));
   }
 
   async allows<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K, PolicyUser<C>>): Promise<boolean> {
