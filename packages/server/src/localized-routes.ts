@@ -1,7 +1,7 @@
 import type { Router } from '@marmeon/router';
 import type { UrlLocales } from '@marmeon/router/internal';
 import { withCode } from '@marmeon/core/internal';
-import { withoutLocale } from '@marmeon/router/internal';
+import { matchParams, tokenizePattern, withoutLocale } from '@marmeon/router/internal';
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -65,12 +65,28 @@ export function checkLocalizedRoutes(router: Router, urlLocales: UrlLocales | un
   }
   const taken = router.registrationOrder.filter((route) => !route.generatedFrom);
   if (unprefixed !== undefined) {
-    // HEAD is answered by the GET route: the two count as one method.
-    const methodsOf = (route: { methods: readonly string[] }) => new Set(route.methods.map((method) => (method === 'HEAD' ? 'GET' : method)));
-    for (const address of router.registrationOrder) {
+    // Hono answers HEAD through the GET routes: a route of HEAD alone never runs, so it answers nothing (as `routeConflicts` counts).
+    const methodsOf = (route: { methods: readonly string[] }) => new Set(route.methods.filter((method) => method !== 'HEAD'));
+    const listed = router.routes.some((route) => route.inSitemap);
+    const order = router.registrationOrder;
+    for (const [index, address] of order.entries()) {
       const source = address.generatedFrom;
       if (!source) continue;
       const mine = methodsOf(address);
+      // An address with a parameter first (`/:username`) answers the fixed path of a route registered after it, so that route never runs.
+      // Not the paths it hands on: the sitemap's reach their owner (a path that starts with a locale is refused above).
+      for (const [offset, later] of order.slice(index + 1).entries()) {
+        const fixed = tokenizePattern(later.path).every((token) => 'text' in token);
+        if (!fixed) continue;
+        if (listed && (later.path === '/sitemap.xml' || later.path === '/robots.txt')) continue;
+        if (later.path === address.path || matchParams(address.path, later.path) === undefined) continue;
+        const before = order.slice(0, index + 1 + offset);
+        // Only where this address is the first to answer the path for the method: a route before it that does shadows it already, address or not.
+        // A localized route itself answers no path without its prefix (its `/:locale` would read `/login` as a locale, which a fixed path never starts with).
+        const shared = [...methodsOf(later)].filter((method) => mine.has(method) && before.find((route) => !(route.localized && !route.generatedFrom) && methodsOf(route).has(method) && matchParams(route.path, later.path) !== undefined) === address);
+        if (shared.length === 0) continue;
+        throw new Error(withCode('H9', `${source.methods.join('|')} ${path(source)} (Route.localized()) answers ${shared.join('|')} ${path(later)} at the address of the default locale without a prefix [${unprefixed}] (${path(address)}), ahead of ${later.methods.join('|')} ${path(later)}: that route would never run. Register ${path(later)} before it, or answer the rest of the paths with Route.fallback(). See docs/routing.md#routes-under-a-locale.`));
+      }
       for (const other of taken) {
         // Route paths are stored without a trailing slash (`/about/` is `/about`), so the strings compare as they are.
         if (other.path !== address.path) continue;

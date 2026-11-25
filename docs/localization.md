@@ -293,7 +293,8 @@ is gone when the browser closes), so a shared cache must not store such pages pe
 `APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads those itself.
 
 `Locales` is a service of the whole app: `default`, `fallback`, `supported` with the default first, `explicit` for whether
-`APP_LOCALES` names them, and `find(value)`, which returns the supported locale a value names, or `undefined`.
+`APP_LOCALES` names them, `unprefixed`, the locale whose localized pages have no prefix (the default with `APP_LOCALE_PREFIX=false`,
+else `undefined`), and `find(value)`, which returns the supported locale a value names, or `undefined`.
 
 ### A page in the language of a record
 
@@ -569,6 +570,7 @@ message follow the same order.
 | `APP_LOCALE` | `en` | The default locale, for visitors whose session, account and browser name none of the supported ones. |
 | `APP_FALLBACK_LOCALE` | `en` | Where a message missing in a locale comes from: the language of the source files. |
 | `APP_LOCALES` | every locale with language files | The supported locales, comma-separated: `en,de`. |
+| `APP_LOCALE_PREFIX` | `true` | `false` answers the default locale's localized pages without a prefix (`/about`); the other locales keep theirs (`/en/about`). `GET` and `HEAD` of the prefixed address (`/de/about`) get a `301` to `/about`, other methods a `404`; a page whose address without a prefix would start with a locale (`/de/EN`) keeps its prefix. Only `true`, `false`, `1` and `0` are values: any other stops the start. |
 | `APP_TIMEZONE` | the zone of the process | The IANA time zone dates and times are shown in when a call names none: `Europe/Berlin`. |
 
 Each value must be a language tag, such as `en` or `de-AT`. With `APP_LOCALES` set, `APP_LOCALE` and `APP_FALLBACK_LOCALE` must be

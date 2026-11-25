@@ -91,7 +91,7 @@ export class DevtoolsServiceProvider implements ServiceProvider {
       redactor: app.container.has(Redactor) ? app.container.make(Redactor) : new Redactor(),
       options,
       ...(app.container.has(ErrorSolutions) ? { solutions: app.container.make(ErrorSolutions) } : {}),
-      ...(router && routing && app.container.has(router.Router) ? { routesFor: (pathname: string) => routePatternsFor(pathname, app.container.make(router.Router).routes.map((route) => route.path), routing.matchParams) } : {}),
+      ...(router && routing && app.container.has(router.Router) ? { routesFor: (pathname: string) => routePatternsFor(pathname, addressPatterns(app.container.make(router.Router)), routing.matchParams) } : {}),
     }).start();
     app.container.instance(Recorder, this.#recorder);
 
@@ -115,6 +115,11 @@ export class DevtoolsServiceProvider implements ServiceProvider {
     this.#recorder = undefined;
     await recorder?.close();
   }
+}
+
+/** The routes' patterns and, with a locale served without a prefix, those of its addresses (`/reset/:token` for `/:locale/reset/:token`): what a request's path can match. */
+function addressPatterns(router: { routes: readonly { path: string }[]; registrationOrder: readonly { path: string }[] }): string[] {
+  return [...new Set([...router.routes, ...router.registrationOrder].map((route) => route.path))];
 }
 
 /**

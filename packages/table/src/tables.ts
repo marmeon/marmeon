@@ -6,7 +6,7 @@ import { SystemClock, type Clock, type Translator } from '@marmeon/core';
 import { json, RedirectResult, type JsonResult } from '@marmeon/http';
 import { ACTION_HEADER, isConflictResult, isJsonResult, isRedirectResult, PAGE_HEADER } from '@marmeon/http/internal';
 import { addVary, contentDisposition, expectsJson, EXPECTS_JSON_VARY, HttpError, ValidationError, type ClassResolver, type HttpContext, type RouteDefinition } from '@marmeon/router';
-import { fillPath, isResponse, matchParams } from '@marmeon/router/internal';
+import { fillPath, isResponse, matchParams, withoutLocale } from '@marmeon/router/internal';
 import * as v from 'valibot';
 import type { TableActionResult, TableColumn, TableData, TableExportEntry, TableFilter } from './client/index.ts';
 import { csvLine, CSV_BOM, isCsvDelimiter } from './csv.ts';
@@ -649,8 +649,10 @@ export class DataTables {
 
   /** The URLs of the table's endpoints for this page — of the routes attached to it, with the page's own parameters. */
   #endpoints(definition: TableDefinition, ctx: HttpContext, routes: Partial<Record<TableEndpointKind, RouteDefinition>>) {
+    const { params, prefixed } = pageParams(ctx);
+    // The endpoints lie under the page's own address: without the prefix where the page answered without one.
     const url = (kind: TableEndpointKind, param: string, name: string) =>
-      fillPath(definition.name, routes[kind]!.path, { ...rawParams(ctx.route?.path ?? '/', new URL(ctx.request.url).pathname), [param]: name }).path;
+      fillPath(definition.name, prefixed ? routes[kind]!.path : withoutLocale(routes[kind]!.path), { ...params, [param]: name }).path;
     return {
       action: (name: string) => url('action', 'tableAction', name),
       bulk: (name: string) => url('bulk', 'tableBulk', name),
@@ -891,6 +893,26 @@ function answer(ctx: HttpContext, result: unknown, counts: Omit<TableActionResul
   const payload: TableActionResult = result === undefined ? counts : { ...counts, data: result };
   // About this user's rows: never cached, also when it is no action request (an API client, a test).
   return json(payload, { headers: { 'cache-control': 'no-store', ...vary } }) satisfies JsonResult<TableActionResult>;
+}
+
+/**
+ * The raw path parameters of the page a request is for, and whether its address carries the locale's prefix. A localized page
+ * answered at its default locale's address without a prefix (`/members` for `/:locale/members`) has the locale in `ctx.params`, not in
+ * its path: the prefix is there when the path's first segment is that locale.
+ */
+function pageParams(ctx: HttpContext): { params: Record<string, string>; prefixed: boolean } {
+  const pathname = new URL(ctx.request.url).pathname;
+  const pattern = ctx.route?.path ?? '/';
+  const locale = ctx.route?.localized === true ? (ctx.params as Record<string, unknown> | undefined)?.locale : undefined;
+  if (typeof locale !== 'string') return { params: rawParams(pattern, pathname), prefixed: true };
+  let first: string | undefined;
+  try {
+    first = decodeURIComponent(pathname.split('/')[1] ?? '');
+  } catch {
+    first = undefined;
+  }
+  if (first === locale) return { params: rawParams(pattern, pathname), prefixed: true };
+  return { params: { ...rawParams(withoutLocale(pattern), pathname), locale }, prefixed: false };
 }
 
 /** The raw path parameters of a request: its route's pattern laid over its path (`/teams/:team` + `/teams/7` → `{ team: '7' }`). */

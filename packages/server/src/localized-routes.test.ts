@@ -1,10 +1,11 @@
 import { createApplication, defineModule } from '@marmeon/core';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
-import type { RouteDefinitions } from '@marmeon/router';
+import type { Route, RouteDefinitions } from '@marmeon/router';
 import { UrlLocales } from '@marmeon/router/internal';
 import { describe, expect, it } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
+import { ServerServiceProvider } from './provider.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 
 /** The stub of what `@marmeon/i18n` binds: `en`, `de` and `de-AT`, and a visitor who prefers `de` unless `x-prefer` says otherwise. */
@@ -14,13 +15,13 @@ const locales = (supported: readonly string[] = ['en', 'de']): UrlLocales => ({
   preferred: async (ctx) => ctx.request.headers.get('x-prefer') ?? 'de',
 });
 
-async function kernelFor(routes: RouteDefinitions, urlLocales: UrlLocales | null = locales()) {
+async function kernelFor(routes: RouteDefinitions, urlLocales: UrlLocales | null = locales(), appUrl?: string) {
   const application = await createApplication({
     root: import.meta.dirname,
     discover: false,
-    providers: [EncryptionServiceProvider, HttpServiceProvider],
+    providers: [EncryptionServiceProvider, HttpServiceProvider, ...(appUrl ? [ServerServiceProvider] : [])],
     modules: [defineModule({ name: 'pages', routes })],
-  }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
+  }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent', ...(appUrl ? { APP_URL: appUrl } : {}) } });
   if (urlLocales) application.container.instance(UrlLocales, urlLocales);
   return { application, create: () => createHttpKernel(application) };
 }
@@ -240,8 +241,8 @@ const withDefault = (unprefixed: string | undefined, supported: readonly string[
 
 describe('Route.localized() on the server — the default locale without a prefix', () => {
   /** Boots the routes and returns what the start did: the error, or the kernel. */
-  async function start(routes: RouteDefinitions, urlLocales: UrlLocales | null) {
-    const { application, create } = await kernelFor(routes, urlLocales);
+  async function start(routes: RouteDefinitions, urlLocales: UrlLocales | null, appUrl?: string) {
+    const { application, create } = await kernelFor(routes, urlLocales, appUrl);
     try {
       return { error: (() => { try { create(); return undefined; } catch (error) { return error as Error; } })() };
     } finally {
@@ -283,12 +284,16 @@ describe('Route.localized() on the server — the default locale without a prefi
     }), withDefault(undefined))).error).toBeUndefined();
   });
 
-  it('counts HEAD as GET and names the shared method', async () => {
+  it('counts a route of GET and HEAD as GET and names the shared method; a route of HEAD alone answers nothing', async () => {
     const { error } = await start(openRoutes((Route) => {
       Route.localized().get('/about', () => 'about');
-      Route.match(['HEAD'], '/about', () => 'head');
+      Route.match(['GET', 'HEAD'], '/about', () => 'both');
     }), withDefault('de'));
-    expect(error?.message).toMatch(/\[marmeon:H9\] HEAD \/about and GET \/:locale\/about \(Route\.localized\(\)\) both answer GET \/about/);
+    expect(error?.message).toMatch(/\[marmeon:H9\] GET\|HEAD \/about and GET \/:locale\/about \(Route\.localized\(\)\) both answer GET \/about/);
+    expect((await start(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.match(['HEAD'], '/about', () => 'head');
+    }), withDefault('de'))).error).toBeUndefined();
   });
 
   it('refuses a route written with a trailing slash too: GET /about/ is /about beside a localized /about', async () => {
@@ -322,5 +327,128 @@ describe('Route.localized() on the server — the default locale without a prefi
     }), withDefault('de'));
     expect(error?.message).toMatch(/both answer GET \/about: the address of the default locale without a prefix \[de\] is that route's/);
     expect(error?.message).not.toMatch(/redirects to the visitor's language/);
+  });
+
+  describe('an address with a parameter first, ahead of the fixed path of a later route', () => {
+    const shadowing = (register: (Route: Route) => void) => openRoutes(register);
+
+    it('stops the start: /:username answers /login, so GET /login registered after it never runs', async () => {
+      const { error } = await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/login', () => 'login');
+      }), withDefault('de'));
+      expect(error?.message).toMatch(/\[marmeon:H9\] GET \/:locale\/:username \(Route\.localized\(\)\) answers GET \/login at the address of the default locale without a prefix \[de\] \(\/:username\), ahead of GET \/login: that route would never run\. Register \/login before it/);
+    });
+
+    it('counts a shared method only, and HEAD as part of GET: a route of HEAD alone neither shadows nor is shadowed', async () => {
+      const head = await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.match(['HEAD'], '/login', () => 'head');
+      }), withDefault('de'));
+      expect(head.error).toBeUndefined();
+      const post = await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.post('/login', () => 'login');
+      }), withDefault('de'));
+      expect(post.error).toBeUndefined();
+      const both = await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.match(['GET', 'HEAD'], '/login', () => 'login');
+      }), withDefault('de'));
+      expect(both.error?.message).toMatch(/\[marmeon:H9\].*answers GET \/login/);
+      // A route of HEAD alone before the address is no earlier answer.
+      const before = await start(shadowing((Route) => {
+        Route.match(['HEAD'], '/login', () => 'head');
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/login', () => 'login');
+      }), withDefault('de'));
+      expect(before.error?.message).toMatch(/\[marmeon:H9\].*answers GET \/login/);
+    });
+
+    it('starts with /login registered before /:username, and without the mode', async () => {
+      expect((await start(shadowing((Route) => {
+        Route.get('/login', () => 'login');
+        Route.localized().get('/:username', () => 'user');
+      }), withDefault('de'))).error).toBeUndefined();
+      expect((await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/login', () => 'login');
+      }), withDefault(undefined))).error).toBeUndefined();
+    });
+
+    it('names fixed paths only: a parameter route behind it starts, and /en is refused for its own reason', async () => {
+      // A route at a locale's own path is refused by the rule of the locale's owner, not as shadowed.
+      expect((await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/en', () => 'english');
+      }), withDefault('de'))).error?.message).toMatch(/starts with the locale \[en\]/);
+      expect((await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/:other', () => 'other');
+      }), withDefault('de'))).error).toBeUndefined();
+    });
+
+    it('stops the start for an address with an optional parameter ahead of the fixed /', async () => {
+      const { error } = await start(shadowing((Route) => {
+        Route.localized().get('/:page?', () => 'page');
+        Route.get('/', () => 'home');
+      }), withDefault('de'));
+      expect(error?.message).toMatch(/\[marmeon:H9\].*answers GET \/ at the address/);
+    });
+
+    it.each([
+      ['an optional parameter', (Route: Route) => Route.localized().get('/:page?', () => 'page'), '/login'],
+      ['the rest of the path', (Route: Route) => Route.localized().get('/:path*', () => 'rest'), '/login'],
+      ['two parameters, the second optional', (Route: Route) => Route.localized().get('/:a/:b?', () => 'two'), '/x/y'],
+    ])('stops the start for %s ahead of a fixed path: the localized route itself answers nothing without its prefix', async (_name, register, fixed) => {
+      const { error } = await start(shadowing((Route) => {
+        register(Route);
+        Route.get(fixed, () => 'fixed');
+      }), withDefault('de'));
+      expect(error?.message).toMatch(new RegExp(`\\[marmeon:H9\\].*answers GET ${fixed}`));
+    });
+
+    it('starts when a route before the address already answers the path: the address is not what shadows', async () => {
+      // P1: a route of the app first, P10: the same fixed path twice, P11: a parameter route first.
+      expect((await start(shadowing((Route) => {
+        Route.get('/:slug', () => 'slug');
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/login', () => 'login');
+      }), withDefault('de'))).error).toBeUndefined();
+      expect((await start(shadowing((Route) => {
+        Route.get('/login', () => 'login');
+        Route.localized().get('/:username', () => 'user');
+        Route.post('/login', () => 'again');
+        Route.get('/login/', () => 'twice');
+      }), withDefault('de'))).error).toBeUndefined();
+      expect((await start(shadowing((Route) => {
+        Route.get('/:other', () => 'other');
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/about', () => 'about');
+      }), withDefault('de'))).error).toBeUndefined();
+    });
+
+    it('lets /sitemap.xml and /robots.txt stand behind the address while a route is in the sitemap', async () => {
+      const routes = (Route: Route) => {
+        Route.get('/plain', () => 'plain').sitemap();
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/sitemap.xml', () => 'mine');
+      };
+      expect((await start(shadowing(routes), withDefault('de'), 'https://app.example')).error).toBeUndefined();
+      // Without a route in the sitemap the address does take it.
+      const { error } = await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.get('/sitemap.xml', () => 'mine');
+      }), withDefault('de'));
+      expect(error?.message).toMatch(/\[marmeon:H9\].*answers GET \/sitemap\.xml/);
+    });
+
+    it('stops the start for a localized route behind it as well, and names the redacted path', async () => {
+      const { error } = await start(shadowing((Route) => {
+        Route.localized().get('/:username', () => 'user');
+        Route.localized().get('/login', () => 'login');
+      }), withDefault('de'));
+      expect(error?.message).toMatch(/\[marmeon:H9\].*answers GET \/login/);
+    });
   });
 });

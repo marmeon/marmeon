@@ -1000,6 +1000,13 @@ describe('/sitemap.xml with the default locale without a prefix', () => {
     for (const entry of xml.split('<url>').slice(1)) expect(links(entry)).toEqual(set);
   });
 
+  it('lists the root of a page whose only parameter is optional, left out', async () => {
+    aboutEntries.list = [{ params: {} }];
+    const { xml, warnings } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/:page?', LocalizedAboutController).name('start').sitemap()));
+    expect(locs(xml)).toEqual([`${url}/`, `${url}/en`]);
+    expect(warnings).toEqual([]);
+  });
+
   it('builds the address of a page with a parameter and of the root the same way', async () => {
     state.slugs = [{ params: { slug: 'a' } }];
     const { xml } = await sitemapOf(openRoutes((Route) => {

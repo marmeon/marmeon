@@ -49,6 +49,20 @@ describe('matchParams and trailing slashes', () => {
   });
 });
 
+describe('matchParams and a pattern that can be empty', () => {
+  it('matches `/` for a pattern whose parameters are all optional or the rest, as the server does', () => {
+    expect(matchParams('/:page?', '/')).toEqual({});
+    expect(matchParams('/:page?', '/about')).toEqual({ page: 'about' });
+    expect(matchParams('/:path*', '/')).toEqual({ path: '' });
+    expect(matchesPath('/:page?', '/')).toBe(true);
+  });
+
+  it('leaves a pattern with a required part alone: `/:page` and `/a/:b?` do not match `/`', () => {
+    expect(matchParams('/:page', '/')).toBeUndefined();
+    expect(matchParams('/a/:b?', '/')).toBeUndefined();
+  });
+});
+
 describe.each(ROUTE_PATTERNS)('the pattern $pattern', ({ pattern, names, params, filled, matches, misses }) => {
   it('is read by the tokenizer', () => {
     expect(tokenizePattern(pattern).flatMap((token) => ('name' in token ? [token.name] : []))).toEqual(names);

@@ -307,8 +307,8 @@ describe('createHttpKernel — a mode that is switched on after the kernel was m
 
 describe('createHttpKernel — the sitemap and robots.txt with the default locale without a prefix', () => {
   const taking = openRoutes((Route) => {
-    Route.localized().get('/:slug', (ctx) => `page ${ctx.params.locale} ${ctx.params.slug}`);
     Route.get('/plain', () => 'plain').sitemap();
+    Route.localized().get('/:slug', (ctx) => `page ${ctx.params.locale} ${ctx.params.slug}`);
   });
 
   it('answers /sitemap.xml and /robots.txt although a localized /:slug stands before them, as claimedBy() says they are taken', async () => {
@@ -445,8 +445,8 @@ describe('createHttpKernel — an island at the address without a prefix, in-pro
 
 describe('createHttpKernel — a Referer on a path the sitemap answers', () => {
   const taking = openRoutes((Route) => {
-    Route.localized().get('/:slug', () => 'slug');
     Route.get('/plain', () => 'plain').sitemap();
+    Route.localized().get('/:slug', () => 'slug');
   });
 
   it('does not point to the /:slug address for /sitemap%2Exml, which Hono matches as /sitemap.xml', async () => {

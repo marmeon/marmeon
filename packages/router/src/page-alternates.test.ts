@@ -111,6 +111,12 @@ describe('PageAlternates.replace() with a locale without a prefix', () => {
     expect(alternates.paths).toEqual({ de: '/de/help/x' });
   });
 
+  it('builds the root for a page whose only parameter is optional, left out: `/` for the default locale, `/en` for the other', () => {
+    const optional = unprefixedPage('/:locale/:page?');
+    optional.replace({ de: {}, en: {}, 'x-default': {} });
+    expect(optional.paths).toEqual({ de: '/', en: '/en', 'x-default': '/' });
+  });
+
   it('keeps the prefix of a version whose address without one would start with a locale (a page named EN)', () => {
     const rest = unprefixedPage('/:locale/:path*');
     rest.replace({ de: { path: 'EN' }, en: { path: 'en/x' }, 'x-default': { locale: 'de', path: 'de/x' } });

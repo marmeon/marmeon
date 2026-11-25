@@ -42,6 +42,7 @@ export declare const I18nConfig: import("@marmeon/core").ConfigDefinition<{
     locale: string;
     fallback: string;
     locales: string[] | undefined;
+    prefixDefault: boolean;
     timeZone: string | undefined;
 }>;
 export type I18nConfig = ConfigOf<typeof I18nConfig>;
@@ -51,6 +52,7 @@ export declare class I18nServiceProvider implements ServiceProvider {
         locale: string;
         fallback: string;
         locales: string[] | undefined;
+        prefixDefault: boolean;
         timeZone: string | undefined;
     }>[];
     static publishes: {
@@ -72,6 +74,7 @@ export declare class Locales {
     readonly default: string;
     readonly fallback: string;
     readonly explicit: boolean;
+    readonly unprefixed: string | undefined;
     get supported(): readonly string[];
     find(value: unknown): string | undefined;
 }
@@ -423,6 +426,8 @@ declare const en: {
 `APP_LOCALE` = `"en"`
 // APP_LOCALES
 `APP_LOCALES` = `[]`
+// APP_LOCALE_PREFIX
+`APP_LOCALE_PREFIX` = `true`
 // APP_TIMEZONE
 `APP_TIMEZONE` — optional
 ```
