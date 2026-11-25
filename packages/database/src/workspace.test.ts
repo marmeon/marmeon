@@ -84,7 +84,9 @@ describe('workspaceRoot', () => {
     onTestFinished(() => chmodSync(open, 0o755));
     expect(installRoot(app)).toBe(app);
     expect(workspaceRoot(app)).toBe(app);
+    // Planted with a workspace declaration, so that a search reaching `open` would make it the workspace.
     writeFileSync(join(open, 'pnpm-lock.yaml'), '');
+    writeFileSync(join(open, 'pnpm-workspace.yaml'), '');
     expect(installRoot(app)).toBe(app);
     expect(workspaceRoot(app)).toBe(app);
   });

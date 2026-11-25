@@ -123,8 +123,12 @@ describe('migrationDirectories', () => {
     onTestFinished(() => chmodSync(open, 0o755));
     const workspace = migrations(base, 'packages', 'perm', 'migrations');
     expect(() => migrationDirectories(app(root, mod('perm', workspace)))).toThrow(/D20.*outside the app and its workspace/s);
+    // Planted with a workspace declaration and a package inside `open`: a search reaching `open` would accept its migrations.
     writeFileSync(join(open, 'pnpm-lock.yaml'), '');
+    writeFileSync(join(open, 'pnpm-workspace.yaml'), '');
+    const planted = migrations(open, 'evil', 'migrations');
     expect(() => migrationDirectories(app(root, mod('perm', workspace)))).toThrow(/D20.*outside the app and its workspace/s);
+    expect(() => migrationDirectories(app(root, mod('evil', planted)))).toThrow(/D20.*outside the app and its workspace/s);
   });
 
   it('refuses a monorepo directory outside the app when nothing declares a workspace', () => {
