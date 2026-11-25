@@ -156,7 +156,7 @@ function terminalSafeEntry(object: Readonly<Record<string, unknown>>): Record<st
 }
 
 /**
- * The most bytes the default destination (JSON on stdout) keeps while the descriptor does not take them (a pipe nobody reads);
+ * The most bytes the asynchronous destination (the default: JSON on stdout) keeps while the descriptor does not take them (a pipe nobody reads);
  * a line beyond it is dropped, so a stalled reader costs a bounded amount of memory. 4 MiB is a few thousand lines of a server
  * that logs much, and small beside what a process holds anyway.
  */
@@ -239,11 +239,14 @@ function drainSync(sonic: Sonic, fd: number, retrying: boolean): NodeJS.ErrnoExc
 /**
  * A destination on `fd` that a failed write cannot turn into a thrown error, an uncaught `'error'` event or a process that never
  * ends. Any error but `EAGAIN` (`ENOSPC`, `EIO`, `EBADF`, `EPIPE`) ends the destination for good: it drops what it holds and
- * every line after, and retries nothing. A failed stdout (not a reader that left: `EPIPE`) is told once on stderr; a failed
- * stderr is not told anywhere, because stdout may hold a command's document.
+ * every line after, and retries nothing. A failed stdout (not a reader that left: `EPIPE`) is told once on stderr (dropped when
+ * stderr is a full pipe); a failed stderr is not told anywhere, because stdout may hold a command's document.
  *
  * Asynchronous (`sync` false), as the default destination is: `EAGAIN` (a full pipe) is backpressure, sonic-boom keeps the data up
- * to `MAX_BUFFERED_BYTES` and `write` returns at once. Synchronous (`--json`, pretty), `write` waits for the reader.
+ * to `MAX_BUFFERED_BYTES` and `write` returns at once. Synchronous (`--json`, `marmeon mcp`, pretty), the buffer has no bound:
+ * `write` returns once the line is written, and while the pipe is full it retries every 100 ms, so a reader that stops reading
+ * blocks the process until sonic-boom's retry recursion overflows (a few thousand retries while one line is written); then the
+ * destination stops as after a write error.
  * A pipe on fd 1 is non-blocking (pino reads `process.stdout.fd`, which makes libuv set `O_NONBLOCK`), which is why a full one says
  * `EAGAIN`; a terminal is blocking, and one that stops reading holds the process whatever the exit flush does.
  */
@@ -254,7 +257,9 @@ function failSafeDestination(fd: number, sync: boolean): DestinationStream {
   const sonic = pinoDestination({
     fd,
     sync,
-    maxLength: MAX_BUFFERED_BYTES,
+    // Only the asynchronous destination buffers; a synchronous one (`--json`, `marmeon mcp`, pretty) is unbounded and waits for the
+    // reader, and sonic-boom would drop a single larger entry.
+    ...(sync ? {} : { maxLength: MAX_BUFFERED_BYTES }),
     retryEAGAIN: () => {
       retrying = true;
       setTimeout(() => {
@@ -263,6 +268,11 @@ function failSafeDestination(fd: number, sync: boolean): DestinationStream {
       return true;
     },
   });
+  // The notice goes to fd 2 with a synchronous write. Reading `process.stderr.fd` opens fd 2 as a stream, and libuv sets
+  // `O_NONBLOCK` on a pipe: a full one then answers `EAGAIN`, which the catch below drops, instead of blocking the process. A
+  // terminal stays blocking (one that stops reading holds the process, the known limit), and Node makes stdio pipes blocking on
+  // Windows.
+  if (fd === 1) void process.stderr.fd;
   let dead = false;
   const fail = (error: NodeJS.ErrnoException | typeof FLUSH_FAILED): void => {
     if (dead) return;
@@ -272,9 +282,11 @@ function failSafeDestination(fd: number, sync: boolean): DestinationStream {
     state._writingBuf = '';
     state._len = 0;
     const code = error === FLUSH_FAILED ? undefined : error.code;
+    // An error without an OS code (a RangeError from sonic-boom's retry recursion) is named by its own name.
+    const named = code ?? (error === FLUSH_FAILED ? undefined : String(error.name || 'unknown error'));
     if (fd !== 1 || code === 'EPIPE') return;
     try {
-      writeSync(2, `@marmeon/log: ${error === FLUSH_FAILED ? 'the exit flush to stdout failed' : `writing to stdout failed (${code})`}; log lines are dropped until the process restarts.\n`);
+      writeSync(2, `@marmeon/log: ${error === FLUSH_FAILED ? 'the exit flush to stdout failed' : `writing to stdout failed (${named})`}; log lines are dropped until the process restarts.\n`);
     } catch {
       // stderr is gone too: nobody is left to tell.
     }

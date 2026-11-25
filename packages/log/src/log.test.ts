@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
-import { closeSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { closeSync, constants, existsSync, openSync, readFileSync, readSync, writeFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -661,6 +661,95 @@ describe('a log write that fails', () => {
       expect(notices.map((line) => NOTICE.exec(line)?.[1])).toEqual(['EIO']);
     }, 30_000);
 
+    // `createPinoLogger` for stdout reads `process.stderr` (that opens fd 2 as a stream, which makes a pipe non-blocking), whatever
+    // the dependencies load: the child counts the reads of the getter around the call.
+    it('the default destination opens stderr as a stream when it is created', async () => {
+      const ended = await child(
+        `const original = Object.getOwnPropertyDescriptor(process, 'stderr');
+        let reads = 0;
+        Object.defineProperty(process, 'stderr', { ...original, get() { reads += 1; return original.get.call(process); } });
+        try { createPinoLogger({ level: 'info', format: 'json' }); } finally { Object.defineProperty(process, 'stderr', original); }
+        writeSync(2, JSON.stringify({ threw: reads }) + '\\n'); process.exit(7);`,
+        ['ignore', 'pipe', 'pipe'],
+      );
+      expect(ended.code).toBe(7);
+      expect(split(ended.stderr).threw).toEqual({ threw: 1 });
+    }, 30_000);
+
+    // The outcome: with a full stderr pipe the notice is attempted, answered with EAGAIN and dropped, and the process goes on.
+    // A named pipe is a pipe to the kernel: the test fills it until a non-blocking descriptor says EAGAIN, and the child gets a
+    // blocking open of it.
+    it.skipIf(process.platform === 'win32')('the failure notice does not block on a stderr pipe that is full and never read: the process ends with its own code', async () => {
+      const dir = tempDir('marmeon-log-');
+      const fifo = join(dir, 'stderr');
+      execFileSync('mkfifo', [fifo]);
+      const childFd = openSync(fifo, constants.O_RDWR);
+      const fillFd = openSync(fifo, constants.O_RDWR | constants.O_NONBLOCK);
+      onTestFinished(() => {
+        closeSync(childFd);
+        closeSync(fillFd);
+      });
+      const chunk = Buffer.alloc(1024, 'x');
+      let filled = 0;
+      for (;;) {
+        try {
+          filled += writeSync(fillFd, chunk);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EAGAIN') break;
+          throw error;
+        }
+      }
+      const marker = join(dir, 'marker');
+      // fs.write answers EIO to the first line, so stdout fails and the notice goes to the full stderr; the child records how that
+      // write to fd 2 ended.
+      const ended = await child(
+        `import fs from 'node:fs';
+        import { syncBuiltinESMExports } from 'node:module';
+        const realWriteSync = fs.writeSync;
+        const notice = [];
+        fs.writeSync = (fd, ...rest) => {
+          if (fd !== 2) return realWriteSync(fd, ...rest);
+          try { return realWriteSync(fd, ...rest); } catch (error) { notice.push(error.code); throw error; }
+        };
+        syncBuiltinESMExports();
+        fs.write = (...args) => { args.at(-1)(Object.assign(new Error('EIO'), { code: 'EIO' })); };
+        logger.info('first');
+        for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve));
+        fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify(notice));
+        process.exit(7);`,
+        ['ignore', 'pipe', childFd],
+      );
+      expect(ended.signal).toBeNull();
+      expect(ended.code).toBe(7);
+      // The notice write was attempted and answered EAGAIN (a failure path that never ran leaves the list empty).
+      expect(existsSync(marker) && JSON.parse(readFileSync(marker, 'utf8'))).toEqual(['EAGAIN']);
+      // The pipe holds the filler only: the notice was dropped.
+      let held = 0;
+      for (;;) {
+        try {
+          held += readSync(fillFd, Buffer.alloc(4096));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EAGAIN') break;
+          throw error;
+        }
+      }
+      expect(held).toBe(filled);
+    }, 30_000);
+
+    it('an error without a code (a RangeError from sonic-boom\'s retry recursion) is named by its error name in the notice, never undefined', async () => {
+      const ended = await child(
+        `import fs from 'node:fs';
+        fs.write = (...args) => { args.at(-1)(new RangeError('Maximum call stack size exceeded')); };
+        logger.info('first');
+        for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve));
+        process.exit(7);`,
+        ['ignore', 'pipe', 'pipe'],
+      );
+      expect(ended.code).toBe(7);
+      expect(ended.stderr).not.toContain('undefined');
+      expect(ended.stderr.trim().split('\n').map((line) => NOTICE.exec(line)?.[1])).toEqual(['RangeError']);
+    }, 30_000);
+
     it('format pretty: a failed write does not throw, the process ends, one notice', async () => {
       const ended = await child(`${calls} ${report(2)} process.exit(7);`, ['ignore', readOnlyFd(), 'pipe'], { format: 'pretty' });
       expect(ended.signal).toBeNull();
@@ -668,6 +757,13 @@ describe('a log write that fails', () => {
       const { threw, notices } = split(ended.stderr);
       expect(threw).toEqual({ threw: [] });
       expect(notices.map((line) => NOTICE.exec(line)?.[1])).toEqual(['EBADF']);
+    }, 30_000);
+
+    it('format pretty: one entry larger than the asynchronous bound arrives whole', async () => {
+      const ended = await child(`logger.info('a'.repeat(5 * 1024 * 1024) + 'END'); process.exit(7);`, ['ignore', 'pipe', 'pipe'], { format: 'pretty' });
+      expect(ended.code).toBe(7);
+      expect(ended.stdout).toContain('aEND');
+      expect(ended.stdout.length).toBeGreaterThan(5 * 1024 * 1024);
     }, 30_000);
 
     it('a closed pipe (EPIPE) stops the writing without a notice: a reader that left is no error', async () => {
@@ -708,6 +804,16 @@ describe('a log write that fails', () => {
       expect(ended.code).toBe(7);
       expect(readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line).msg)).toEqual(['line', 'line', 'line']);
       expect(ended.stdout).toBe('');
+    }, 30_000);
+
+    it('one entry larger than the asynchronous bound still arrives whole: the 4 MiB bound is for the asynchronous destination only', async () => {
+      const ended = await child(`logger.info('a'.repeat(5 * 1024 * 1024) + 'END'); process.exit(7);`, ['ignore', 'pipe', 'pipe'], { json: true });
+      expect(ended.code).toBe(7);
+      const lines = ended.stderr.trim().split('\n');
+      expect(lines).toHaveLength(1);
+      const msg = JSON.parse(lines[0]!).msg as string;
+      expect(msg).toHaveLength(5 * 1024 * 1024 + 3);
+      expect(msg.endsWith('aEND')).toBe(true);
     }, 30_000);
   });
 
