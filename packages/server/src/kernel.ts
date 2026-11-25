@@ -1076,7 +1076,14 @@ export function createHttpKernel(
       const answering = router.fallbackFor(path);
       return answering !== route && answering?.generatedFrom !== route;
     };
-    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, unprefixed: () => router.unprefixedLocale, claimed, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
+    // The address without a prefix of any localized route: taken when something other than the route itself answers it (an earlier route, the
+    // sitemap, a path of the framework). A fallback is judged as above.
+    const claimedAddress = (route: RouteDefinition, path: string): boolean => {
+      if (router.isFallback(route)) return claimed(route, path);
+      const claim = router.claimedBy(path);
+      return claim !== undefined && !(claim.by === 'route' && claim.route === route);
+    };
+    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, unprefixed: () => router.unprefixedLocale, claimed, claimedAddress, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
     const answer = (answerWith: () => Response | Promise<Response>) => async (c: Context) =>
       (await refuseIslandRequest(c.req.raw, undefined, showsDebug(c.req.raw), refuseWith(c.req.raw))) ??
       handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {

@@ -65,9 +65,10 @@ type Entries = SitemapEntries<Record<string, string | number>>;
  * `x-default`; an entry that names its `locale` is that language's `<url>` alone, with the `alternates` it gives. With an `unprefixed`
  * locale its page has no prefix (`/about`), and `x-default` is that same address; a page of it whose address without a prefix
  * would start with a locale keeps its prefix (`/de/en/x`). `claimed` says whether another route, a package or the framework answers a decoded path in the route's place
- * (a fallback's entry on such a path is left out, with one warning per route).
+ * (a fallback's entry on such a path is left out, with one warning per route). `claimedAddress` says the same of the address without a prefix of
+ * any localized route, a page that is not a fallback's included: that version, and `x-default`, are left out then.
  */
-export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], unprefixed: modeOf, claimed, logger, report }: { appUrl: string; locales?: readonly string[]; unprefixed?: () => string | undefined; claimed?: (route: RouteDefinition, path: string) => boolean; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
+export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], unprefixed: modeOf, claimed, claimedAddress, logger, report }: { appUrl: string; locales?: readonly string[]; unprefixed?: () => string | undefined; claimed?: (route: RouteDefinition, path: string) => boolean; claimedAddress?: (route: RouteDefinition, path: string) => boolean; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
   const clock = container.has(Clock) ? container.make(Clock) : { now: () => Date.now() };
   /** The routes already warned about, once each: the file is made every five minutes, a line each time would be noise. */
   const warned = new Set<RouteDefinition>();
@@ -220,7 +221,8 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
         }
         // The page of the locale without a prefix, at an address another route or the framework answers: it is not served there, so the version
         // and the `x-default` that names it are left out — the other versions stand.
-        const lost = claimed ? bare.flatMap((isBare, index) => (isBare && claimed(route, decodeURIComponent(paths[index]!)) ? [versions[index]] : [])) : [];
+        const addressClaimed = claimedAddress ?? claimed;
+        const lost = addressClaimed ? bare.flatMap((isBare, index) => (isBare && addressClaimed(route, decodeURIComponent(paths[index]!)) ? [versions[index]] : [])) : [];
         if (lost.length > 0 && !warnedDefault.has(route)) {
           warnedDefault.add(route);
           logger.warn(`The version in the default locale without a prefix [${unprefixed}] and its x-default, if any, of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: another route or the framework answers its address. See docs/seo.md#sitemap-and-robotstxt.`);

@@ -1076,6 +1076,36 @@ describe('/sitemap.xml with the default locale without a prefix', () => {
     expect(warnings.filter((warning) => warning.includes('are left out: another route or the framework answers its address'))).toHaveLength(1);
   });
 
+  it('leaves out the version without a prefix of an ordinary localized page when the framework answers its address, with one warning', async () => {
+    state.slugs = [{ params: { slug: 'about' } }, { params: { slug: 'sitemap.xml' } }];
+    const { xml, warnings } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/:slug', PostController).name('slug').sitemap()));
+    expect(locs(xml)).toEqual([`${url}/about`, `${url}/en/about`, `${url}/en/sitemap.xml`]);
+    expect(links(xml.split('<url>')[1]!)).toEqual([`de ${url}/about`, `en ${url}/en/about`, `x-default ${url}/about`]);
+    expect(links(xml.split('<url>')[3]!)).toEqual([`en ${url}/en/sitemap.xml`]);
+    expect(warnings.filter((warning) => warning.includes('are left out: another route or the framework answers its address'))).toHaveLength(1);
+  });
+
+  it('leaves out the version without a prefix of a page an earlier route answers, and keeps the versions with a prefix', async () => {
+    state.slugs = [{ params: { slug: 'foo' } }];
+    const routes = openRoutes((Route) => {
+      Route.get('/:username{[a-z]+}', () => 'user');
+      Route.localized().get('/:slug', PostController).name('slug').sitemap();
+    });
+    const { xml, warnings } = await sitemapOf(routes);
+    expect(locs(xml)).toEqual([`${url}/en/foo`]);
+    expect(links(xml)).toEqual([`en ${url}/en/foo`]);
+    expect(warnings.filter((warning) => warning.includes('are left out: another route or the framework answers its address'))).toHaveLength(1);
+    // Without the mode the same routes are listed as they were: the prefix on every version, x-default without one.
+    const { application, create } = await boot({ routes, urlLocales: { ...urlLocales, unprefixed: undefined } });
+    try {
+      const plain = await (await create().request('/sitemap.xml')).text();
+      expect(locs(plain)).toEqual([`${url}/de/foo`, `${url}/en/foo`]);
+      expect(links(plain.split('<url>')[1]!)).toEqual([`de ${url}/de/foo`, `en ${url}/en/foo`, `x-default ${url}/foo`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
   it('is unchanged without the mode: the prefix on every version, x-default without one', async () => {
     const { application, create } = await boot({ routes: openRoutes((Route) => void Route.localized().get('/about', AboutController).name('about').sitemap()), urlLocales: { ...urlLocales, unprefixed: undefined } });
     try {
