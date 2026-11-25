@@ -71,7 +71,7 @@ export class NewPassword {
         removed.passkeys = had.includes('passkey') && !left.includes('passkey');
         // The owner is told only when nothing is left, so the mail is true.
         removed.factors = had.length > 0 && left.length === 0;
-        if (left.length > 0) this.#guard.logger().error('A password reset could not remove every second factor of an account whose address is not confirmed', { user: id, left });
+        if (left.length > 0) logQuietly(this.#guard.logger(), 'error', 'A password reset could not remove every second factor of an account whose address is not confirmed', { user: id, left });
       }
       // The tokens go first: a revocation that fails writes no hash, also where the provider keeps its accounts outside this
       // transaction — a new password never stands next to live tokens.
@@ -171,7 +171,7 @@ export class NewPassword {
   #warnVerificationUnknown(): void {
     if (this.#warnedUnknownVerification || this.#guard.factors() instanceof NoTwoFactorState) return;
     this.#warnedUnknownVerification = true;
-    this.#guard.logger().warn('The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
+    logQuietly(this.#guard.logger(), 'warn', 'The user has no email_verified_at, so a password reset cannot tell an unconfirmed account and keeps its second factors and API tokens. Load the column in the UserProvider, or ignore this if the app does not verify addresses.');
   }
 }
 

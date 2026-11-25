@@ -14,6 +14,7 @@ import type { AuthUser, UserProvider } from './user.ts';
 import { signInStore, twoFactorState } from './test-helpers/stores.ts';
 import { guardContext } from './test-helpers/guard-context.ts';
 import { guardNames } from './guard-names.ts';
+import { collectUnhandledRejections, failingLogger, SINK_FAILURES, settle } from './test-helpers/failing-logger.ts';
 
 // What a reset of an account with an unconfirmed address takes away — and what it leaves alone.
 
@@ -35,10 +36,10 @@ function source(initial: readonly SecondFactor[], { stubborn = false } = {}) {
   return state;
 }
 
-function setup({ state, revokeTokensOnPasswordChange = false }: { state: TwoFactorState; revokeTokensOnPasswordChange?: boolean }) {
+function setup({ state, revokeTokensOnPasswordChange = false, logger: given }: { state: TwoFactorState; revokeTokensOnPasswordChange?: boolean; logger?: Logger }) {
   const events: object[] = [];
   const logged: { level: string; message: string; context?: unknown }[] = [];
-  const logger = { info: (message: string, context?: unknown) => logged.push({ level: 'info', message, context }), warn: (message: string) => logged.push({ level: 'warn', message }), error: (message: string, context?: unknown) => logged.push({ level: 'error', message, context }) } as unknown as Logger;
+  const logger = given ?? { info: (message: string, context?: unknown) => logged.push({ level: 'info', message, context }), warn: (message: string) => logged.push({ level: 'warn', message }), error: (message: string, context?: unknown) => logged.push({ level: 'error', message, context }) } as unknown as Logger;
   let revoked = 0;
   const tokens = { revokeAll: async () => ++revoked } as unknown as AccessTokenStore;
   let rollbacks = 0;
@@ -246,6 +247,17 @@ describe('NewPassword after a reset of an unconfirmed address', () => {
     expect(logged.filter((entry) => entry.level === 'error')).toHaveLength(1);
   });
 
+  it.each(SINK_FAILURES)('goes on without announcing the factors as gone when one survived and the logger %s', async (failure) => {
+    const unhandled = collectUnhandledRejections();
+    const { reset, events, revokedCount, ended } = setup({ state: source(['passkey'], { stubborn: true }), logger: failingLogger(failure) });
+    await reset({ id: 1, email_verified_at: null });
+    expect(events).toEqual([]);
+    expect(revokedCount(), 'the steps after the log ran').toBe(1);
+    expect(ended, 'the sign-ins still ended').toEqual([{ op: 'endAll', args: [1, undefined] }]);
+    await settle();
+    expect(unhandled).toEqual([]);
+  });
+
   it('removes through combineFactors from every source', async () => {
     const first = source(['totp']);
     const second = source(['passkey']);
@@ -274,6 +286,17 @@ describe('NewPassword after a reset it leaves alone', () => {
     expect(state.removed).toBe(0);
     expect(events).toEqual([]);
     expect(logged.filter((entry) => entry.level === 'warn')).toHaveLength(1);
+  });
+
+  it.each(SINK_FAILURES)('finishes the reset of a user without the email_verified_at property when the warning cannot be written: the logger %s', async (failure) => {
+    const unhandled = collectUnhandledRejections();
+    const { reset, users, ended, events } = setup({ state: source(['passkey']), logger: failingLogger(failure) });
+    await reset({ id: 1 });
+    expect(users.rows.get(1)?.hash, 'the hash was written').toBe(hash);
+    expect(ended, 'the sign-ins ended').toEqual([{ op: 'endAll', args: [1, undefined] }]);
+    expect(events).toEqual([]);
+    await settle();
+    expect(unhandled).toEqual([]);
   });
 
   it('does not warn where no factor source is bound', async () => {
