@@ -84,6 +84,7 @@ is someone else's file and a key that is silently skipped hides a mistake:
 A package's providers register after the providers of the packages it depends on, so list the framework packages you build on as
 dependencies. A name in `providers` that the entry does not export stops the app with
 `@acme/marmeon-request-log lists provider "RequestLogServiceProvider" in package.json, but its entry does not export it.`
+A listed name that is exported but is no class at run time (for example a type-only export), or that a package resolved to its TypeScript sources lists without a matching export, stops the app with `K7`, naming the file and the export.
 
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json` or the lockfile
 change. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.

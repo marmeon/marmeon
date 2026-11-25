@@ -278,6 +278,7 @@ alone, so no injection code reaches a client bundle.
 package, and the injection lists of the classes the packages export. You rarely run it yourself. The app writes the file again
 by itself whenever `package.json`, the lockfile or the resolution conditions change, so `pnpm marmeon add redis` (or `pnpm add -E @marmeon/redis@<version of your app>`) needs no extra
 step. It also writes it again when a listed package is gone, such as after a production install without the dev dependencies.
+It also writes it once more when a listed provider is no longer a class, which can mean the list is out of date; only if the fresh list still names it does the app stop with `K7`.
 `marmeon build` writes the production list.
 
 The file is data and is never imported, so rewriting it restarts no development server. Git ignores `.marmeon/`.

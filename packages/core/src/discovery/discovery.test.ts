@@ -717,7 +717,7 @@ describe('a hostile package.json and its declarations', () => {
   });
 });
 
-describe('a module the test importer routed', () => {
+describe('a workspace package under the test importer', () => {
   const IMPORTER = Symbol.for('marmeon.test.import');
   const registered = globalThis as Record<symbol, unknown>;
   const BUILT =
@@ -787,110 +787,178 @@ describe('a module the test importer routed', () => {
     expect(await failureOf(root)).toBe(failure);
   });
 
-  const missing: [string, string][] = [
-    ['a provider', 'SoloServiceProvider'],
-    ['an injection target', 'Solo'],
-    ['an injected value', 'Dep'],
-  ];
-  for (const [name, export_] of missing) {
-    it(`is a K7 naming the file and the export for ${name} the module lacks`, async () => {
-      const root = workspaceApp();
-      const module: Record<string, unknown> = classes();
-      module[export_] = undefined;
-      registered[IMPORTER] = async () => module;
-      const failure = await failureOf(root);
-      expect(failure).toBeInstanceOf(DiscoveryError);
-      expect(failure!.message).toContain(`[marmeon:K7] workspace/solo/dist/index.js has no export "${export_}", which the app's packages need to boot. If a test mocks it, the mock must export it.`);
-    });
-  }
+  describe('a module the test importer routed', () => {
+    const missing: [string, string][] = [
+      ['a provider', 'SoloServiceProvider'],
+      ['an injection target', 'Solo'],
+      ['an injected value', 'Dep'],
+    ];
+    for (const [name, export_] of missing) {
+      it(`is a K7 naming the file and the export for ${name} the module lacks`, async () => {
+        const root = workspaceApp();
+        const module: Record<string, unknown> = classes();
+        module[export_] = undefined;
+        registered[IMPORTER] = async () => module;
+        const failure = await failureOf(root);
+        expect(failure).toBeInstanceOf(DiscoveryError);
+        expect(failure!.message).toContain(`[marmeon:K7] workspace/solo/dist/index.js has no export "${export_}", which the app's packages need to boot. If a test mocks it, the mock must export it.`);
+      });
+    }
 
-  for (const [name, value] of [['a string', 'nope'], ['null', null], ['an object', {}]] as const) {
-    it(`is a K7 for a provider that is ${name}, which is no function`, async () => {
-      const root = workspaceApp();
-      registered[IMPORTER] = async () => ({ ...classes(), SoloServiceProvider: value });
-      const failure = await failureOf(root);
-      expect(failure).toBeInstanceOf(DiscoveryError);
-      expect(failure!.message).toContain('workspace/solo/dist/index.js exports "SoloServiceProvider", which is no function, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.');
-    });
-  }
+    for (const [name, value] of [['a string', 'nope'], ['null', null], ['an object', {}]] as const) {
+      it(`is a K7 for a provider that is ${name}, which is no class`, async () => {
+        const root = workspaceApp();
+        registered[IMPORTER] = async () => ({ ...classes(), SoloServiceProvider: value });
+        const failure = await failureOf(root);
+        expect(failure).toBeInstanceOf(DiscoveryError);
+        expect(failure!.message).toContain('workspace/solo/dist/index.js exports "SoloServiceProvider", which is no class, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.');
+      });
+    }
 
-  for (const [name, value] of [['null', null], ['a string', 'nope'], ['a number', 4]] as const) {
-    it(`is a K7 for an injection target that is ${name}, and nothing is written for the targets before it`, async () => {
+    for (const [name, value] of [['null', null], ['a string', 'nope'], ['a number', 4]] as const) {
+      it(`is a K7 for an injection target that is ${name}, and nothing is written for the targets before it`, async () => {
+        const root = workspaceApp();
+        const module = { ...classes(), Other: value };
+        registered[IMPORTER] = async () => module;
+        const failure = await failureOf(root);
+        expect(failure).toBeInstanceOf(DiscoveryError);
+        expect(failure!.message).toContain('workspace/solo/dist/index.js exports "Other", which is no object or function, so it cannot take an injection list.');
+        expect(injectOf(module.Solo)).toBe(false);
+      });
+    }
+
+    it('boots an object as an injection target: a class may be mocked as one', async () => {
       const root = workspaceApp();
-      const module = { ...classes(), Other: value };
+      const target = {};
+      const module = { ...classes(), Other: target };
       registered[IMPORTER] = async () => module;
+      expect((await load(root)).providers).toEqual([module.SoloServiceProvider]);
+      expect((target as { inject?: unknown[] }).inject).toEqual([module.Dep]);
+    });
+
+    it('keeps the once-per-process warning for a boot that is refused', async () => {
+      const root = workspaceApp();
+      // the app cannot write .marmeon: the packages are discovered in memory, with one warning
+      chmodSync(root, 0o555);
+      try {
+        registered[IMPORTER] = async () => ({ ...classes(), SoloServiceProvider: null });
+        expect(await failureOf(root)).toBeInstanceOf(DiscoveryError);
+        registered[IMPORTER] = async () => classes();
+        expect((await load(root)).warning).toMatch(/is out of date and \.marmeon\/ cannot be written/);
+      } finally {
+        chmodSync(root, 0o755);
+      }
+    });
+
+    it('leaves a module installed below node_modules to Node: its missing export is still a TypeError, with an importer registered', async () => {
+      const root = workspaceApp(true);
+      current(root);
+      writeFileSync(join(root, 'node_modules/@acme/inst/dist/index.js'), 'export class InstDep {}\n');
+      registered[IMPORTER] = async () => classes();
       const failure = await failureOf(root);
-      expect(failure).toBeInstanceOf(DiscoveryError);
-      expect(failure!.message).toContain('workspace/solo/dist/index.js exports "Other", which is no object or function, so it cannot take an injection list.');
+      expect(failure).toBeInstanceOf(TypeError);
+      expect(failure).not.toBeInstanceOf(DiscoveryError);
+    });
+
+    it('does not take a directory named Node_Modules for a workspace package', async () => {
+      const root = workspaceApp();
+      // the whole app below a directory of that name: nothing is routed, the importer is never asked
+      const asked = vi.fn(async () => classes());
+      registered[IMPORTER] = asked;
+      const inside = join(realpathSync(tempDir('marmeon-routed-upper-')), 'Node_Modules', 'app');
+      mkdirSync(dirname(inside), { recursive: true });
+      cpSync(root, inside, { recursive: true, verbatimSymlinks: false, dereference: false });
+      rmSync(join(inside, 'node_modules/@acme/solo'));
+      symlinkSync(join(inside, 'workspace/solo'), join(inside, 'node_modules/@acme/solo'), 'dir');
+      expect((await load(inside)).providers).toHaveLength(1);
+      expect(asked).not.toHaveBeenCalled();
+    });
+
+    it('boots without the importer when a class has a static getter `inject` that throws', async () => {
+      const root = workspaceApp();
+      writeFileSync(join(root, 'workspace/solo/dist/index.js'), `${BUILT}Object.defineProperty(Solo, 'inject', { get() { throw new Error('read'); }, configurable: true });\n`);
+      expect((await load(root)).providers).toHaveLength(1);
+    });
+
+    it('is unchanged without the importer: a module that lacks an injection target ends in the TypeError it always did, no K7', async () => {
+      const root = workspaceApp();
+      current(root);
+      writeFileSync(join(root, 'workspace/solo/dist/index.js'), 'export class Dep {}\nexport class Other {}\nexport class SoloServiceProvider {}\n');
+      const failure = await failureOf(root);
+      expect(failure).toBeInstanceOf(TypeError);
+    });
+
+    it('keeps the injection lists unwritten when a routed provider is refused', async () => {
+      const root = workspaceApp();
+      const module = { ...classes(), SoloServiceProvider: () => {} };
+      registered[IMPORTER] = async () => module;
+      expect(await failureOf(root)).toBeInstanceOf(DiscoveryError);
       expect(injectOf(module.Solo)).toBe(false);
     });
-  }
-
-  it('boots an object as an injection target: a class may be mocked as one', async () => {
-    const root = workspaceApp();
-    const target = {};
-    const module = { ...classes(), Other: target };
-    registered[IMPORTER] = async () => module;
-    expect((await load(root)).providers).toEqual([module.SoloServiceProvider]);
-    expect((target as { inject?: unknown[] }).inject).toEqual([module.Dep]);
   });
 
-  it('keeps the once-per-process warning for a boot that is refused', async () => {
-    const root = workspaceApp();
-    // the app cannot write .marmeon: the packages are discovered in memory, with one warning
-    chmodSync(root, 0o555);
-    try {
-      registered[IMPORTER] = async () => ({ ...classes(), SoloServiceProvider: null });
-      expect(await failureOf(root)).toBeInstanceOf(DiscoveryError);
-      registered[IMPORTER] = async () => classes();
-      expect((await load(root)).warning).toMatch(/is out of date and \.marmeon\/ cannot be written/);
-    } finally {
-      chmodSync(root, 0o755);
-    }
-  });
+  describe('a provider without the test importer', () => {
+    const K7_UNROUTED = '[marmeon:K7] workspace/solo/dist/index.js lists "SoloServiceProvider" as a service provider, but the module has no export of that name that is a class. Fix the package, or report it to its author.';
+    const refused = async (source: string) => {
+      const root = workspaceApp();
+      current(root);
+      writeFileSync(join(root, 'workspace/solo/dist/index.js'), source);
+      const failure = await failureOf(root);
+      expect(failure).toBeInstanceOf(DiscoveryError);
+      expect(failure!.message).toContain(K7_UNROUTED);
+    };
 
-  it('leaves a module installed below node_modules to Node: its missing export is still a TypeError, with an importer registered', async () => {
-    const root = workspaceApp(true);
-    current(root);
-    writeFileSync(join(root, 'node_modules/@acme/inst/dist/index.js'), 'export class InstDep {}\n');
-    registered[IMPORTER] = async () => classes();
-    const failure = await failureOf(root);
-    expect(failure).toBeInstanceOf(TypeError);
-    expect(failure).not.toBeInstanceOf(DiscoveryError);
-  });
+    it('is a K7 naming the file and the export for a provider the module lacks', () => refused('export class Dep {}\n'));
+    it('is a K7 for a provider the module exports as no function', () => refused('export const SoloServiceProvider = 5;\n'));
+    it('is a K7 for a provider that is an arrow function, which no `new` can call', () => refused('export const SoloServiceProvider = () => {};\n'));
 
-  it('does not take a directory named Node_Modules for a workspace package', async () => {
-    const root = workspaceApp();
-    // the whole app below a directory of that name: nothing is routed, the importer is never asked
-    const asked = vi.fn(async () => classes());
-    registered[IMPORTER] = asked;
-    const inside = join(realpathSync(tempDir('marmeon-routed-upper-')), 'Node_Modules', 'app');
-    mkdirSync(dirname(inside), { recursive: true });
-    cpSync(root, inside, { recursive: true, verbatimSymlinks: false, dereference: false });
-    rmSync(join(inside, 'node_modules/@acme/solo'));
-    symlinkSync(join(inside, 'workspace/solo'), join(inside, 'node_modules/@acme/solo'), 'dir');
-    expect((await load(inside)).providers).toHaveLength(1);
-    expect(asked).not.toHaveBeenCalled();
-  });
+    it('keeps the injection lists unwritten when a provider is refused', async () => {
+      const root = workspaceApp();
+      current(root);
+      writeFileSync(join(root, 'workspace/solo/dist/index.js'), `${BUILT.replace(/export class SoloServiceProvider[\s\S]*$/, '')}export const SoloServiceProvider = 5;\n`);
+      const failure = await failureOf(root);
+      expect(failure).toBeInstanceOf(DiscoveryError);
+      const { Solo } = await import(`${pathToFileURL(join(root, 'workspace/solo/dist/index.js')).href}`);
+      expect(injectOf(Solo)).toBe(false);
+    });
 
-  it('boots without the importer when a class has a static getter `inject` that throws', async () => {
-    const root = workspaceApp();
-    writeFileSync(join(root, 'workspace/solo/dist/index.js'), `${BUILT}Object.defineProperty(Solo, 'inject', { get() { throw new Error('read'); }, configurable: true });\n`);
-    expect((await load(root)).providers).toHaveLength(1);
-  });
+    it('boots a real provider', async () => {
+      const root = workspaceApp();
+      const { providers } = await load(root);
+      expect(providers).toHaveLength(1);
+      expect(typeof providers[0]).toBe('function');
+    });
 
-  it('is unchanged without the importer: a module that lacks an injection target ends in the TypeError it always did, no K7', async () => {
-    const root = workspaceApp();
-    current(root);
-    writeFileSync(join(root, 'workspace/solo/dist/index.js'), 'export class Dep {}\nexport class Other {}\nexport class SoloServiceProvider {}\n');
-    const failure = await failureOf(root);
-    expect(failure).toBeInstanceOf(TypeError);
-  });
+    it('keeps the K7 of the first run when discovering again fails on another package', async () => {
+      const root = workspaceApp();
+      const other = join(root, 'workspace/beta');
+      mkdirSync(join(other, 'dist'), { recursive: true });
+      writeFileSync(join(other, 'package.json'), JSON.stringify({ name: '@acme/beta', version: '1.0.0', type: 'module', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } }, marmeon: { providers: ['BetaServiceProvider'] } }));
+      writeFileSync(join(other, 'dist/index.d.ts'), 'export declare class BetaServiceProvider {}\n');
+      writeFileSync(join(other, 'dist/index.js'), 'export class BetaServiceProvider {}\n');
+      symlinkSync(other, join(root, 'node_modules/@acme/beta'), 'dir');
+      writeFileSync(join(root, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@acme/solo': '1.0.0', '@acme/beta': '1.0.0' } }));
+      current(root);
+      rmSync(join(root, 'workspace/solo/dist/index.d.ts'));
+      writeFileSync(join(other, 'dist/index.js'), 'export const BetaServiceProvider = 5;\n');
+      const failure = await failureOf(root);
+      expect(failure).toBeInstanceOf(DiscoveryError);
+      expect(failure!.message).toContain('workspace/beta/dist/index.js lists "BetaServiceProvider"');
+      expect(failure!.cause).toBeInstanceOf(Error);
+    });
 
-  it('is unchanged without the importer: a provider the module lacks is returned as undefined', async () => {
-    const root = workspaceApp();
-    current(root, (manifest) => (manifest.injections = []));
-    writeFileSync(join(root, 'workspace/solo/dist/index.js'), 'export class Dep {}\n');
-    expect((await load(root)).providers).toEqual([undefined]);
+    it('discovers again once when the manifest is stale: a package renamed its provider', async () => {
+      const root = workspaceApp();
+      current(root);
+      const dir = join(root, 'workspace/solo');
+      writeFileSync(join(dir, 'package.json'), readFileSync(join(dir, 'package.json'), 'utf8').replace('SoloServiceProvider', 'RenamedServiceProvider'));
+      for (const file of ['dist/index.js', 'dist/index.d.ts']) {
+        writeFileSync(join(dir, file), readFileSync(join(dir, file), 'utf8').replaceAll('SoloServiceProvider', 'RenamedServiceProvider'));
+      }
+      const { providers, regenerated } = await load(root);
+      expect(providers).toHaveLength(1);
+      expect(providers[0]!.name).toBe('RenamedServiceProvider');
+      expect(regenerated).toBe(true);
+    });
   });
 });

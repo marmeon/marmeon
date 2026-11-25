@@ -614,14 +614,32 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     return value;
   };
 
-  // Before anything is written: a routed provider or target that cannot be used refuses the boot. An undefined injected value refuses while
-  // the lists are written.
-  if (routed.some(Boolean)) {
-    for (const ref of manifest!.providers) {
-      if (!routed[ref[0]]) continue;
-      const provider = resolve(ref);
-      if (typeof provider !== 'function') throw new DiscoveryError(`${file(ref[0])} exports "${ref[1]}", which is no function, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.`);
+  // Before anything is written: a provider that is no class refuses the boot, routed or not (a package resolved to TypeScript sources lists
+  // its providers unchecked, and a `.d.ts` may name a type that has no value). A routed injection target that cannot be used refuses too.
+  // An undefined injected value refuses while the lists are written, for routed modules only: unrouted targets are not checked here.
+  const refuse = (ref: ExportRef) =>
+    new DiscoveryError(
+      `${file(ref[0])} ${routed[ref[0]] ? `exports "${ref[1]}", which is no class, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.` : `lists "${ref[1]}" as a service provider, but the module has no export of that name that is a class. Fix the package, or report it to its author.`}`,
+    );
+  const unusable = () => manifest!.providers.find((ref) => !isConstructor(resolve(ref)));
+  let bad = unusable();
+  // The manifest may be stale (a package renamed a provider while package.json and the lockfile stayed): discover again once, as above.
+  if (bad !== undefined && !regenerated && !routed[bad[0]]) {
+    const refusal = refuse(bad);
+    try {
+      manifest = discover();
+    } catch (error) {
+      // The first refusal names the provider; what the second discovery met on the way is its cause. Loading the fresh manifest
+      // stays outside: its failures belong to the current install and surface as themselves.
+      refusal.cause = error;
+      throw refusal;
     }
+    regenerated = true;
+    modules = await load(manifest);
+    bad = unusable();
+  }
+  if (bad !== undefined) throw refuse(bad);
+  if (routed.some(Boolean)) {
     for (const { class: ref } of manifest!.injections) {
       if (!routed[ref[0]]) continue;
       const target = resolve(ref);
@@ -647,6 +665,17 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
       'on every start. Run `marmeon build` (or `marmeon discover`) where the app can write — in a Docker image, in its build stage.';
   }
   return { providers: manifest!.providers.map(resolve), packages: manifest!.packages, regenerated, ...(warning ? { warning } : {}) };
+}
+
+/** Whether a value can be called with `new`, found without running it. */
+function isConstructor(value: unknown): boolean {
+  if (typeof value !== 'function') return false;
+  try {
+    Reflect.construct(String, [], value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readManifest(path: string): Manifest | undefined {
