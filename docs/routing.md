@@ -1120,8 +1120,9 @@ if (claim) throw new Error(claim.by === 'route' ? `${slug} is the address of ${c
 A localized route answers one path per locale of the app: with `de` and `en`, `/de/about` and `/en/about` are taken and `/fr/about` is
 not. `@marmeon/i18n` tells the router the locales and `@marmeon/server` the health paths of `SERVER_HEALTH_PATH` while the app boots, so a
 command gets the same answer as a request. A `health` you pass to `createHttpKernel()` counts only once the kernel exists. Without
-`@marmeon/i18n`, every first segment counts as a locale. Without `@marmeon/server`, `/up` and `/up/ready` count. A route a package adds in
-`boot()` is only seen once it has booted, so ask after the app started.
+`@marmeon/i18n`, every first segment counts as a locale. Without `@marmeon/server`, `/up` and `/up/ready` count. The locales, the health
+paths and a route a package adds in `boot()` are only known once their provider has booted, so ask after the app started, not from another
+provider's `boot()`.
 
 ### Moving from a wildcard route
 
