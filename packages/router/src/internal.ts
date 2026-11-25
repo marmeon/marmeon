@@ -3,7 +3,7 @@
  * request pipeline with the rest; an app has no reason to, and none of it is API — it can change in any release.
  * @internal
  */
-export { fillPath } from './url.ts';
+export { fillPath, localeAddress, namesLocaleSegment, withoutLocale } from './url.ts';
 export type { RouteLookup } from './url.ts';
 export { accessLabel, formatAccessProblems, isEveryone, routeAccess } from './access.ts';
 export { ensuresOf } from './ensures.ts';

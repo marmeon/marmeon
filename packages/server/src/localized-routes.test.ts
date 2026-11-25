@@ -234,3 +234,93 @@ describe('Route.localized() on the server', () => {
     }
   });
 });
+
+/** The stub with the locale without a prefix set by hand (`@marmeon/i18n` does not bind it yet). */
+const withDefault = (unprefixed: string | undefined, supported: readonly string[] = ['en', 'de']): UrlLocales => ({ ...locales(supported), unprefixed });
+
+describe('Route.localized() on the server — the default locale without a prefix', () => {
+  /** Boots the routes and returns what the start did: the error, or the kernel. */
+  async function start(routes: RouteDefinitions, urlLocales: UrlLocales | null) {
+    const { application, create } = await kernelFor(routes, urlLocales);
+    try {
+      return { error: (() => { try { create(); return undefined; } catch (error) { return error as Error; } })() };
+    } finally {
+      await application.shutdown();
+    }
+  }
+
+  it('stops the start for a locale without a prefix that is none of the supported ones, also with no localized route', async () => {
+    const withRoutes = await start(pages, withDefault('fr'));
+    expect(withRoutes.error?.message).toMatch(/\[marmeon:H9\] The default locale without a prefix \[fr\] is none of the supported ones \(en, de\)/);
+    const without = await start(openRoutes((Route) => void Route.get('/plain', () => 'plain')), withDefault('fr'));
+    expect(without.error?.message).toMatch(/\[marmeon:H9\] The default locale without a prefix \[fr\] is none of the supported ones/);
+    expect((await start(pages, withDefault('de'))).error).toBeUndefined();
+  });
+
+  it.each(['/en/x', '/EN/x', '/De/x'])('stops the start for a localized route whose first literal segment is a locale: %s', async (path) => {
+    const { error } = await start(openRoutes((Route) => void Route.localized().get(path, () => 'x')), withDefault('de'));
+    expect(error?.message).toMatch(/\[marmeon:H9\] GET \/:locale\/\w+\/x \(Route\.localized\(\)\) starts with the locale \[\w+\] after its prefix: the address of the default locale without a prefix, \/\w+\/x, would be the path of the locale \[\w+\]/);
+    // Without the mode the same route starts, as it does without the mode.
+    expect((await start(openRoutes((Route) => void Route.localized().get(path, () => 'x')), withDefault(undefined))).error).toBeUndefined();
+  });
+
+  it('does not refuse a parameter in the first place: /:slug and a fallback at the root start', async () => {
+    expect((await start(openRoutes((Route) => void Route.localized().get('/:slug', () => 'x')), withDefault('de'))).error).toBeUndefined();
+    expect((await start(openRoutes((Route) => void Route.localized().fallback(() => 'x')), withDefault('de'))).error).toBeUndefined();
+    expect((await start(openRoutes((Route) => void Route.localized().get('/entries/en', () => 'x')), withDefault('de'))).error).toBeUndefined();
+  });
+
+  it('stops the start when a route of the app shares a method with the address of the default locale, POST included', async () => {
+    const post = await start(openRoutes((Route) => {
+      Route.localized().post('/contact', () => 'sent');
+      Route.post('/contact', () => 'other');
+    }), withDefault('de'));
+    expect(post.error?.message).toMatch(/\[marmeon:H9\] POST \/contact and POST \/:locale\/contact \(Route\.localized\(\)\) both answer POST \/contact: the address of the default locale without a prefix \[de\] is that route's/);
+    // Without the mode only the GET of the redirect counts, as without the mode.
+    expect((await start(openRoutes((Route) => {
+      Route.localized().post('/contact', () => 'sent');
+      Route.post('/contact', () => 'other');
+    }), withDefault(undefined))).error).toBeUndefined();
+  });
+
+  it('counts HEAD as GET and names the shared method', async () => {
+    const { error } = await start(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.match(['HEAD'], '/about', () => 'head');
+    }), withDefault('de'));
+    expect(error?.message).toMatch(/\[marmeon:H9\] HEAD \/about and GET \/:locale\/about \(Route\.localized\(\)\) both answer GET \/about/);
+  });
+
+  it('refuses a route written with a trailing slash too: GET /about/ is /about beside a localized /about', async () => {
+    const { error } = await start(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.get('/about/', () => 'slash');
+    }), withDefault('de'));
+    expect(error?.message).toMatch(/\[marmeon:H9\] GET \/about and GET \/:locale\/about \(Route\.localized\(\)\) both answer GET \/about/);
+  });
+
+  it('starts when a localized POST-only route sits beside a GET route on the same path', async () => {
+    const { error } = await start(openRoutes((Route) => {
+      Route.localized().post('/contact', () => 'sent');
+      Route.get('/contact', () => 'form');
+    }), withDefault('de'));
+    expect(error).toBeUndefined();
+  });
+
+  it('keeps the text without the mode for a GET beside a localized GET without the mode', async () => {
+    const { error } = await start(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.get('/about', () => 'plain');
+    }), withDefault(undefined));
+    expect(error?.message).toMatch(/the URL without a locale redirects to the visitor's language/);
+  });
+
+  it('says the address of the default locale for a GET beside a localized GET with the mode', async () => {
+    const { error } = await start(openRoutes((Route) => {
+      Route.localized().get('/about', () => 'about');
+      Route.get('/about', () => 'plain');
+    }), withDefault('de'));
+    expect(error?.message).toMatch(/both answer GET \/about: the address of the default locale without a prefix \[de\] is that route's/);
+    expect(error?.message).not.toMatch(/redirects to the visitor's language/);
+  });
+});

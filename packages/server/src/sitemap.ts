@@ -1,6 +1,6 @@
 import { Clock, type Container, type Logger } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { addsOf, fillPath, tokenizePattern } from '@marmeon/router/internal';
+import { addsOf, fillPath, localeAddress, tokenizePattern } from '@marmeon/router/internal';
 import type { Router, RouteDefinition } from '@marmeon/router';
 import { matchesPath } from '@marmeon/router/url';
 import type { SitemapEntries, SitemapEntry } from '@marmeon/router';
@@ -62,10 +62,12 @@ type Entries = SitemapEntries<Record<string, string | number>>;
 /**
  * The sitemap and robots.txt of `routes`; their URLs begin with `appUrl`. A localized route is listed once per entry and locale
  * (`locales`, each in its URL spelling), every `<url>` naming all of its language versions and the address without a locale as
- * `x-default`; an entry that names its `locale` is that language's `<url>` alone, with the `alternates` it gives. `claimed` says whether another route, a package or the framework answers a decoded path in the route's place
+ * `x-default`; an entry that names its `locale` is that language's `<url>` alone, with the `alternates` it gives. With an `unprefixed`
+ * locale its page has no prefix (`/about`), and `x-default` is that same address; a page of it whose address without a prefix
+ * would start with a locale keeps its prefix (`/de/en/x`). `claimed` says whether another route, a package or the framework answers a decoded path in the route's place
  * (a fallback's entry on such a path is left out, with one warning per route).
  */
-export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], claimed, logger, report }: { appUrl: string; locales?: readonly string[]; claimed?: (route: RouteDefinition, path: string) => boolean; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
+export function createSitemapEndpoints(routes: readonly RouteDefinition[], container: Container, { appUrl, locales = [], unprefixed: modeOf, claimed, logger, report }: { appUrl: string; locales?: readonly string[]; unprefixed?: () => string | undefined; claimed?: (route: RouteDefinition, path: string) => boolean; logger: Pick<Logger, 'warn'>; report: (error: unknown) => void }): SitemapEndpoints {
   const clock = container.has(Clock) ? container.make(Clock) : { now: () => Date.now() };
   /** The routes already warned about, once each: the file is made every five minutes, a line each time would be noise. */
   const warned = new Set<RouteDefinition>();
@@ -81,6 +83,8 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
     warnedAlternates.add(route);
     logger.warn(message);
   };
+  /** The locale without a prefix, read when each file is made: the app may turn the mode on after the server was made. */
+  let unprefixed: string | undefined;
   const warnedDefault = new Set<RouteDefinition>();
   const warnedClaimed = new Set<RouteDefinition>();
   let truncated = false;
@@ -98,6 +102,7 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
         if (typeof params !== 'object' || params === null) throw new Error('the value is no parameters object');
         let pattern = route.path;
         let filled = params as Record<string, string | number>;
+        let path: string | undefined;
         if (route.localized) {
           const own = (params as Record<string, unknown>).locale;
           // The app's locales only: a value never chooses a prefix of its own.
@@ -105,10 +110,12 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
           if (language !== 'x-default' && own !== undefined && own !== language) throw new Error('the locale differs from the key');
           const locale = language === 'x-default' ? own : language;
           if (locale !== undefined && (typeof locale !== 'string' || !locales.includes(locale))) throw new Error('the locale is not a supported one');
-          if (locale === undefined) pattern = route.path.replace(/^\/:locale/, '') || '/';
-          filled = { ...filled, ...(locale === undefined ? {} : { locale }) };
+          // The address of the locale without a prefix (and of no locale, `x-default`) is the pattern without `/:locale`.
+          const address = localeAddress(name, route.path, filled, locale as string | undefined, unprefixed, locales);
+          path = address.path;
+          pattern = address.pattern;
         }
-        const path = fillPath(name, pattern, filled).path;
+        path ??= fillPath(name, pattern, filled).path;
         if (!matchesPath(pattern, decodeURIComponent(path))) throw new Error('the path does not match the route');
         if (claimed?.(route, decodeURIComponent(path))) throw new Error('another route answers the path');
         return `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`;
@@ -171,6 +178,7 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
   }
 
   async function build(): Promise<string> {
+    unprefixed = modeOf?.();
     const lines: string[] = [];
     let count = 0;
     let localizedSeen = false;
@@ -189,25 +197,38 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
         // The links name every language the route lists when the entry is generated, or when the hook also has entries without a locale.
         const automatic = route.localized && (ownLocale === undefined || taken !== undefined);
         const versions = route.localized ? (automatic ? locales : [ownLocale as string]) : [undefined];
-        const listed = versions.filter((locale) => ownLocale !== undefined ? locale === ownLocale : !taken?.has(locale));
-        if (listed.length === 0) continue;
+        const wanted = versions.filter((locale) => (ownLocale !== undefined ? locale === ownLocale : !taken?.has(locale)));
+        if (wanted.length === 0) continue;
         let paths: string[];
-        let unprefixed: string | undefined;
+        // Whether a version is the page of the locale without a prefix at its bare address (`/about`), not at the prefix it keeps for a path that starts with a locale.
+        let bare: boolean[];
+        let defaultPath: string | undefined;
         try {
-          paths = versions.map((locale) => {
-            const path = fillPath(name, route.path, { ...(entry.params as Record<string, string | number>), ...(locale === undefined ? {} : { locale }) }).path;
+          const params = entry.params as Record<string, string | number>;
+          const addresses = versions.map((locale) => (route.localized ? localeAddress(name, route.path, params, locale, unprefixed, locales) : { ...fillPath(name, route.path, params), pattern: route.path }));
+          paths = addresses.map(({ path, pattern }) => {
             // Matched as the server matches a request: decoded, so `..%2Fadmin` (a segment with a slash) and a value the
             // constraint refuses are no page.
-            if (!matchesPath(route.path, decodeURIComponent(path))) throw new Error('the path does not match the route');
+            if (!matchesPath(pattern, decodeURIComponent(path))) throw new Error('the path does not match the route');
             return path;
           });
-          if (automatic) unprefixed = fillPath(name, route.path.replace(/^\/:locale/, '') || '/', entry.params as Record<string, string | number>).path;
+          bare = addresses.map(({ pattern }, index) => unprefixed !== undefined && versions[index] === unprefixed && pattern !== route.path);
+          if (automatic) defaultPath = localeAddress(name, route.path, params, undefined, unprefixed, locales).path;
         } catch {
           warnOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} include parameters that name no page of the route (a missing one, a dot segment, one its constraint refuses); they are left out.`);
           continue;
         }
+        // The page of the locale without a prefix, at an address another route or the framework answers: it is not served there, so the version
+        // and the `x-default` that names it are left out — the other versions stand.
+        const lost = claimed ? bare.flatMap((isBare, index) => (isBare && claimed(route, decodeURIComponent(paths[index]!)) ? [versions[index]] : [])) : [];
+        if (lost.length > 0 && !warnedDefault.has(route)) {
+          warnedDefault.add(route);
+          logger.warn(`The version in the default locale without a prefix [${unprefixed}] and its x-default, if any, of a sitemap entry of ${route.methods.join('|')} ${route.path} are left out: another route or the framework answers its address. See docs/seo.md#sitemap-and-robotstxt.`);
+        }
+        const listed = wanted.filter((locale) => !lost.includes(locale));
+        if (listed.length === 0) continue;
         // A fallback's entry on a path another route answers is no page of the fallback: the server never gives it that request.
-        if (claimed && paths.some((path) => claimed(route, decodeURIComponent(path)))) {
+        if (claimed && paths.some((path, index) => !lost.includes(versions[index]) && claimed(route, decodeURIComponent(path)))) {
           if (!warnedClaimed.has(route)) {
             warnedClaimed.add(route);
             logger.warn(`A sitemap entry of ${route.methods.join('|')} ${route.path} is answered by another route or the framework, so it is left out. See docs/seo.md#sitemap-and-robotstxt.`);
@@ -224,12 +245,12 @@ export function createSitemapEndpoints(routes: readonly RouteDefinition[], conta
         let alternates = '';
         if (automatic) {
           // The address without a locale is `x-default` only where the route itself answers it: a path another route takes would send the visitor elsewhere.
-          const defaultTaken = unprefixed !== undefined && claimed?.(route, decodeURIComponent(unprefixed)) === true;
-          if (defaultTaken && !warnedDefault.has(route)) {
+          const defaultTaken = lost.length > 0 || (defaultPath !== undefined && claimed?.(route, decodeURIComponent(defaultPath)) === true);
+          if (defaultTaken && lost.length === 0 && !warnedDefault.has(route)) {
             warnedDefault.add(route);
             logger.warn(`The x-default of a sitemap entry of ${route.methods.join('|')} ${route.path} is left out: another route or the framework answers the address without a locale. See docs/seo.md#sitemap-and-robotstxt.`);
           }
-          alternates = [...versions.map((locale, index) => [locale!, paths[index]!] as const), ...(defaultTaken ? [] : [['x-default', unprefixed!] as const])].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
+          alternates = [...versions.flatMap((locale, index) => (lost.includes(locale) ? [] : [[locale!, paths[index]!] as const])), ...(defaultTaken ? [] : [['x-default', defaultPath!] as const])].map(([language, path]) => `<xhtml:link rel="alternate" hreflang="${escapeXml(language)}" href="${escapeXml(new URL(path, appUrl).href)}"/>`).join('');
           if (entry.alternates !== undefined) warnAlternatesOnce(route, `The sitemap entries of ${route.methods.join('|')} ${route.path} name alternates, which are ignored: this route lists a page in every language, with its versions derived from the locales. Give every entry a locale to list its versions yourself. See docs/seo.md#sitemap-and-robotstxt.`);
         } else if (entry.alternates !== undefined) {
           alternates = alternatesOf(route, name, entry.alternates);

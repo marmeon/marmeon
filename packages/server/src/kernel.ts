@@ -78,13 +78,14 @@ import {
   isIslandAction,
   keptFromSharedCaches,
   liveValidationFields,
+  namesLocaleSegment,
   SharedCacheWarnings,
   UrlLocales,
   VALIDATED_HEADER,
   withQueuedCookies,
   type DispatchOptions,
 } from '@marmeon/router/internal';
-import { Hono, type Context } from 'hono';
+import { Hono, type Context, type Next } from 'hono';
 import { getPath } from 'hono/utils/url';
 import { overrideMethod } from './method-override.ts';
 import { islandOpenedByItself, islandRefusalMessage, refuseIslandRequest } from './island-gate.ts';
@@ -330,16 +331,29 @@ export function createHttpKernel(
   const sharedCacheWarnings = new SharedCacheWarnings();
   const packageCacheWarned = new Set<string>();
   const routeHandlers = new Map<unknown, RouteDefinition>();
+  /**
+   * The route a registered one stands for. The address of a localized route without its prefix is that route itself once the app has a
+   * locale without a prefix — whichever kind of address it registered: everything that asks which route a request reached (the island
+   * gate, the session, the name in the log) must see the page, never the address, or the address would be a way round the route's own
+   * rules. Read at every call, like the router reads the mode.
+   */
+  const stands = (route: RouteDefinition): RouteDefinition => (route.generatedFrom !== undefined && router.unprefixedLocale !== undefined ? route.generatedFrom : route);
+  /** Whether the route is an address without a prefix the path is not for: a path that starts with a locale belongs to that locale's own address. */
+  const forLocale = (route: RouteDefinition, pathname: string): boolean =>
+    route.generatedFrom !== undefined && urlLocales !== undefined && router.unprefixedLocale !== undefined && namesLocaleSegment(pathname, urlLocales.supported);
 
   /**
    * The route a URL of this app points to. Asks Hono's router what a GET for the path would reach: nothing runs, no
    * middleware. A URL of another host, or a path no route answers, has none.
    */
   const routeAt = (target: URL): RouteDefinition | undefined => {
-    const [handlers] = app.router.match('GET', getPath({ url: target.origin + target.pathname } as Request));
+    const seen = getPath({ url: target.origin + target.pathname } as Request);
+    const [handlers] = app.router.match('GET', seen);
     for (const [[handler]] of handlers) {
       const route = routeHandlers.get(handler);
-      if (route) return route;
+      // The handler of an address hands such a path on (`next()`): the route behind it is not the one that answers. It decides by the
+      // path Hono matched (`c.req.path`, decoded), the sitemap's by the same one.
+      if (route && !forLocale(route, target.pathname) && !forFramework(route, seen)) return route;
     }
     return undefined;
   };
@@ -354,6 +368,12 @@ export function createHttpKernel(
       return undefined;
     }
   };
+  /**
+   * Whether the route is an address without a prefix and the path is one the server answers itself: the sitemap and robots.txt, once a route
+   * asks for them. The address hands it on, as `claimedBy()` does for such a path.
+   */
+  const forFramework = (route: RouteDefinition, pathname: string): boolean =>
+    route.generatedFrom !== undefined && listed.length > 0 && router.unprefixedLocale !== undefined && (pathname === '/sitemap.xml' || pathname === '/robots.txt');
   /** The pattern of the route a URL points to — for masking a `Location` or `Referer` by it (`/invite/:code`). */
   const routePatternOf = (value: string, request: Request): string | undefined => routeFor(value, request)?.path;
   const startsSessions = new WeakMap<RouteDefinition, boolean>();
@@ -400,7 +420,9 @@ export function createHttpKernel(
     // Only a route whose controller answers with `island()` is an island. Decided here too — before the session decision below,
     // which would hand any route to the browser — and before the request is made; the kernel's route handler refuses it as well.
     // The target was checked against the page's own URL above; the page's `Host` header may differ from it behind a proxy.
-    const route = routeAt(target);
+    const found = routeAt(target);
+    // The address of an island's route without a prefix is the island's route: its action and its middleware are the page's.
+    const route = found && stands(found);
     if (route === undefined || !isIslandAction(route.action)) {
       // This adds no line outside debugging (whoever steers the `href` could fill the log); the page's renderer logs the
       // failed island as for any other, and the answer is the unknown path's.
@@ -524,7 +546,7 @@ export function createHttpKernel(
     if (typeof error === 'object' && error !== null) reported.set(failed, (reported.get(failed) ?? new WeakSet()).add(error));
     container.make(ErrorReports).report(error, {
       source: 'request',
-      context: { method: failed.method, route: route?.routeName ?? '', path: redactor.url(pathname, route?.path ?? refusedBy.get(failed)), ...(phase ? { phase } : {}) },
+      context: { method: failed.method, route: (route && stands(route).routeName) ?? '', path: redactor.url(pathname, route?.path ?? refusedBy.get(failed)), ...(phase ? { phase } : {}) },
       // Late work logs its own line (the caller's); a request error logs here.
       ...(phase ? { log: false as const } : {}),
     });
@@ -620,7 +642,8 @@ export function createHttpKernel(
       }
       if (!isViewResult(result) || result.component !== ERROR_PAGE || result.status < 500 || isActionRequest(request) || request.headers.has(UPLOAD_HEADER)) return undefined;
       const info = currentRequest();
-      const route = matched.get(failed);
+      const shown = matched.get(failed);
+      const route = shown && stands(shown);
       const state = states.get(failed);
       const { errorPageResponse } = await import('./error-page/index.ts');
       return await errorPageResponse(
@@ -637,7 +660,8 @@ export function createHttpKernel(
             ? {
                 route: {
                   name: route.routeName,
-                  path: route.path,
+                  // The pattern the request was matched by: the parameters are read from it.
+                  path: (shown ?? route).path,
                   methods: route.methods,
                   controller: controllerOf(route),
                   // A class by its name, a defineMiddleware() by the name it was given — as route:list shows them.
@@ -723,7 +747,7 @@ export function createHttpKernel(
         // Built only when it goes somewhere: with LOG_LEVEL=silent (or warn) neither the line nor its redacted path.
         if (logger.enabled?.('info') === false) return;
         const definition = matched.get(c.req.raw);
-        const route = definition?.routeName;
+        const route = definition && stands(definition).routeName;
         logger.info(`${c.req.method} ${redactor.path(c.req.path, definition?.path ?? refusedBy.get(c.req.raw))} ${c.res.status}`, route === undefined ? { ms: Math.round(performance.now() - started) } : { route, ms: Math.round(performance.now() - started) });
       };
       // Traced only while something listens: otherwise no message is built at all.
@@ -765,12 +789,13 @@ export function createHttpKernel(
     const refererRoutePath = referer ? routePatternOf(referer, request) : undefined;
     if (refererRoutePath !== undefined) message.refererRoutePath = refererRoutePath;
     return trace(requests, message, next, (ended) => {
-      const route = matched.get(request);
-      if (route) {
+      const address = matched.get(request);
+      if (address) {
+        const route = stands(address);
         const name = route.routeName;
         const controller = controllerOf(route);
         if (name !== undefined) ended.route = name;
-        ended.routePath = route.path;
+        ended.routePath = address.path;
         if (controller !== undefined) ended.controller = controller;
       }
       const answer = response();
@@ -984,13 +1009,18 @@ export function createHttpKernel(
     );
 
   const register = (route: RouteDefinition) => {
-    const handler = async (c: Context) => {
-      // Before the route's middleware, the global ones included: see refuseIslandRequest.
+    const handler = async (c: Context, next: Next) => {
+      // The address of a localized route without its prefix takes no path that starts with a locale: that path is the locale's own, and
+      // whatever follows (a fallback, a 404) answers it. Nothing has run, so nothing is logged or matched for it.
+      if (forLocale(route, new URL(c.req.url).pathname) || forFramework(route, c.req.path)) return next();
+      // Before the route's middleware, the global ones included: see refuseIslandRequest. What the request is called is the route's
+      // (the page behind an address), what it is matched by is the address's own pattern (`refusedBy`, `matched`).
+      const page = stands(route);
       refusedBy.set(c.req.raw, route.path);
-      const refused = await refuseIslandRequest(c.req.raw, route, showsDebug(c.req.raw), refuseWith(c.req.raw));
+      const refused = await refuseIslandRequest(c.req.raw, page, showsDebug(c.req.raw), refuseWith(c.req.raw));
       if (refused) return refused;
       // An island's route opened by itself: the global middleware, then a 404 like an unknown path — see islandOpenedByItself.
-      const byItself = islandOpenedByItself(c.req.raw, route, showsDebug(c.req.raw));
+      const byItself = islandOpenedByItself(c.req.raw, page, showsDebug(c.req.raw));
       if (byItself) {
         return handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) =>
           router.dispatchGlobal(c.req.raw, () => Promise.reject(new HttpError(404, byItself.message === undefined ? undefined : redactor.text(byItself.message))), {
@@ -1027,23 +1057,26 @@ export function createHttpKernel(
   // The framework's routes first, then a guard, then the app's: a path under `/_marmeon/` that no framework route answered
   // is a 404 here, so no wildcard of the app (`/:page{.+}`) can take it. Hono matches in registration order and decodes
   // `%5F`, so the guard sees the path as the router does; it compares by `isReservedPath` (any case, doubled slash).
+  // With a locale without a prefix its address is a page like the others: it stands in `registrationOrder` behind its route and is registered there.
+  const withAddresses = router.unprefixedLocale !== undefined;
   const ordered = router.registrationOrder;
   for (const route of ordered) if (router.isFrameworkRoute(route)) register(route);
   app.all('*', (c, next) => (router.isReservedPath(c.req.path) ? notFound(c) : next()));
-  for (const route of ordered) if (!router.isFrameworkRoute(route) && !route.generatedFrom) register(route);
+  for (const route of ordered) if (!router.isFrameworkRoute(route) && (withAddresses || !route.generatedFrom)) register(route);
 
-  // After every route of the app (one on the same path wins), before the localized routes' versions without a locale: such a
-  // route (`/:page`) would otherwise take `/sitemap.xml`. Only when a route asks for it, and behind the global middleware alone.
+  // After every route of the app (one on the same path wins). Without a locale bound as unprefixed, before the localized routes' redirecting versions: such a
+  // route (`/:page`) would otherwise take `/sitemap.xml`; with one, the addresses without a prefix registered above hand `/sitemap.xml` and
+  // `/robots.txt` on (`forFramework`). Only when a route asks for it, and behind the global middleware alone.
   if (listed.length > 0) {
     // Whether another route or the framework answers a decoded path in a fallback's place.
     const claimed = (route: RouteDefinition, path: string): boolean => {
       if (!router.isFallback(route)) return false;
       if (router.claimedBy(path) !== undefined) return true;
-      // The address without a locale of a localized fallback is answered by its redirecting variant: still the route's own.
+      // The address without a locale of a localized fallback answers that path: still the route's own.
       const answering = router.fallbackFor(path);
       return answering !== route && answering?.generatedFrom !== route;
     };
-    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, claimed, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
+    const endpoints = createSitemapEndpoints(listed, container, { appUrl: appUrl!, locales: urlLocales?.supported, unprefixed: () => router.unprefixedLocale, claimed, logger, report: (error) => container.make(ErrorReports).report(error, { source: 'request', context: { method: 'GET', route: '', path: '/sitemap.xml' } }) });
     const answer = (answerWith: () => Response | Promise<Response>) => async (c: Context) =>
       (await refuseIslandRequest(c.req.raw, undefined, showsDebug(c.req.raw), refuseWith(c.req.raw))) ??
       handle(c.req.raw, remoteAddress(c.env), (scope, state, onTerminable) => {
@@ -1059,7 +1092,7 @@ export function createHttpKernel(
     app.get('/sitemap.xml', answer(() => endpoints.sitemap()));
     app.get('/robots.txt', answer(() => endpoints.robots()));
   }
-  for (const route of ordered) if (route.generatedFrom) register(route);
+  if (!withAddresses) for (const route of ordered) if (route.generatedFrom) register(route);
 
   // The fallbacks answer what nothing above took, whatever order the modules loaded in. The build's `/assets` is no page: a missing
   // file is a 404 here, not a page of the fallback a cache would keep. Only with a fallback, so a wildcard of an app sees `/assets`
