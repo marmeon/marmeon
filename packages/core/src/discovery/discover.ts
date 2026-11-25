@@ -570,11 +570,14 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   // Resolution depends on the *set* of conditions, not their order or repetition.
   const hash = createHash('sha256').update(MANIFEST_VERSION).update([...new Set(conditions)].sort().join('\0'));
   hash.update(readFileSync(join(root, 'package.json')));
-  // The same rule as the way up to the workspace: a lockfile above the last trusted folder (`trustedTop`) counts as absent, and so
-  // does one that is no regular file.
+  // The same rule as the way up to the workspace: a lockfile above the last trusted folder counts as absent, and so does one that is no regular file.
   const app = realRoot(root);
-  const lockfile = findLockfile(app, trustedTop(app));
+  const { limit, refusedAt, top } = workspaceLookup(root);
+  const lockfile = findLockfile(app, top);
   hash.update(lockfile !== undefined && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
+  // The boundary the package lookup uses: a marker added, moved or removed changes which packages are in reach, though neither package.json
+  // nor the lockfile did, and so does the folder the way up ends below. Relative to the app, so a copy of the app at another path hashes alike.
+  hash.update('\0').update(relative(app, limit)).update('\0').update(refusedAt === undefined ? '' : relative(app, refusedAt));
   return hash.digest('hex').slice(0, 16);
 }
 
@@ -654,13 +657,13 @@ function workspaceRoot(root: string): string {
   return workspaceLookup(root).limit;
 }
 
-/** {@link workspaceRoot}, and the refused folder when the app has no workspace marker or lockfile below it: the limit shrank to the app there. */
-function workspaceLookup(root: string): { limit: string; refusedAt?: string } {
+/** {@link workspaceRoot}, the refused folder when the app has no workspace marker or lockfile below it (the limit shrank to the app there), and the last trusted folder of the way up. */
+function workspaceLookup(root: string): { limit: string; refusedAt?: string; top: string } {
   const app = realRoot(root);
   const top = trustedTop(app);
   for (let dir = app; ; dir = dirname(dir)) {
-    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir };
-    if (dir === top) return dirname(top) === top ? { limit: app } : { limit: app, refusedAt: dirname(top) };
+    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir, top };
+    if (dir === top) return dirname(top) === top ? { limit: app, top } : { limit: app, refusedAt: dirname(top), top };
   }
 }
 

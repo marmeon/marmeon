@@ -277,8 +277,7 @@ alone, so no injection code reaches a client bundle.
 `marmeon discover` walks the app's dependencies and writes what it found to `.marmeon/manifest.json`: the providers of each
 package, and the injection lists of the classes the packages export. You rarely run it yourself. The app writes the file again
 by itself when `package.json`, the lockfile or the resolution conditions change, so `pnpm marmeon add redis`
-(or `pnpm add -E @marmeon/redis@<version of your app>`) needs no extra step. It also does so when the `package.json` of a package in
-your workspace changes. Your workspace is the first folder, from your app upwards, that has a `pnpm-workspace.yaml` (or a `package.json` with `workspaces`) or a
+(or `pnpm add -E @marmeon/redis@<version of your app>`) needs no extra step. It also does so when the `package.json` of a package in your workspace changes. The app also writes it again when a folder from your app up to your workspace gains or loses a workspace marker or a lockfile, or starts or stops being trusted. An app without a workspace counts the folders above it up to the first untrusted one. Your workspace is the first folder, from your app upwards, that has a `pnpm-workspace.yaml` (or a `package.json` with `workspaces`) or a
 lockfile, else your app's folder. An app with a lockfile of its own is therefore its own workspace: a pnpm workspace with one lockfile per
 project does not watch the packages beside the app. The search for your workspace stops below the first folder above your app that everyone can
 write to or that a user other than you, root or the owner of your app owns; on a mount where every folder is writable by everyone (WSL

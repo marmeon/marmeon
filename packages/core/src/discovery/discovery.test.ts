@@ -780,6 +780,103 @@ describe('where discovery looks for packages', () => {
     expect(listed(root)).toEqual(['@acme/kit']);
   });
 
+  describe('the manifest and the workspace boundary', () => {
+    /** `<top>/apps/app` with a dependency hoisted to `<top>/node_modules`; the lockfile at `<top>` makes it the workspace. */
+    function hoisted() {
+      const top = realpathSync(tempDir('marmeon-bounded-'));
+      writeFileSync(join(top, 'pnpm-lock.yaml'), '');
+      write(join(top, 'node_modules/@acme/hoisted'), { name: '@acme/hoisted', version: '1.0.0', marmeon: {} });
+      const root = join(top, 'apps/app');
+      write(root, { name: 'app', type: 'module', dependencies: { '@acme/hoisted': '*' } });
+      const load = async () => loadDiscoveredPackages({ root, conditions: PROD });
+      return { top, root, load };
+    }
+
+    it('regenerates when a workspace marker between the app and its workspace is added, and again when it is removed', async () => {
+      const { top, load } = hoisted();
+      expect(await load()).toMatchObject({ regenerated: true, packages: ['@acme/hoisted'] });
+      expect((await load()).regenerated).toBe(false);
+
+      writeFileSync(join(top, 'apps/pnpm-workspace.yaml'), '');
+      const narrowed = await load();
+      expect(narrowed).toMatchObject({ regenerated: true, packages: [] });
+      expect((await load()).regenerated).toBe(false);
+
+      rmSync(join(top, 'apps/pnpm-workspace.yaml'));
+      expect(await load()).toMatchObject({ regenerated: true, packages: ['@acme/hoisted'] });
+    });
+
+    it('does not regenerate when a file that is no marker is added above the app', async () => {
+      const { top, load } = hoisted();
+      await load();
+      writeFileSync(join(top, 'apps/README.md'), '');
+      writeFileSync(join(top, 'notes.txt'), '');
+      expect((await load()).regenerated).toBe(false);
+    });
+
+    it.each([
+      ['a package.json with workspaces', 'package.json', JSON.stringify({ private: true, workspaces: ['apps/*'] }), 'apps'],
+      ['a lockfile', 'pnpm-lock.yaml', '', 'apps'],
+      ['a pnpm-workspace.yaml', 'pnpm-workspace.yaml', '', 'apps'],
+      ['a lockfile of the app itself', 'pnpm-lock.yaml', '', 'apps/app'],
+    ])('regenerates when %s appears between the app and its workspace', async (_name, file, text, folder) => {
+      const { top, load } = hoisted();
+      await load();
+      writeFileSync(join(top, folder, file), text);
+      expect(await load()).toMatchObject({ regenerated: true, packages: [] });
+      expect((await load()).regenerated).toBe(false);
+    });
+
+    it('stays fresh at a copy of the app in another folder, and hashes alike', async () => {
+      const { top, root, load } = hoisted();
+      await load();
+      const copy = realpathSync(tempDir('marmeon-bounded-copy-'));
+      cpSync(top, copy, { recursive: true });
+      const moved = join(copy, 'apps/app');
+      expect(manifestHash(moved, PROD)).toBe(manifestHash(root, PROD));
+      expect((await loadDiscoveredPackages({ root: moved, conditions: PROD })).regenerated).toBe(false);
+    });
+
+    it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('regenerates when a folder above the app becomes open to everyone, with no lockfile to flip', async () => {
+      const top = realpathSync(tempDir('marmeon-bounded-'));
+      writeFileSync(join(top, 'pnpm-workspace.yaml'), '');
+      write(join(top, 'node_modules/@acme/hoisted'), { name: '@acme/hoisted', version: '1.0.0', marmeon: {} });
+      const root = join(top, 'apps/app');
+      write(root, { name: 'app', type: 'module', dependencies: { '@acme/hoisted': '*' } });
+      const load = () => loadDiscoveredPackages({ root, conditions: PROD });
+      expect(await load()).toMatchObject({ regenerated: true, packages: ['@acme/hoisted'] });
+      expect((await load()).regenerated).toBe(false);
+
+      chmodSync(join(top, 'apps'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'apps'), 0o755));
+      expect(await load()).toMatchObject({ regenerated: true, packages: [] });
+    });
+
+    it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('regenerates when only the folder the way up ends below changes, and says where the search stopped', async () => {
+      // No marker and no lockfile: the limit is the app before and after, and only the refused folder differs (`top` before, `apps` after).
+      const top = realpathSync(tempDir('marmeon-bounded-'));
+      write(join(top, 'node_modules/@acme/hoisted'), { name: '@acme/hoisted', version: '1.0.0', marmeon: {} });
+      const root = join(top, 'apps/app');
+      write(root, { name: 'app', type: 'module', dependencies: { '@acme/hoisted': '*' } });
+      const load = async () => {
+        const { regenerated } = await loadDiscoveredPackages({ root, conditions: PROD });
+        return { regenerated, dropped: (JSON.parse(readFileSync(manifestPath(root, PROD), 'utf8')) as { dropped?: string[] }).dropped ?? [] };
+      };
+      chmodSync(top, 0o777);
+      onTestFinished(() => chmodSync(top, 0o755));
+      const before = await load();
+      expect(before.dropped.join()).toContain('the search stopped at ../.., ');
+      expect((await load()).regenerated).toBe(false);
+
+      chmodSync(top, 0o755);
+      chmodSync(join(top, 'apps'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'apps'), 0o755));
+      const after = await load();
+      expect(after.regenerated).toBe(true);
+      expect(after.dropped).toEqual(['the app depends on @acme/hoisted (the search stopped at .., which everyone can write to or another user owns): installed, but out of reach of discovery, so not listed.']);
+    });
+  });
+
   describe('a package outside the workspace', () => {
     /** An app at `<top>/app` with its lockfile, linked to `store/a/node_modules/pa`, which depends on `pb`. */
     function stored(top: string) {
