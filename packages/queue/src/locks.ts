@@ -35,7 +35,7 @@ function seconds(value: Duration, what: string): number {
  * is named by the job's name and the key, so `reports` with `daily:7` and `reports:daily` with `7` are one lock. The key
  * must go past `daily:`, because an empty key of the longer job is refused anyway.
  */
-export function keyLockConflict(registry: JobRegistry, job: string, key: string): JobKeyLockError | undefined {
+export function keyLockConflict(registry: JobRegistry, job: string, key: string, kind: JobKeyLockError['kind']): JobKeyLockError | undefined {
   for (const other of registry.all()) {
     if (typeof other.job !== 'string' || !other.job.startsWith(`${job}:`)) continue;
     const rest = other.job.slice(job.length + 1);
@@ -44,6 +44,8 @@ export function keyLockConflict(registry: JobRegistry, job: string, key: string)
         `A key of the job "${job}" that continues past "${rest}:" names the same lock as a key of the job "${other.job}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`,
         job,
         other.job,
+        key,
+        kind,
       );
     }
   }
@@ -62,7 +64,7 @@ export function uniqueRecord(job: JobStatics, options: UniqueDispatchOptions, re
   if (typeof options.unique !== 'string' || options.unique === '') throw new QueueError(`unique must be a non-empty key, like \`stats:\${userId}\` (dispatching ${job.job}).`);
   const until = options.uniqueUntil ?? 'done';
   if (until !== 'processing' && until !== 'done') throw new QueueError(`uniqueUntil is 'processing' or 'done', not ${JSON.stringify(until)}.`);
-  const conflict = keyLockConflict(registry, job.job, options.unique);
+  const conflict = keyLockConflict(registry, job.job, options.unique, 'unique');
   if (conflict) throw conflict;
   return {
     lock: `queue:unique:${job.job}:${options.unique}`,
@@ -150,7 +152,7 @@ export function withoutOverlapping<J extends { readonly schema: StandardSchemaV1
       if (typeof name !== 'string' || name === '') throw new QueueError(`withoutOverlapping() of ${context.job.name} needs a key, not ${JSON.stringify(name)}.`);
       if (!options.shared) {
         const registry = (context.job as { [JOB_REGISTRY]?: JobRegistry })[JOB_REGISTRY];
-        const conflict = registry && keyLockConflict(registry, context.job.name, name);
+        const conflict = registry && keyLockConflict(registry, context.job.name, name, 'overlap');
         if (conflict) {
           // The same key conflicts on every attempt: the job fails now instead of using up its tries.
           context.job.fail(conflict);

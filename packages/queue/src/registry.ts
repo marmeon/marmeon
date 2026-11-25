@@ -17,16 +17,22 @@ const NAME = /^[a-z0-9]+(?:[.:_-][a-z0-9]+)*$/;
 
 /**
  * @internal A per-job key that names the lock of another registered job: `job` is the job the key belongs to, `other` the job whose
- * lock it meets. A `QueueError`, so a caller that catches that class keeps working; the scheduler tells it apart by class.
+ * lock it meets, `key` the key and `kind` where it came from (`unique` for a dispatch's unique key, `overlap` for the key of
+ * `withoutOverlapping()`). A `QueueError`, so a caller that catches that class keeps working; the scheduler tells it apart by class, and by `kind`, `job` and `key` from a refusal raised inside a sync run.
  */
 export class JobKeyLockError extends QueueError {
   override name = 'JobKeyLockError';
   readonly job: string;
   readonly other: string;
-  constructor(message: string, job: string, other: string) {
+  /** Not enumerable: a key can carry user data (`daily:${email}`), and a failed job's record or a log line serializes the own properties of its error. */
+  declare readonly key: string;
+  readonly kind: 'unique' | 'overlap';
+  constructor(message: string, job: string, other: string, key: string, kind: 'unique' | 'overlap') {
     super(message);
     this.job = job;
     this.other = other;
+    Object.defineProperty(this, 'key', { value: key });
+    this.kind = kind;
   }
 }
 

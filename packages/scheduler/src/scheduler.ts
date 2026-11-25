@@ -473,9 +473,13 @@ export class Scheduler {
           });
         } catch (error) {
           // The task's key starts with `schedule:`, so a job named `<job>:schedule` owns the same lock: the dispatch cannot work until that job is renamed.
+          // Only the refusal of that unique key counts: on the sync connection the dispatch also runs the job, and a key refused inside it (a
+          // middleware, a nested dispatch) keeps its own error. `kind` is a guard no run reaches: the outer unique check refuses this key
+          // first, so an `overlap` refusal with it cannot arrive here.
           // Loaded defensively: a missing export or a failed import never hides the original error.
           const { JobKeyLockError: lock } = await import('@marmeon/queue/internal').catch(() => ({ JobKeyLockError: undefined }));
           if (typeof lock !== 'function' || !(error instanceof lock)) throw error;
+          if (error.kind !== 'unique' || error.job !== (definition.target as JobClass).job || error.key !== `schedule:${task.name}`) throw error;
           throw new ScheduleError(
             withCode('Q5', `The task "${task.name}" queues the job "${error.job}", but the app registers a job named "${error.other}", and the unique key of a scheduled job starts with "schedule:", so both name one lock. Rename "${error.other}" so it does not begin with "${error.job}:". See docs/queues.md#unique-jobs.`),
           );

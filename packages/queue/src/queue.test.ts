@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { Clock, createApplication, currentLogContext, ErrorReports, EventDispatcher, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
+import { describeError } from '@marmeon/core/internal';
 import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
@@ -1937,9 +1938,10 @@ describe('a key that names the lock of another job', () => {
   class Reports extends named('reports') {}
   class ReportsDaily extends named('reports:daily') {}
   class Alone extends named('alone') {}
-  const refusal = (_key: string, job = 'reports', other = 'reports:daily', rest = 'daily') =>
+  const refusal = (job = 'reports', other = 'reports:daily', rest = 'daily') =>
     `A key of the job "${job}" that continues past "${rest}:" names the same lock as a key of the job "${other}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`;
-  const lockError = (key: string, job = 'reports', other = 'reports:daily', rest = 'daily') => new JobKeyLockError(refusal(key, job, other, rest), job, other);
+  // `toEqual` and `toThrow` do not see `key` (not enumerable), so the tests assert it with `toHaveProperty`.
+  const lockError = (job = 'reports', other = 'reports:daily', rest = 'daily', kind: 'unique' | 'overlap' = 'unique') => new JobKeyLockError(refusal(job, other, rest), job, other, '', kind);
   const modules = [{ name: 'test', jobs: [Reports, ReportsDaily, Alone] }];
   const env = { CACHE_DRIVER: 'memory' };
 
@@ -1947,7 +1949,8 @@ describe('a key that names the lock of another job', () => {
     for (const driver of ['database', 'sync']) {
       await using application = await app({ cache: true, env: { ...env, QUEUE_DRIVER: driver }, modules });
       const queue = application.container.make(Queue);
-      await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toThrow(lockError('daily:7'));
+      await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toThrow(lockError());
+      await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toHaveProperty('key', 'daily:7');
       await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toBeInstanceOf(QueueError);
     }
   });
@@ -1971,8 +1974,9 @@ describe('a key that names the lock of another job', () => {
     await withoutOverlapping('daily:7').handle({ ...context }, async () => {
       ran = true;
     });
-    expect([ran, failed]).toEqual([false, [lockError('daily:7'), lockError('daily:7')]]);
-    await expect(new QueueFake(application.container).dispatch(Reports, {}, { unique: 'daily:7' })).rejects.toThrow(lockError('daily:7'));
+    expect([ran, failed]).toEqual([false, [lockError('reports', 'reports:daily', 'daily', 'overlap'), lockError('reports', 'reports:daily', 'daily', 'overlap')]]);
+    expect(failed.map((error) => (error as JobKeyLockError).key)).toEqual(['daily:7', 'daily:7']);
+    await expect(new QueueFake(application.container).dispatch(Reports, {}, { unique: 'daily:7' })).rejects.toThrow(lockError());
   });
 
   it('is a JobKeyLockError that names both jobs, and still a QueueError', async () => {
@@ -1981,6 +1985,16 @@ describe('a key that names the lock of another job', () => {
     expect(error).toBeInstanceOf(JobKeyLockError);
     expect(error).toBeInstanceOf(QueueError);
     expect(error).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily' });
+  });
+
+  it('records the key and where it came from: `unique` for the dispatch key, `overlap` for the key of withoutOverlapping()', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const dispatched = await application.container.make(Queue).dispatch(Reports, {}, { unique: 'daily:7' }).catch((caught: unknown) => caught);
+    expect(dispatched).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:7', kind: 'unique' });
+    const { context, failed } = middlewareContext(application);
+    await withoutOverlapping('daily:8').handle(context, async () => {});
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:8', kind: 'overlap' });
   });
 
   it('refuses a key through a copy of the context whose job context is copied too, and never prints the key', async () => {
@@ -1992,17 +2006,25 @@ describe('a key that names the lock of another job', () => {
       ran = true;
     });
     expect(ran, 'the attempt did not run').toBe(false);
-    expect(failed).toEqual([lockError('', 'reports', 'reports:daily', 'daily')]);
+    expect(failed).toEqual([lockError('reports', 'reports:daily', 'daily', 'overlap')]);
     const queue = application.container.make(Queue);
     const error = await queue.dispatch(Reports, {}, { unique: 'daily:alice@example.com' }).catch((caught: unknown) => caught);
-    expect(error).toEqual(lockError('', 'reports', 'reports:daily', 'daily'));
+    expect(error).toEqual(lockError());
     expect((error as Error).message).not.toContain('alice@example.com');
+    // The key stays readable on the error but is not an own enumerable property, so a record or a log line never serializes it.
+    for (const [place, caught] of [['dispatch', error], ['failed job', failed[0]]] as const) {
+      expect(caught, place).toHaveProperty('key', 'daily:alice@example.com');
+      expect(Object.keys(caught as object), place).not.toContain('key');
+      expect(JSON.stringify({ ...(caught as object) }), place).not.toContain('alice@example.com');
+      expect(describeError(caught, application.container.make(Redactor)), place).not.toContain('alice@example.com');
+    }
   });
 
   it('still refuses `daily::`, but passes `daily:`, `daily`, `dailyx`, `daily-7` and `dailyxy` as a unique key and as a per-job key', async () => {
     await using application = await app({ cache: true, env, modules });
     const queue = application.container.make(Queue);
-    await expect(queue.dispatch(Reports, {}, { unique: 'daily::' })).rejects.toThrow(lockError('daily::'));
+    await expect(queue.dispatch(Reports, {}, { unique: 'daily::' })).rejects.toThrow(lockError());
+    await expect(queue.dispatch(Reports, {}, { unique: 'daily::' })).rejects.toHaveProperty('key', 'daily::');
     for (const key of ['daily:', 'daily', 'dailyx', 'daily-7', 'dailyxy']) {
       expect(await queue.dispatch(Reports, {}, { unique: key }), `unique ${key}`).toEqual(expect.any(String));
       const { context, failed } = middlewareContext(application);
@@ -2014,7 +2036,8 @@ describe('a key that names the lock of another job', () => {
     }
     const refused = middlewareContext(application);
     await withoutOverlapping('daily::').handle(refused.context, async () => {});
-    expect(refused.failed).toEqual([lockError('daily::')]);
+    expect(refused.failed).toEqual([lockError('reports', 'reports:daily', 'daily', 'overlap')]);
+    expect(refused.failed[0]).toHaveProperty('key', 'daily::');
   });
 
   it('fails a job of a running worker whose middleware key names the lock of another job', async () => {
@@ -2044,7 +2067,8 @@ describe('a key that names the lock of another job', () => {
     }
     class GuardedInner extends named('guarded:inner') {}
     await using application = await app({ cache: true, env: { ...env, QUEUE_DRIVER: 'sync' }, modules: [{ name: 'test', jobs: [Guarded, GuardedInner] }] });
-    await expect(application.container.make(Queue).dispatch(Guarded, {})).rejects.toThrow(lockError('inner:1', 'guarded', 'guarded:inner', 'inner'));
+    await expect(application.container.make(Queue).dispatch(Guarded, {})).rejects.toThrow(lockError('guarded', 'guarded:inner', 'inner', 'overlap'));
+    await expect(application.container.make(Queue).dispatch(Guarded, {})).rejects.toHaveProperty('key', 'inner:1');
   });
 
   it('passes a key that names no lock of another job', async () => {
