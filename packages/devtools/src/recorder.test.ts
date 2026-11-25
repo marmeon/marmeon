@@ -602,6 +602,19 @@ describe('what the recorder keeps', () => {
     }
   });
 
+  it('keeps the page of a localized fallback served without a prefix: `/help/a/b` is matched, not recorded as unmatched', async () => {
+    const localized = openRoutes((Route) => void Route.localized().prefix('/help').fallback(() => ({ ok: true })));
+    const urlLocales: UrlLocales = { supported: ['de', 'en'], unprefixed: 'de', preferred: async () => 'de' };
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true, routes: localized, urlLocales });
+    try {
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'x', page: '/help/a/b' });
+      await tester!.settled();
+      expect(tester!.assertRecorded('browser').content.page).toBe('/help/a/b');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
   it('masks the value of a query parameter whose name is written percent-encoded — also on a path no route matches', async () => {
     const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true });
     try {

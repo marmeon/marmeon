@@ -118,8 +118,8 @@ export class DevtoolsServiceProvider implements ServiceProvider {
 }
 
 /** The routes' patterns and, with a locale served without a prefix, those of its addresses (`/reset/:token` for `/:locale/reset/:token`): what a request's path can match. */
-function addressPatterns(router: { routes: readonly { path: string }[]; registrationOrder: readonly { path: string }[] }): string[] {
-  return [...new Set([...router.routes, ...router.registrationOrder].map((route) => route.path))];
+function addressPatterns(router: { routes: readonly { path: string }[]; registrationOrder: readonly { path: string }[]; fallbacks: readonly { path: string }[] }): string[] {
+  return [...new Set([...router.routes, ...router.registrationOrder, ...router.fallbacks].map((route) => route.path))];
 }
 
 /**
