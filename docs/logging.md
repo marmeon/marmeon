@@ -49,6 +49,8 @@ A logger you write handles a failed write itself, for example with a `catch` ins
 and `error()` return nothing. A method that throws breaks the code that wrote the line, the framework's included. A rejected
 promise that nobody waits for is an unhandled rejection, which by default ends the process.
 
+After a write error, `@marmeon/log` stops writing until the process restarts. When stdout fails, it prints one notice on stderr. When stderr fails (in `--json` or `mcp` mode, where log lines go to stderr), it tells nobody, because stdout belongs to the document. A reader that left early gets no notice either. It never throws from `info()` or the other methods. By default (JSON on stdout) a pipe nobody reads is no error: calls return at once, and past 4 MiB of waiting lines the newest are dropped. If the process exits while the pipe is still full, it waits a few seconds for the reader, then drops the rest and prints the notice. `--json` and `format: 'pretty'` wait for the reader. A destination you pass to `createPinoLogger` is not wrapped, so its errors stay yours.
+
 ## Configuration
 
 | Variable | Default | Effect |
