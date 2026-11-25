@@ -88,7 +88,7 @@ dependencies. A name in `providers` that the entry does not export stops the app
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json`, the lockfile or the
 resolution conditions change. It also does so when the `package.json` of a package in your workspace changes. Your workspace is the
 folder with `pnpm-workspace.yaml` (or a `package.json` with `workspaces`), else the folder of your lockfile; a package linked from
-outside it is not watched. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
+outside it is not watched. If a folder above your app is writable by everyone or owned by someone other than you or root (such as a checkout owned by another user while the app runs as root in a container), the app looks no further up: it ignores a lockfile or workspace above that folder, so there you run `marmeon discover` after an install and after you change the `package.json` of a workspace package. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
 
 ### Provider statics
 

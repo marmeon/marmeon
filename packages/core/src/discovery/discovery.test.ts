@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, v
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
-import { combineDigests, DiscoveryError, fileDigest, generateManifest, loadDiscoveredPackages, manifestPath, marmeonField, writeManifest } from './discover.ts';
+import { combineDigests, DiscoveryError, fileDigest, generateManifest, loadDiscoveredPackages, manifestHash, manifestPath, marmeonField, writeManifest } from './discover.ts';
 import { findPackage, printable, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -531,6 +531,43 @@ describe('the manifest and the package.json of a package in the workspace', () =
       chmodSync(join(top, 'open'), 0o755);
       await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
       expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+    });
+
+    it('does not cross a folder that everyone can write to to reach a lockfile above it', async () => {
+      if (process.platform === 'win32') return;
+      const { top, app } = linkedApp('../pkgs/linked', { app: 'open/app', files: ['pnpm-lock.yaml'] });
+      chmodSync(join(top, 'open'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'open'), 0o755));
+      await loadDiscoveredPackages({ root: app, conditions: PROD });
+      // The lockfile lies behind `open`: the workspace is the app, so the package in `open/pkgs` is not listed.
+      expect(listed(app)).toEqual([]);
+      chmodSync(join(top, 'open'), 0o755);
+      await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
+      expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+    });
+
+    it('reads a lockfile in the last trusted folder above the app, and a workspace marker there', async () => {
+      if (process.platform === 'win32') return;
+      for (const file of ['open/mid/pnpm-lock.yaml', 'open/mid/pnpm-workspace.yaml']) {
+        const { top, app } = linkedApp('../pkgs/linked', { app: 'open/mid/app', files: [file] });
+        // The package lies in `open/mid/pkgs`: inside `mid`, the ceiling, which `open` (open to everyone) ends.
+        chmodSync(join(top, 'open'), 0o777);
+        onTestFinished(() => chmodSync(join(top, 'open'), 0o755));
+        await loadDiscoveredPackages({ root: app, conditions: PROD });
+        expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+      }
+    });
+
+    it('does not read a lockfile behind a folder that everyone can write to into the manifest hash', () => {
+      if (process.platform === 'win32') return;
+      const { top, app } = linkedApp('linked', { app: 'open/app', files: ['pnpm-lock.yaml'] });
+      chmodSync(join(top, 'open'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'open'), 0o755));
+      const before = manifestHash(app, PROD);
+      writeFileSync(join(top, 'pnpm-lock.yaml'), 'changed');
+      expect(manifestHash(app, PROD)).toBe(before);
+      chmodSync(join(top, 'open'), 0o755);
+      expect(manifestHash(app, PROD)).not.toBe(before);
     });
   });
 

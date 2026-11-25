@@ -506,10 +506,11 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   // Resolution depends on the *set* of conditions, not their order or repetition.
   const hash = createHash('sha256').update(MANIFEST_VERSION).update([...new Set(conditions)].sort().join('\0'));
   hash.update(readFileSync(join(root, 'package.json')));
-  // The same rule as the way up to the workspace: a lockfile in a folder others can write to, or that is no regular file, counts as absent.
+  // The same rule as the way up to the workspace: a lockfile above the last trusted folder (behind a folder that others can write to,
+  // or that someone other than this user or root owns) counts as absent, and so does one that is no regular file.
   const app = realRoot(root);
-  const lockfile = findLockfile(app);
-  hash.update(lockfile !== undefined && (dirname(lockfile) === app || trusted(dirname(lockfile))) && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
+  const lockfile = findLockfile(app, trustedTop(app));
+  hash.update(lockfile !== undefined && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
   return hash.digest('hex').slice(0, 16);
 }
 
@@ -557,6 +558,16 @@ function isFileAfterLinks(path: string): boolean {
   }
 }
 
+/**
+ * The last folder of the way up from the app that can be trusted: the way ends below the first folder above the app that `trusted`
+ * refuses, so markers and lockfiles are looked for only up to here. The app folder itself is always accepted.
+ */
+function trustedTop(app: string): string {
+  let top = app;
+  for (let dir = dirname(app); dir !== top && trusted(dir); dir = dirname(dir)) top = dir;
+  return top;
+}
+
 /** Whether `dir` declares a workspace: a `pnpm-workspace.yaml`, or `workspaces` in its `package.json` (a list, or an object with `packages`). */
 function declaresWorkspace(dir: string): boolean {
   if (isRegularFile(join(dir, 'pnpm-workspace.yaml'))) return true;
@@ -573,20 +584,19 @@ function declaresWorkspace(dir: string): boolean {
 
 /**
  * The app's workspace: the nearest folder at or above the app that declares one (a `pnpm-workspace.yaml`, or a `package.json` with
- * `workspaces`); else the folder of the nearest lockfile above the app; else the app folder. The way up ends at the first folder that
- * others can write to or another user owns: what it holds is no one's to trust. A real path, like the directories of the packages.
+ * `workspaces`); else the folder of the nearest lockfile above the app; else the app folder. The way up, for markers and lockfile alike,
+ * ends below the first folder that others can write to or that someone other than this user or root owns: what it holds is no one's
+ * to trust. A real path, like the directories of the packages.
  */
 function workspaceRoot(root: string): string {
   const app = realRoot(root);
+  const top = trustedTop(app);
   for (let dir = app; ; dir = dirname(dir)) {
-    if (dir !== app && !trusted(dir)) break;
     if (declaresWorkspace(dir)) return dir;
-    if (dirname(dir) === dir) break;
+    if (dir === top) break;
   }
-  const lockfile = findLockfile(app);
-  if (lockfile === undefined) return app;
-  const dir = dirname(lockfile);
-  return dir === app || trusted(dir) ? dir : app;
+  const lockfile = findLockfile(app, top);
+  return lockfile === undefined ? app : dirname(lockfile);
 }
 
 /** Whether `file` is a `package.json` that lies in `boundary` by its path and its real path, outside `node_modules`: no link leads out. */
@@ -657,12 +667,12 @@ export function combineDigests(digests: readonly (string | undefined)[]): string
   return hash.digest('hex').slice(0, 16);
 }
 
-function findLockfile(root: string): string | undefined {
+function findLockfile(root: string, top: string): string | undefined {
   for (let dir = root; ; dir = dirname(dir)) {
     for (const name of LOCKFILES) {
       if (existsSync(join(dir, name))) return join(dir, name);
     }
-    if (dirname(dir) === dir) return undefined;
+    if (dir === top || dirname(dir) === dir) return undefined;
   }
 }
 

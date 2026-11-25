@@ -279,7 +279,7 @@ package, and the injection lists of the classes the packages export. You rarely 
 by itself when `package.json`, the lockfile or the resolution conditions change, so `pnpm marmeon add redis`
 (or `pnpm add -E @marmeon/redis@<version of your app>`) needs no extra step. It also does so when the `package.json` of a package in
 your workspace changes. Your workspace is the folder with `pnpm-workspace.yaml` (or a `package.json` with `workspaces`), else the folder
-of your lockfile; a package linked from outside it is not watched. The app also writes the file again when a listed package is gone,
+of your lockfile; a package linked from outside it is not watched. If a folder above your app is writable by everyone or owned by someone other than you or root (such as a checkout owned by another user while the app runs as root in a container), the app looks no further up: it ignores a lockfile or workspace above that folder, so there you run `marmeon discover` after an install and after you change the `package.json` of a workspace package. The app also writes the file again when a listed package is gone,
 such as after a production install without the dev dependencies.
 `marmeon build` writes the production list.
 
