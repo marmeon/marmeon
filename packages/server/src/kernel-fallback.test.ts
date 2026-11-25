@@ -55,7 +55,7 @@ async function boot(modules: readonly RouteDefinitions[], options: { clientDir?:
     modules: modules.map((routes, index) => defineModule({ name: `m${index}`, routes })),
     middleware: { global: [Global], web: [Web] },
   }, { env: { APP_KEY: generateKey(), APP_URL: 'https://app.example', LOG_LEVEL: 'silent' } });
-  if (options.locales) application.container.instance(UrlLocales, { supported: ['de', 'en'], preferred: async () => 'de' });
+  if (options.locales) application.container.instance(UrlLocales, { supported: ['de', 'en'], unprefixed: undefined, preferred: async () => 'de' });
   return { application, kernel: createHttpKernel(application, options.clientDir ? { clientDir: options.clientDir } : {}) };
 }
 

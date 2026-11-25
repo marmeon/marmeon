@@ -6,6 +6,11 @@ import { defineRoutes, describeRouteConflict, Router, routeShape, type RouteDefi
 
 const open = (register: (Route: Parameters<RouteDefinitions['register']>[0]) => void): RouteDefinitions => defineRoutes((Route) => register(Route.authorize(everyone)));
 const load = (...files: RouteDefinitions[]) => new Router().load(...files);
+const inMode = (...files: RouteDefinitions[]) => {
+  const router = load(...files);
+  router.bindUrlLocales({ supported: ['de', 'en'], unprefixed: 'de', preferred: async () => 'de' });
+  return router;
+};
 const shown = (router: Router) => router.routeConflicts().map(({ first, second, methods }) => `${methods.join('|')} ${first.path} < ${second.path}`);
 
 describe('routeShape', () => {
@@ -220,5 +225,28 @@ describe('Router.routeConflicts()', () => {
     const message = describeRouteConflict(router.routeConflicts()[0]!, (route) => masked.path(route.path, route.path));
     expect(message).toMatch(/^GET \/hooks\/\[redacted\]\/:other \(.*route-conflicts\.test\.ts:\d+\) never answers: GET \/hooks\/\[redacted\]\/\[redacted\] \(.*route-conflicts\.test\.ts:\d+\) has the same path and is registered first/);
     expect(message).toContain('docs/routing.md#route-order');
+  });
+});
+
+describe('route conflicts in the mode', () => {
+  const shown = (router: Router) => router.routeConflicts().map(({ first, second }) => `${first.path} < ${second.path}`);
+
+  it('finds an app route on the address of the unprefixed locale, in either order of the files', () => {
+    const localized = open((Route) => void Route.localized().get('/about', () => 'a'));
+    const plain = open((Route) => void Route.get('/about', () => 'b'));
+    expect(shown(inMode(localized, plain))).toEqual(['/about < /about']);
+    expect(shown(inMode(plain, localized))).toEqual(['/about < /about']);
+  });
+
+  it('needs no other rule for a localized page on two files: the routes themselves clash, once', () => {
+    const page = open((Route) => void Route.localized().get('/about', () => 'a'));
+    expect(shown(inMode(page, page))).toEqual(['/:locale/about < /:locale/about']);
+  });
+
+  it('lists the address of the unprefixed locale right behind its route, so a parameter route registered before it comes first in the router\'s order', () => {
+    const username = open((Route) => void Route.get('/:username', () => 'u'));
+    const about = open((Route) => void Route.localized().get('/about', () => 'a'));
+    expect(inMode(username, about).registrationOrder.map((route) => route.path)).toEqual(['/:username', '/:locale/about', '/about']);
+    expect(inMode(about, username).registrationOrder.map((route) => route.path)).toEqual(['/:locale/about', '/about', '/:username']);
   });
 });

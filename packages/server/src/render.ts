@@ -395,6 +395,8 @@ export function createResponseFactory(
     findByName: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
     },
+    unprefixedLocale: undefined,
+    locales: undefined,
   };
 
   /**

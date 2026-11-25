@@ -62,5 +62,5 @@ export function resolveRoute(
   const { params, query, pageLocale } = options;
   const entry = routeEntry(manifest, name);
   const locale = entry.localized && params?.locale === undefined ? pageLocale : undefined;
-  return { url: urlFor({ findByName: () => entry }, name, locale === undefined ? params : { ...params, locale }, query), method: entry.method };
+  return { url: urlFor({ findByName: () => entry, unprefixedLocale: undefined, locales: undefined }, name, locale === undefined ? params : { ...params, locale }, query), method: entry.method };
 }

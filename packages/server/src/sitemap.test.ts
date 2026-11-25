@@ -250,7 +250,7 @@ describe('/sitemap.xml', () => {
   });
 
   it('is not taken by the route without its locale of a localized `/:page`', async () => {
-    const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'de' };
+    const urlLocales: UrlLocales = { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'de' };
     const withMark = openRoutes((Route) => {
       Route.get('/about', () => 'about').sitemap();
       Route.localized().get('/:page', () => 'page');
@@ -269,7 +269,7 @@ describe('/sitemap.xml', () => {
   });
 
   describe('a localized route', () => {
-    const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'en' };
+    const urlLocales: UrlLocales = { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'en' };
     const features = openRoutes((Route) => {
       Route.localized().get('/about', AboutController).name('about').sitemap();
       Route.localized().get('/features/:slug', PostController).name('features.show').sitemap();
@@ -571,7 +571,7 @@ describe('/sitemap.xml', () => {
     });
 
     it('ignores the alternates of a localized route, and warns once', async () => {
-      const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'en' };
+      const urlLocales: UrlLocales = { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'en' };
       state.slugs = [{ params: { slug: 'a' }, alternates: { en: { slug: 'a' }, fr: { slug: 'x' } } }, { params: { slug: 'b' }, alternates: { en: { slug: 'b' } } }];
       const { xml, logger } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/features/:slug', PostController).sitemap()), urlLocales);
       expect(links(xml.split('<url>').slice(1, 2).join(''))).toEqual([`en ${url}/en/features/a`, `de ${url}/de/features/a`, `x-default ${url}/features/a`]);
@@ -832,7 +832,7 @@ describe('/sitemap.xml of a fallback', () => {
       }
     }
     const { application, create } = await boot({
-      urlLocales: { supported: ['de', 'en'], preferred: async () => 'de' },
+      urlLocales: { supported: ['de', 'en'], unprefixed: undefined, preferred: async () => 'de' },
       routes: openRoutes((Route) => {
         Route.localized().fallback(Pages).sitemap();
         Route.localized().prefix('/docs').fallback(() => 'docs');
@@ -876,7 +876,7 @@ describe('/sitemap.xml of a fallback', () => {
   });
 
   describe('a localized fallback', () => {
-    const urlLocales: UrlLocales = { supported: ['de', 'en'], preferred: async () => 'de' };
+    const urlLocales: UrlLocales = { supported: ['de', 'en'], unprefixed: undefined, preferred: async () => 'de' };
     const links = (xml: string): string[] => [...xml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"\/>/g)].map((match) => `${match[1]} ${match[2]}`);
 
     it('leaves x-default out of an entry whose address without a locale another route answers, and keeps the other links', async () => {

@@ -248,7 +248,7 @@ export class SetLocale {
     this.#current.set(locale);
     this.#current.localized = localized;
     // Also when no path can be derived: a controller may still name the versions itself (`PageAlternates.replace()`).
-    if (fromUrl !== undefined) this.#alternates(alternatesOf(ctx, locales.supported), { name: ctx.route.routeName ?? ctx.route.path, pattern: ctx.route.path, search: new URL(ctx.request.url).search, locales: locales.supported });
+    if (fromUrl !== undefined) this.#alternates(alternatesOf(ctx, locales.supported), { name: ctx.route.routeName ?? ctx.route.path, pattern: ctx.route.path, search: new URL(ctx.request.url).search, locales: locales.supported, unprefixed: undefined });
 
     const response = editableResponse(await next());
     // Read again: `RequestLocale` may have changed it since.
@@ -515,6 +515,7 @@ export class I18nServiceProvider implements ServiceProvider {
       get supported() {
         return locales.supported;
       },
+      unprefixed: undefined,
       // `SetLocale` ran in the route's group and chose; a group without it falls back to the browser's languages.
       preferred: async (ctx) => preferredOf.get(ctx.request) ?? negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ?? locales.default,
     });

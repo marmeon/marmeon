@@ -166,7 +166,7 @@ describe('Route.afterAuthorize()', () => {
     log.length = 0;
     const router = load((Route) => void Route.localized().authorize(everyone).afterAuthorize(hook('hook')).get('/about', () => 'about'));
     const variant = router.registrationOrder.find((route) => route.generatedFrom)!;
-    const response = await router.dispatch(variant, { request: new Request('http://app.test/about'), params: {} }, { urlLocales: { supported: ['en'], preferred: async () => 'en' } });
+    const response = await router.dispatch(variant, { request: new Request('http://app.test/about'), params: {} }, { urlLocales: { supported: ['en'], unprefixed: undefined, preferred: async () => 'en' } });
     expect(response.status).toBeGreaterThanOrEqual(300);
     expect(response.status).toBeLessThan(400);
     expect(log).toEqual([]);

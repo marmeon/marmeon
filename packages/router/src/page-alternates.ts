@@ -1,5 +1,5 @@
 import { matchParams } from './pattern.ts';
-import { fillPath, type Param } from './url.ts';
+import { localeAddress, type Param } from './url.ts';
 
 /** What `replace()` needs of the route that answers: its name and pattern, the request's query, and the locales a key may name. @internal */
 export interface PageAlternatesSource {
@@ -7,6 +7,8 @@ export interface PageAlternatesSource {
   readonly pattern: string;
   readonly search: string;
   readonly locales: readonly string[];
+  /** The locale whose pages have no prefix, when the app has one (`UrlLocales.unprefixed`). */
+  readonly unprefixed: string | undefined;
 }
 
 /**
@@ -50,8 +52,7 @@ export class PageAlternates {
       if (locale !== undefined && (typeof locale !== 'string' || !source.locales.includes(locale))) {
         throw new TypeError(`PageAlternates.replace(): [${isDefault ? `x-default's locale ${String(locale)}` : key}] is not a supported locale (${source.locales.join(', ')})${isDefault ? '' : ' or x-default'}.`);
       }
-      const pattern = locale === undefined ? source.pattern.replace(/^\/:locale/, '') || '/' : source.pattern;
-      paths[key] = this.#build(source, pattern, { ...params, ...(locale === undefined ? {} : { locale }) }, key) + source.search;
+      paths[key] = this.#build(source, params, locale, key) + source.search;
     }
     this.#paths = Object.keys(paths).length > 0 ? paths : undefined;
   }
@@ -68,10 +69,12 @@ export class PageAlternates {
   }
 
   /** The path of one version, built from the route's pattern — never from the request — and checked as the server matches a request. */
-  #build(source: PageAlternatesSource, pattern: string, params: Record<string, Param>, key: string): string {
+  #build(source: PageAlternatesSource, params: Readonly<Record<string, Param>>, locale: string | undefined, key: string): string {
+    // The unprefixed locale and the address without a locale are the pattern without `/:locale`; a page keeps its prefix where that would start with a locale.
     let path: string;
+    let pattern: string;
     try {
-      path = fillPath(source.name, pattern, params).path;
+      ({ path, pattern } = localeAddress(source.name, source.pattern, params, locale, source.unprefixed, source.locales));
     } catch (error) {
       throw new TypeError(`PageAlternates.replace(): the parameters of [${key}] name no page of the route: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }

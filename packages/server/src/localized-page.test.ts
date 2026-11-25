@@ -33,7 +33,7 @@ async function kernel() {
     modules: [defineModule({ name: 'pages', routes })],
   }, { env: { APP_KEY: generateKey(), LOG_LEVEL: 'silent' } });
   const { container } = application;
-  container.instance(UrlLocales, { supported: ['en', 'de'], preferred: async () => 'de' });
+  container.instance(UrlLocales, { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'de' });
   container.scoped(PageAlternates);
   container.scoped(Translator, () => ({ locale: 'de', has: () => false, text: (key: string) => key }));
   return createHttpKernel(application);

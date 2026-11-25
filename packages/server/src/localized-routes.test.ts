@@ -10,6 +10,7 @@ import { openRoutes } from './test-helpers/open-routes.ts';
 /** The stub of what `@marmeon/i18n` binds: `en`, `de` and `de-AT`, and a visitor who prefers `de` unless `x-prefer` says otherwise. */
 const locales = (supported: readonly string[] = ['en', 'de']): UrlLocales => ({
   supported,
+  unprefixed: undefined,
   preferred: async (ctx) => ctx.request.headers.get('x-prefer') ?? 'de',
 });
 
@@ -111,7 +112,7 @@ describe('Route.localized() on the server', () => {
   });
 
   it('refuses a preferred locale that the app does not support', async () => {
-    const { create } = await kernelFor(pages, { supported: ['en', 'de'], preferred: async () => '//evil.example' });
+    const { create } = await kernelFor(pages, { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => '//evil.example' });
     const response = await create().request('/about');
     expect(response.status).toBe(500);
     expect(response.headers.get('location')).toBeNull();
