@@ -1290,8 +1290,8 @@ export class ${name} {
 `;
 
 /**
- * The stamp of the migration a command writes next: behind the migrations of every module. A newest stamp in the future that is no
- * date or leaves no room, or a `migrations` folder of another module that is not readable (EACCES, EPERM), is printed as a warning
+ * The stamp of the migration a command writes next: behind the migrations of every module. A newest stamp in the future with a field
+ * out of range or that leaves no room, or a `migrations` folder of another module that is not readable (EACCES, EPERM), is printed as a warning
  * and the file is stamped behind its own module's migrations whose stamps are dates, so a generator still writes its file when a
  * foreign stamp or folder is broken. Any other filesystem error is not caught.
  */

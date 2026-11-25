@@ -89,6 +89,37 @@ describe('nextMigrationStamp', () => {
   });
 });
 
+describe('nextMigrationStamp on a future stamp', () => {
+  const file = (stamp: string) => `${stamp}_create_invoices_table.ts`;
+
+  it.each(['2099_01_32_000000', '2099_01_00_000000', '2099_01_01_240000', '2099_01_01_006000', '2099_01_01_000060'])(
+    'refuses %s, a field out of range',
+    (stamp) => {
+      at('2026-11-23T10:00:00Z');
+      const root = app({ billing: [file(stamp)] });
+      expect(() => nextMigrationStamp(root)).toThrow(
+        new RegExp(`^modules.billing.migrations.${file(stamp)} has a timestamp that is no date, so a new migration cannot be put behind it — rename it with a valid one\\.$`),
+      );
+    },
+  );
+
+  it.each([
+    ['2099_12_31_235959', '2100_01_01_000000'],
+    ['2099_01_01_000000', '2099_01_01_000001'],
+  ])('accepts the boundary %s', (stamp, next) => {
+    at('2026-11-23T10:00:00Z');
+    const root = app({ billing: [file(stamp)] });
+    expect(nextMigrationStamp(root)).toBe(next);
+  });
+
+  it('lets a day past the end of its month roll into the next month', () => {
+    at('2026-11-23T10:00:00Z');
+    const root = app({ billing: [file('2099_02_31_120000')] });
+    expect(nextMigrationStamp(root)).toBe('2099_03_03_120001');
+    expect(Date.UTC(2099, 2, 3, 12, 0, 1)).toBe(Date.UTC(2099, 1, 31, 12, 0, 1));
+  });
+});
+
 describe('newestMigration', () => {
   it('is undefined without a modules folder', () => {
     expect(newestMigration(join(tempDir('marmeon-stamps-'), 'modules'))).toBeUndefined();
