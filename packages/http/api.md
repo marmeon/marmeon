@@ -381,6 +381,10 @@ export interface PageObject {
     fallbackLocale?: string;
     timeZone?: string;
     alternates?: Record<string, string>;
+    urlLocales?: {
+        unprefixed: string;
+        supported: string[];
+    };
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -456,7 +460,7 @@ export type ReferrerPolicy = 'no-referrer' | 'no-referrer-when-downgrade' | 'ori
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'urlLocales' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionOutcomeStatus
 export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // RegionResult
@@ -1084,6 +1088,10 @@ export interface ResolveRouteOptions {
     readonly params?: Readonly<Record<string, Param>> | undefined;
     readonly query?: Query | undefined;
     readonly pageLocale?: string | undefined;
+    readonly urlLocales?: {
+        readonly unprefixed: string;
+        readonly supported: readonly string[];
+    } | undefined;
 }
 // SelectionKey
 export type SelectionKey = string | number;
@@ -1999,6 +2007,10 @@ export interface ResolveRouteOptions {
     readonly params?: Readonly<Record<string, Param>> | undefined;
     readonly query?: Query | undefined;
     readonly pageLocale?: string | undefined;
+    readonly urlLocales?: {
+        readonly unprefixed: string;
+        readonly supported: readonly string[];
+    } | undefined;
 }
 // RevalidateOnBack
 export type RevalidateOnBack = boolean | readonly string[];
@@ -2179,7 +2191,10 @@ export declare function accepted(request: ConfirmRequest, answer: ConfirmAnswer)
 // actions
 export declare const actions: import("../feature.ts").Feature<ActionsFeature>;
 // assertQueryPage
-export declare function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void;
+export declare function assertQueryPage(name: string, route: string | {
+    readonly path: string;
+    readonly localized?: boolean | undefined;
+}, page: Pick<PageObject, 'url' | 'queryDefaults' | 'urlLocales'>): void;
 // conflictOf
 export declare function conflictOf(page: PageObject): {
     readonly message: string;
@@ -2414,6 +2429,10 @@ export interface PageObject {
     fallbackLocale?: string;
     timeZone?: string;
     alternates?: Record<string, string>;
+    urlLocales?: {
+        unprefixed: string;
+        supported: string[];
+    };
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -2432,7 +2451,7 @@ export interface PageObject {
     live?: LiveSubscription[];
 }
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'urlLocales' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionResult
 export type RegionResult = {
     readonly status: 'ready';
@@ -2926,6 +2945,10 @@ export interface PageObject {
     fallbackLocale?: string;
     timeZone?: string;
     alternates?: Record<string, string>;
+    urlLocales?: {
+        unprefixed: string;
+        supported: string[];
+    };
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -2971,7 +2994,7 @@ export declare class RedirectResult {
 // RedirectStatus
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'urlLocales' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // Registered
 type Registered = [keyof Routes] extends [never] ? false : true;
 // SensitivePattern
@@ -3088,6 +3111,10 @@ export interface PageObject {
     fallbackLocale?: string;
     timeZone?: string;
     alternates?: Record<string, string>;
+    urlLocales?: {
+        unprefixed: string;
+        supported: string[];
+    };
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
     deepMergeProps?: string[];
@@ -3114,7 +3141,7 @@ export declare const RELOAD_HEADER = "x-marmeon-reload";
 // RegionKind
 export type RegionKind = 'island' | 'layer';
 // RegionObject
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'urlLocales' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 // RegionOutcomeStatus
 export type RegionOutcomeStatus = 'unauthorized' | 'forbidden' | 'exception';
 // UPLOAD_HEADER

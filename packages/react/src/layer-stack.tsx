@@ -109,7 +109,7 @@ function LayerScope({ entry, isTop, resolve, frame, base }: { entry: LayerEntry;
       },
       reloading: (options) => {
         if (!layer) throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? '[marmeon:R14] Actions run in the browser, not while rendering on the server.' : '[marmeon:R14]');
-        return reloadsOf((spec) => layer.reloading(spec), layer.owner, manifest, options as { islands?: readonly string[] });
+        return reloadsOf((spec) => layer.reloading(spec), layer.owner, manifest, options as { islands?: readonly string[] }, page.urlLocales);
       },
     }),
     [base, page, layer, manifest],

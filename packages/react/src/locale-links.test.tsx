@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Form } from './form.tsx';
 import { Island } from './island.tsx';
-import { useAlternates } from './app.tsx';
+import { reloadsOf, useAlternates } from './app.tsx';
 import { Link } from './link.tsx';
 import { resolveModulePages } from './pages.ts';
 import { useRoute } from './routes.ts';
@@ -15,6 +15,7 @@ const routes = {
   'about.search': { method: 'post', path: '/:locale/about/search', localized: true },
   'about.teaser': { method: 'get', path: '/:locale/about/teaser', localized: true },
   'people.show': { method: 'get', path: '/people/:person' },
+  'profile.show': { method: 'get', path: '/:locale/:username', localized: true },
 } as const;
 
 function Page() {
@@ -34,6 +35,8 @@ function Page() {
       <p id="given">{route('about.index', { locale: 'en' })}</p>
       <p id="plain">{route('people.show', { person: 7 })}</p>
       <p id="form">{form.url}</p>
+      <Link route="profile.show" params={{ username: 'EN' }}>Named like a language</Link>
+      <Link route="profile.show" params={{ username: 'ada' }}>Ada</Link>
     </>
   );
 }
@@ -48,7 +51,7 @@ function Switcher() {
 
 const resolve = resolveModulePages({ '/modules/about/views/Page.tsx': async () => ({ default: Page }), '/modules/about/views/WithIsland.tsx': async () => ({ default: WithIsland }), '/modules/about/views/Switcher.tsx': async () => ({ default: Switcher }) });
 
-async function render(page: { locale?: string; alternates?: Record<string, string> }, component = 'about/Page') {
+async function render(page: { locale?: string; urlLocales?: { unprefixed: string; supported: string[] }; alternates?: Record<string, string> }, component = 'about/Page') {
   const html = await new Response((await createSsrRenderer(resolve, { routes })({ component, props: {}, url: '/de/about', ...page })).html).text();
   return html;
 }
@@ -79,6 +82,61 @@ describe('the locale of the page in links, route() and forms', () => {
     const html = await render({ locale: 'de' });
     expect(html).toContain('<a href="/%2F%2Fevil.example/about">Evil</a>');
     expect(html).not.toContain('href="//');
+  });
+});
+
+describe('the locale without a prefix in links, route() and forms', () => {
+  const mode = { urlLocales: { unprefixed: 'de', supported: ['en', 'de'] } };
+
+  it('builds the page of that locale without its prefix', async () => {
+    const html = await render({ locale: 'de', ...mode });
+    expect(html).toContain('<a href="/about">Own language</a>');
+    expect(html).toContain('<a href="/about/routes?tab=one">Feature</a>');
+    expect(html).toContain('<p id="route">/about</p>');
+    expect(html).toContain('<p id="form">/about/search</p>');
+    expect(html).toContain('action="/about/search"');
+    expect(html).toContain('<a href="/en/about">English</a>');
+  });
+
+  it('keeps the prefix in any other locale', async () => {
+    const html = await render({ locale: 'en', ...mode });
+    expect(html).toContain('<a href="/en/about">Own language</a>');
+    expect(html).toContain('<p id="route">/en/about</p>');
+    expect(html).toContain('<p id="given">/en/about</p>');
+  });
+
+  it('keeps the prefix of a page whose address would start with a locale', async () => {
+    const html = await render({ locale: 'de', ...mode });
+    expect(html).toContain('<a href="/de/EN">Named like a language</a>');
+    expect(html).toContain('<a href="/ada">Ada</a>');
+  });
+
+  it('builds /de/… as before on a page without the fields', async () => {
+    const html = await render({ locale: 'de' });
+    expect(html).toContain('<p id="route">/de/about</p>');
+    expect(html).toContain('<a href="/de/EN">Named like a language</a>');
+    expect(html).toContain('<a href="/de/ada">Ada</a>');
+  });
+
+  it('asks an island for the page at its address without a prefix', async () => {
+    const asked: string[] = [];
+    const result = await createSsrRenderer(resolve, { routes })(
+      { component: 'about/WithIsland', props: {}, url: '/about', locale: 'de', ...mode },
+      { complete: true, resolveIsland: async (url: string) => (asked.push(url), { status: 'browser' as const }) },
+    );
+    await new Response(result.html).text();
+    expect(asked).toEqual(['/about/teaser']);
+  });
+});
+
+describe('reloadsOf with the locale without a prefix', () => {
+  const region = (url: string) => ({ url, reloading: () => ({ target: undefined, spec: {} }) });
+  const owner = { live: new Map([['a', region('/about/teaser')]]) } as never;
+  const manifest = { teaser: routes['about.teaser'] };
+
+  it('finds the island that shows at the address without a prefix', () => {
+    expect(reloadsOf(() => ({}) as never, owner, manifest, { islands: ['teaser'] }, { unprefixed: 'de', supported: ['en', 'de'] })).toHaveLength(1);
+    expect(reloadsOf(() => ({}) as never, owner, manifest, { islands: ['teaser'] })).toHaveLength(0);
   });
 });
 

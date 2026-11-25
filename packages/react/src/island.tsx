@@ -38,7 +38,7 @@ import { ErrorBoundary } from './fallbacks.tsx';
 import { IslandHeadContext } from './head.tsx';
 import { DataScript, SsrContext, streamedJson, streamedText, type SsrResolvers } from './streamed.tsx';
 import type { ResolvePage } from './pages.ts';
-import { RoutesContext } from './routes.ts';
+import { pageUrlOptions, RoutesContext } from './routes.ts';
 import { viewOf } from './views.ts';
 import { IslandScopeContext } from './island-scope.ts';
 
@@ -128,7 +128,7 @@ export function Island<const N extends BrowserRouteNameInput>(props: IslandEleme
     query?: QueryParams<string>;
   };
   if (route !== undefined) {
-    return <LoadedIsland {...options} name={route} url={resolveRoute(manifest, route, { params, query, pageLocale: page?.locale }).url} />;
+    return <LoadedIsland {...options} name={route} url={resolveRoute(manifest, route, { params, query, ...pageUrlOptions(page) }).url} />;
   }
   // From the server's data: a path of this site or nothing — before a request or `ssr.island()` can exist.
   const path = sitePath(href);

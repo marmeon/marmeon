@@ -1,7 +1,7 @@
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { Clock, durationToSeconds, type Duration } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { fillPath } from '@marmeon/router/internal';
+import { fillPath, localeAddress } from '@marmeon/router/internal';
 import { EncryptionConfig } from '@marmeon/encryption';
 import { HttpError, Router, toSearchParams, type CheckRouteName, type HttpContext, type Next, type Param, type ParamsOf, type RouteNameInput } from '@marmeon/router';
 
@@ -134,8 +134,10 @@ export class UrlSigner {
     if (!route) throw new Error(withCode('H4', `Route [${name}] is not defined.`));
     if (typeof params !== 'object' || params === null) throw new TypeError(`Route [${name}] needs its parameters: pass \`{}\` when it has none.`);
     for (const key of ['signature', 'expires']) if (key in params) throw new Error(`"${key}" is reserved in signed URLs.`);
-    // The same code path as `Router.url()`: path parameters into the path, the rest into the query.
-    const { path, rest } = fillPath(name, route.path, params);
+    // The same code path as `Router.url()`: path parameters into the path, the rest into the query. The page of the locale without a
+    // prefix is signed at its address (`/x`): signed as `/de/x`, the link would be answered with a redirect, which the check refuses.
+    const bare = route.localized && typeof params.locale === 'string' && params.locale === this.#router.unprefixedLocale;
+    const { path, rest } = bare ? localeAddress(name, route.path, params, params.locale as string, this.#router.unprefixedLocale, this.#router.locales) : fillPath(name, route.path, params);
     return { path, query: toSearchParams(rest) };
   }
 

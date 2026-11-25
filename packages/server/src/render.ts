@@ -391,6 +391,13 @@ export function createResponseFactory(
     return (request.headers.get(ENTRY_HEADER) ?? 'app') !== renderer.documentOf(view);
   };
   const varied = (vary: string): string => (renderer.documentOf && vary !== '*' ? `${vary}, ${ENTRY_HEADER}` : vary);
+  // How the app prefixes its locales (`urlLocales`), for the browser's links: read per page, as the router reads it per call; nothing is
+  // added where every locale has a prefix.
+  const addressForm = (): { urlLocales?: { unprefixed: string; supported: string[] } } => {
+    const unprefixed = routes?.unprefixedLocale;
+    const supported = routes?.locales;
+    return unprefixed === undefined || supported === undefined ? {} : { urlLocales: { unprefixed, supported: [...supported] } };
+  };
   const noRouter: RouteLookup = {
     findByName: (name) => {
       throw new Error(`Cannot redirect to route [${name}]: the response factory has no router.`);
@@ -564,6 +571,7 @@ export function createResponseFactory(
       ...entryOf(layer.component),
       ...(csrf !== undefined ? { csrf } : {}),
       ...(epoch !== undefined ? { epoch } : {}),
+      ...addressForm(),
       // What every page follows (the layout's bell) — the surface shows the layout.
       ...(await liveSubscriptions(shared?.liveChannels() ?? [], scope, LAYER_BACKDROP)),
     };
@@ -671,7 +679,7 @@ export function createResponseFactory(
     const route = matched?.routeName !== undefined && !matched.isInternal ? { route: matched.routeName } : {};
     // The channels it follows: its own and — a page, which shows the layout — the shared ones, signed for this session.
     const live = await liveSubscriptions([...(layer ? [] : (shared?.liveChannels() ?? [])), ...liveOf(result)], scope, result.component);
-    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version: pageVersion, ...entryOf(result.component), ...language, ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
+    const page: PageObject = { component: result.component, ...resolved, url: url.pathname + url.search, version: pageVersion, ...entryOf(result.component), ...language, ...addressForm(), ...(alternates ? { alternates: { ...alternates } } : {}), ...query, ...(layer ? { layer } : {}), ...route, ...pageSession, ...live };
     // Shown to the user: it takes the flash messages — and a response with them is never kept by a cache (a document
     // from the HTTP cache would fire them again).
     const flash = deliver(ctx.request, scope, flashOf(result));
