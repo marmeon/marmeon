@@ -359,7 +359,11 @@ export class QueueManager implements Queue {
         } catch (error) {
           // The sync connection has one attempt: this is the job's final failure.
           await runner.failed(ready, { attempt: 1, queue, connection, signal: new AbortController().signal }, error).catch((thrown: unknown) => {
-            this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: 1 }).error(`failed() of ${record.job} threw: ${this.#redactor.text(thrown instanceof Error ? thrown.message : String(thrown))}`, { queue });
+            try {
+              this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: 1 }).error(`failed() of ${record.job} threw: ${this.#redactor.text(thrown instanceof Error ? thrown.message : String(thrown))}`, { queue });
+            } catch {
+              // A logger that throws must not cost JobFailed, nor hide the job's own error.
+            }
           });
           await this.#emit(new JobFailed({ ...about, attempt: 1, error: error instanceof Error ? error : new Error(String(error)) }));
           throw error;

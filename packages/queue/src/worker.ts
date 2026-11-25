@@ -566,12 +566,16 @@ export class Worker {
     const bindings = { job: name, ...(record || identity?.uuid ? { jobId: uuid } : {}), attempt: reserved.attempts };
     const fields = { queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
     const line = `Failed ${name}${how}${dropped}: ${this.#message(error)}`;
-    if (this.#deps.errors && record?.fromReporter !== true) {
-      // The payload is not in the context: only who ran where.
-      const context = { job: name, jobId: uuid, queue: reserved.queue, connection: this.#deps.connection, attempt: String(reserved.attempts) };
-      this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, bindings, fields: { channel: 'queue', ...fields } } });
-    } else {
-      this.#deps.logger.child(bindings).error(line, fields);
+    try {
+      if (this.#deps.errors && record?.fromReporter !== true) {
+        // The payload is not in the context: only who ran where.
+        const context = { job: name, jobId: uuid, queue: reserved.queue, connection: this.#deps.connection, attempt: String(reserved.attempts) };
+        this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, bindings, fields: { channel: 'queue', ...fields } } });
+      } else {
+        this.#deps.logger.child(bindings).error(line, fields);
+      }
+    } catch {
+      // A logger (or a reporter's log line) that throws must not cost the failure its release, its failed() and JobFailed.
     }
     // A unique job that failed for good is done: a new one with its key may be queued.
     const locked = record ?? (identity?.unique ? ({ uuid, job: name, unique: identity.unique } as JobRecord) : undefined);
@@ -594,7 +598,13 @@ export class Worker {
       .failed(prepared, { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection, signal: abort.signal }, error)
       .then(
         () => undefined,
-        (thrown: unknown) => logger.error(`failed() of ${name} threw: ${this.#message(thrown)}`, { queue: reserved.queue }),
+        (thrown: unknown) => {
+          try {
+            logger.error(`failed() of ${name} threw: ${this.#message(thrown)}`, { queue: reserved.queue });
+          } catch {
+            // A logger that throws must not cost JobFailed.
+          }
+        },
       );
     const wait = (ms: number) => sleep(ms, undefined, { signal: timers.signal }).then(
       () => true,
@@ -615,7 +625,13 @@ export class Worker {
       });
     try {
       const waited = await Promise.race([running.then(() => undefined), late.then((v) => v ?? never<number>()), stopped.then((v) => v ?? never<number>())]);
-      if (waited !== undefined) logger.error(`failed() of ${name} did not finish within ${waited === 0 ? `${grace}s of the stop request` : `its timeout of ${timeout}s and ${grace}s more`}; the worker does not wait for it`, { queue: reserved.queue });
+      if (waited !== undefined) {
+        try {
+          logger.error(`failed() of ${name} did not finish within ${waited === 0 ? `${grace}s of the stop request` : `its timeout of ${timeout}s and ${grace}s more`}; the worker does not wait for it`, { queue: reserved.queue });
+        } catch {
+          // A logger that throws must not cost JobFailed.
+        }
+      }
     } finally {
       timers.abort();
     }

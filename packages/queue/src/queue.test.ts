@@ -561,6 +561,62 @@ describe('a job that fails for good', () => {
     expect(logged.join('\n')).not.toContain('hunter2');
   });
 
+  it('still emits JobFailed when the logger error() of a failed() that throws returns a rejected promise', async () => {
+    // The logger's return value is ignored: a rejecting error() must not skip JobFailed.
+    const logged: string[] = [];
+    const rejecting: Logger = {
+      debug() {},
+      info() {},
+      warn() {},
+      error: (message) => {
+        logged.push(message);
+        const rejected = Promise.reject(new Error('log sink down'));
+        rejected.catch(() => undefined);
+        return rejected as unknown as void;
+      },
+      child: () => rejecting,
+    };
+    await using application = await app({ logger: rejecting, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    await application.container.make(Queue).dispatch(FinalJob, { how: 'fail', failedThrows: true });
+    const { run } = await workerOf(application);
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+    expect(logged.filter((line) => line.startsWith('failed() of'))).toEqual(['failed() of test.final threw: could not write the log: password=[redacted]']);
+  });
+
+  /** A logger whose error() throws, as a broken sink does. */
+  const throwing = (): Logger => {
+    const broken: Logger = {
+      debug() {},
+      info() {},
+      warn() {},
+      error: () => {
+        throw new Error('log sink down');
+      },
+      child: () => broken,
+    };
+    return broken;
+  };
+
+  it('still releases the unique lock and emits JobFailed when the logger error() throws', async () => {
+    await using application = await app({ logger: throwing(), cache: true, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    const queue = application.container.make(Queue);
+    // A fresh key: the cache's store outlives a test.
+    const once = { unique: `once-${crypto.randomUUID()}`, uniqueUntil: 'done' } as const;
+    expect(await queue.dispatch(FinalJob, { how: 'fail', failedThrows: true }, once)).toEqual(expect.any(String));
+    expect(await queue.dispatch(FinalJob, { how: 'fail' }, once)).toBeUndefined();
+    const { run } = await workerOf(application);
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+    expect(await queue.dispatch(FinalJob, { how: 'fail' }, once)).toEqual(expect.any(String));
+  });
+
+  it('rejects a sync dispatch with the job\'s own error and emits JobFailed when the logger error() throws', async () => {
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: throwing(), modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    await expect(application.container.make(Queue).dispatch(FinalJob, { how: 'throw', failedThrows: true })).rejects.toThrow('delivery refused');
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+  });
+
   /** A worker on the memory driver whose claims expire after a minute. */
   const memoryWorker = (application: Application, logger: Logger = silent) => {
     const clock = application.container.make(Clock);
@@ -626,6 +682,25 @@ describe('a job that fails for good', () => {
     expect(events.some((event) => event instanceof JobFailed)).toBe(true);
     hangs.controller.abort();
     hangs.controller = new AbortController();
+  });
+
+  it('still emits JobFailed with the same result when the logger error() throws while a hanging failed() is given up on', async () => {
+    await using application = await app({ logger: throwing() });
+    const { driver, events, run } = memoryWorker(application, throwing());
+    await push(application, driver, 'test.one-try', { how: 'hang' });
+    expect(await run({ stopTimeout: 0.1 })).toMatchObject({ failed: 1 });
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    hangs.controller.abort();
+    hangs.controller = new AbortController();
+  });
+
+  it('still emits JobFailed with the same result when the logger error() throws on a failure without an error reporter', async () => {
+    await using application = await app({ logger: throwing() });
+    const { driver, events, run } = memoryWorker(application, throwing());
+    await push(application, driver, 'test.one-try', { how: 'release' });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toHaveLength(1);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
   });
 
   it('gives a failed() only what is left of the stop timeout after the attempt, and aborts its signal when it gives up', async () => {

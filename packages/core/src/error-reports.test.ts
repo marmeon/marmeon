@@ -148,6 +148,18 @@ describe('ErrorReports — what a reporter sees', () => {
   });
 });
 
+describe('ErrorReports — a log sink that misbehaves', () => {
+  it('still hands the report to the reporters when the logger error() throws', async () => {
+    const { errorReports, logger } = setup(Collecting);
+    logger.error = () => {
+      throw new Error('log sink down');
+    };
+    expect(() => errorReports.report(new Error('x'), request)).not.toThrow();
+    await settle();
+    expect(reports).toHaveLength(1);
+  });
+});
+
 describe('ErrorReports — a reporter that misbehaves', () => {
   class Throwing implements ErrorReporter {
     report(): void {
