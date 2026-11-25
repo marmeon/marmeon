@@ -290,7 +290,7 @@ export class TinkerSession {
    * Runs one input (`run` evaluates the JavaScript). Repositories are loaded first when it names them. In the sandbox it
    * runs inside the session's transaction — as a savepoint of its own: an input that fails takes back only its own
    * writes, and on Postgres the transaction stays usable after a failed statement. As in every `transaction()`,
-   * await database work in the input that starts it.
+   * await database work in the input that starts it. In a sandbox that is not open (refused, or closed) it throws and runs nothing.
    */
   async evaluate<R>(code: string, run: () => Promise<R>): Promise<R> {
     if (/\brepos\b|Repository\b/.test(code)) await this.loadRepositories();
@@ -298,6 +298,8 @@ export class TinkerSession {
     // and never runs a package's class in the repository's place.
     else if (code.match(/[\w$]+/g)?.some((word) => this.#fallback.has(word) && !this.#names.has(word))) await this.loadRepositories();
     const inside = this.#inside;
+    // The sandbox promises a rollback: an input never runs outside its transaction (open() refused, or the session closed).
+    if (this.sandbox && !inside) throw new Error('The sandbox is not open, so the input did not run (it was refused at the start or the session has ended).');
     if (!inside) return run();
     const connections = this.#connections()!;
     return inside(() => connections.transaction(() => run()));

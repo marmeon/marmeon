@@ -547,6 +547,69 @@ describe('the jobs a provider lists in a tinker session', () => {
       expect(calls).toEqual([]);
     });
 
+    it('follows a holder above a symlinked app root, as the real path resolves it', async () => {
+      const { app } = await layout((root) => {
+        holder(join(root, '..'), 'acme', { peerDependencies: { [NAME]: '1.0.0' } }, join(root, '..'));
+        copyIn(join(root, '../node_modules/acme'), '1.0.0');
+        list(root, 'dependencies', { acme: '2.0.0' });
+      }, 'real');
+      const current = join(realpathSync(tempDir('marmeon-tinker-link-')), 'current');
+      symlinkSync(app.root, current, 'dir');
+      expect(secondCopies(current, NAME)).toEqual([line('acme', '1.0.0').slice(2)]);
+    });
+
+    it('counts the copy a package resolves from its real directory as a second one, next to the copy tinker loads through a symlinked root', async () => {
+      const top = realpathSync(tempDir('marmeon-tinker-release-'));
+      const release = join(top, 'releases/42');
+      put(release, { name: 'shop', dependencies: { '@marmeon/auth': '1.0.0' } });
+      put(join(release, 'node_modules/@marmeon/auth'), { name: '@marmeon/auth', version: '1.0.0', peerDependencies: { [NAME]: '1.0.0' } });
+      put(join(top, 'node_modules/@marmeon/database'), { name: NAME, version: '1.0.0' });
+      put(join(top, 'releases/node_modules/@marmeon/database'), { name: NAME, version: '1.0.1' });
+      symlinkSync(release, join(top, 'current'), 'dir');
+      expect(secondCopies(join(top, 'current'), NAME)).toEqual([line('@marmeon/auth', '1.0.1').slice(2)]);
+    });
+
+    it('never follows a dependency key that is no package name', async () => {
+      const { app, calls } = await layout((root) => {
+        const outside = join(root, '../../elsewhere');
+        put(outside, { name: 'elsewhere', version: '1.0.0', peerDependencies: { [NAME]: '1.0.0' } });
+        copyIn(outside, '1.0.0');
+        list(root, 'dependencies', { '../../../elsewhere': '1.0.0' });
+      }, 'a/b');
+      const tinker = new TinkerSession(app, { sandbox: true });
+      await tinker.open();
+      expect(calls).toEqual(['transaction']);
+      await tinker.close();
+    });
+
+    it('refuses --sandbox for a copy whose range in the holder is not a string', async () => {
+      const { app, calls } = await layout((root) => {
+        holder(root, 'acme', { dependencies: { [NAME]: { version: '0.9.0' } } });
+        copyIn(join(root, 'node_modules/acme'), '0.9.0');
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      expect(await message(app)).toBe([LEAD, line('acme', '0.9.0'), FIX].join('\n'));
+      expect(calls).toEqual([]);
+    });
+
+    it('runs no input of a sandbox that was refused, nor of one that was closed', async () => {
+      const ran: string[] = [];
+      const refused = await layout((root) => {
+        holder(root, 'acme', { dependencies: { [NAME]: '0.9.0' } });
+        copyIn(join(root, 'node_modules/acme'), '0.9.0');
+        list(root, 'dependencies', { acme: '2.0.0' });
+      });
+      const first = new TinkerSession(refused.app, { sandbox: true });
+      await expect(first.open()).rejects.toThrow('--sandbox refuses');
+      await expect(first.evaluate('1', async () => ran.push('refused'))).rejects.toThrow('The sandbox is not open');
+      const open = await layout(() => {});
+      const second = new TinkerSession(open.app, { sandbox: true });
+      await second.open();
+      await second.close();
+      await expect(second.evaluate('1', async () => ran.push('closed'))).rejects.toThrow('The sandbox is not open');
+      expect(ran).toEqual([]);
+    });
+
     it('refuses --sandbox, saying the install could not be checked, for a package.json on the walk that cannot be read', async () => {
       const { app, calls } = await layout((root) => {
         put(join(root, 'node_modules/acme'), '{ not json');

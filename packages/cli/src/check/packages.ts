@@ -225,9 +225,12 @@ export function packageAdvice(root: string, only?: 'copies' | 'versions'): strin
   }
 }
 
+/** A valid npm package name, as `findPackage` reads one (older ones have capitals). */
+const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
+
 /** Whether `dir` lies inside a `node_modules` folder below the part of its path it shares with `root` (the app may itself be checked out under one). */
 function installedBelow(root: string, dir: string): boolean {
-  const base = realpathSync.native(root).split(sep);
+  const base = root.split(sep);
   const parts = dir.split(sep);
   let shared = 0;
   while (shared < base.length && shared < parts.length && base[shared] === parts[shared]) shared++;
@@ -245,7 +248,15 @@ function installedBelow(root: string, dir: string): boolean {
  * when the app has no copy of `name` or when the walk exceeds `maxWalk` directories, so a caller that must be sure refuses.
  */
 export function secondCopies(root: string, name: `@marmeon/${string}`, maxWalk = MAX_WALK): string[] {
-  const app = readManifest(join(root, 'package.json'));
+  // The walk starts at the real path of the app, so a root that is a symlink (a deploy's `current`) resolves as its packages do; the app's own copy is the one
+  // found from the root as given, which is what tinker loads.
+  let base: string;
+  try {
+    base = realpathSync.native(root);
+  } catch {
+    throw new UnreadableTree('the directory of the app cannot be read');
+  }
+  const app = readManifest(join(base, 'package.json'));
   if (!app) throw new UnreadableTree('the package.json of the app cannot be read');
   let mine: ReturnType<typeof findPackage>;
   try {
@@ -259,12 +270,12 @@ export function secondCopies(root: string, name: `@marmeon/${string}`, maxWalk =
   const seen = new Set<string>();
   const visited = new Set<string>();
   const manifests = new Map<string, Manifest | undefined>();
-  const queue: { readonly dir: string; readonly label: string; readonly manifest: Manifest }[] = [{ dir: root, label: 'the app', manifest: app }];
+  const queue: { readonly dir: string; readonly label: string; readonly manifest: Manifest }[] = [{ dir: base, label: 'the app', manifest: app }];
   for (let next = queue.shift(), steps = 0; next !== undefined; next = queue.shift()) {
     if (++steps > maxWalk) throw new UnreadableTree('the dependencies of the app could not be followed to an end');
     const { dir, label, manifest } = next;
     // A package outside every `node_modules` (a workspace package, a `link:` or `file:` one) is installed in place, and its devDependencies with it, which Node loads as well.
-    const inPlace = dir === root || !installedBelow(root, dir);
+    const inPlace = dir === base || !installedBelow(base, dir);
     const groups = [
       ['dependencies', manifest.dependencies],
       ['optionalDependencies', manifest.optionalDependencies],
@@ -274,18 +285,19 @@ export function secondCopies(root: string, name: `@marmeon/${string}`, maxWalk =
     for (const [groupName, group] of groups) {
       if (typeof group !== 'object' || group === null) continue;
       for (const [key, spec] of Object.entries(group)) {
-        if (typeof spec !== 'string') continue;
+        // A key that is no package name never reaches the file system (`../../x`).
+        if (!PACKAGE_NAME.test(key)) continue;
         // Not installed means Node cannot load it either (an optional dependency, a peer left out): there is nothing to judge.
         const found = resolveFirst(dir, key, undefined, manifests);
         if (!found) continue;
-        const where = plain(relative(root, found.dir) || found.dir);
+        const where = plain(relative(base, found.dir) || found.dir);
         if (found.manifest === undefined || Array.isArray(found.manifest)) throw new UnreadableTree(`${where} has a package.json that cannot be read`);
         const realName = typeof found.manifest.name === 'string' ? found.manifest.name : key;
         if ((key === name || realName === name) && found.dir !== mine.dir && !seen.has(`${label}|${found.dir}`)) {
           seen.add(`${label}|${found.dir}`);
           const own = `${label} resolves its own copy of ${name} ${shown(found.manifest.version)}, the app has ${shown(mineVersion)}`;
           if (key !== name) lines.push(`${label} lists ${name} a second time as ${JSON.stringify(plain(key))} — list it once`);
-          else if (groupName === 'dependencies' && EXACT.test(spec)) lines.push(`${own}: use a version of ${label} that depends on the app's, or override ${name} to ${shown(mineVersion)}`);
+          else if (groupName === 'dependencies' && typeof spec === 'string' && EXACT.test(spec)) lines.push(`${own}: use a version of ${label} that depends on the app's, or override ${name} to ${shown(mineVersion)}`);
           else lines.push(`${own}: align the peers' versions, then pnpm dedupe`);
         }
         if (visited.has(found.dir)) continue;
