@@ -174,7 +174,8 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
 
     for (const provider of marmeonField(pkg)?.providers ?? []) {
       const typesEntry = rootEntry && typesEntryOf(pkg, '.', rootEntry);
-      if (!rootEntry || !typesEntry || !reader.read(typesEntry, pkg).exports.has(provider)) {
+      const entry = typesEntry ? reader.read(typesEntry, pkg) : undefined;
+      if (!rootEntry || !entry || !(entry.names.has(provider) || entry.opaque)) {
         throw new DiscoveryError(`${pkg.name} lists provider "${provider}" in package.json, but its entry does not export it.`);
       }
       providers.push([moduleIndex(pathToFileURL(rootEntry).href), provider]);

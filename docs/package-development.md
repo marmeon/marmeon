@@ -202,7 +202,12 @@ needs one there throws. The [configuration](configuration.md#configuration-and-t
 
 The app builds a package's classes through the container like its own. Their constructors list what they need, and the lists of
 what to inject come from the build: `marmeon package:build` writes them into the compiled files. Without it, the app derives them
-at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export. Every parameter
+at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export.
+The app imports, when it starts, the module that each injected class comes from. A class that several subpaths of `exports`, `"."` included, export comes
+from the first of them in the order of `exports`, so list `"."` first when a subpath needs an optional or browser-only dependency.
+An import that the entry or a subpath exports again is followed when it is relative and inside the package. An import from another package, or
+from a file without a declaration file, is not followed, so that class gets no injection list (`K3` when the class is first built). A
+relative import that leads out of the package stops the start with `K7`. Every parameter
 must be a class or a token, as the [service container](container.md#constructor-injection) page explains. A class in a `browser`
 glob gets no list, so no injection code reaches a client bundle. `marmeon package:build` also marks a controller that answers with an
 [island](deferred-props.md#the-islands-route); a package built before that mark existed answers an island's request with a 404 until
@@ -369,14 +374,14 @@ A build with `isolatedDeclarations` refuses the computed key (TS9038). Set the l
 - **Name:** Start the job's name with the package's name and a dot (`media.process`), not a colon, because the locks of a job join a name and a key with a colon. The name is the stored format of every record. A name that another package or the app uses stops the app at the start. Names under `marmeon.` belong to the framework and are refused. The whole app shares the keys of `job.once` and of `withoutOverlapping(…, { shared: true })`, so start them with the package's name too.
 - **Peer dependency:** List `@marmeon/core` and `@marmeon/queue` as peer dependencies, each with the range of the release that adds `static [providerJobs]`: an older core has no `providerJobs` export, and an older queue ignores the static, so the dispatch throws. Where the queue is optional, import it with `import type { … }`, not `import { type … }`, so the file has no import of it at run time. An app without the queue package then starts as usual, and nothing registers the jobs. Write the static as a plain list of classes: `marmeon` reads it without the queue and in the build phase, where the app's environment may be missing.
 - **Timeout:** A worker checks every job's `static timeout` when it starts, as it does for a module's job. With the default `retryAfterSeconds` of 90 and `--stop-timeout` of 10, a timeout of 80 seconds or more refuses the worker. The message names your provider, unless a module lists the job too. Keep the timeout well below that, or tell your users to raise `retryAfterSeconds`.
-- **Constructor injection:** Export the job class from the package's entry in this form, or build the package with `marmeon package:build`:
+- **Constructor injection:** Export the job class from the package's entry, or build the package with `marmeon package:build`.
 
   ```ts title="src/index.ts"
   export { ProcessMediaJob } from './ProcessMediaJob.ts';
   export { MediaServiceProvider } from './MediaServiceProvider.ts';
   ```
 
-  Without `marmeon package:build`, an import followed by `export { ProcessMediaJob }` gets no injection list. The missing list shows when the job first runs (`K3`).
+  The rules for the injection lists of a package's classes, the re-exports included, are those of [injected classes](#injected-classes); they apply to a job class as well.
 - **Subclasses:** A provider meant to be extended annotates `static [providerJobs]: readonly JobClass[] = [ProcessMediaJob]`, with `import type { JobClass } from '@marmeon/queue'`. The annotation lets a subclass add a class with another payload. A subclass that adds jobs spreads the parent's: `static override [providerJobs] = [...super[providerJobs], ResizeMediaJob]`. A subclass of a job can give itself another name only where the parent declares `static job: string`. Otherwise, write a job class of its own.
 - **Consent:** Installing a package is consent to run its jobs. Discovery also takes the dependencies of installed packages and the app's `devDependencies` where they are installed. With `discover: false` the app registers none of the installed packages, so you list the providers you want by hand ([without discovery](modules.md#without-discovery)). A waiting or failed record with the job's name runs in the class that has that name now, encrypted records included. The schema check and `static encrypted` still apply.
 
