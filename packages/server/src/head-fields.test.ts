@@ -43,7 +43,7 @@ async function appWith(env: Record<string, string>) {
       Route.localized().get('/about', AlternatesController);
     }) })],
   }, { env: { APP_KEY: generateKey(), SERVER_TRUSTED_PROXIES: '127.0.0.1', ...env } });
-  application.container.instance(UrlLocales, { supported: ['en', 'de'], preferred: async () => 'de' });
+  application.container.instance(UrlLocales, { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'de' });
   application.container.scoped(PageAlternates);
   return createHttpKernel(application, { renderer: createDocumentRenderer({ template: () => FALLBACK_TEMPLATE, ssr: () => render }) });
 }

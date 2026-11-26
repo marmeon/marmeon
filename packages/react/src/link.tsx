@@ -3,7 +3,7 @@ import { resolveRoute, type Confirm, type PrefetchTrigger, type ViewTransitionOp
 import type { BrowserParamsOf, BrowserRouteName, BrowserRouteNameInput, CheckLayerRouteName, CheckPageRouteName, ControllerOf, InstantProp, MethodOf, Query, QueryParams } from '@marmeon/http/page';
 import { useContext, useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type MouseEvent, type TouchEvent } from 'react';
 import { loadLayers, useRouterContext, type PartialReloadOptions } from './app.tsx';
-import { RoutesContext } from './routes.ts';
+import { pageUrlOptions, RoutesContext } from './routes.ts';
 
 export type { PrefetchTrigger } from '@marmeon/http/client';
 
@@ -211,7 +211,7 @@ export function Link<const N extends BrowserRouteNameInput = never>(props: LinkP
   const target =
     route === undefined
       ? undefined
-      : resolveRoute(manifest, route, { params, query: query && linkQuery(page, resolveRoute(manifest, route, { params, pageLocale: page.locale }).url, query), pageLocale: page.locale });
+      : resolveRoute(manifest, route, { params, query: query && linkQuery(page, resolveRoute(manifest, route, { params, ...pageUrlOptions(page) }).url, query), ...pageUrlOptions(page) });
   const href = target?.url ?? givenHref ?? '';
   const method = (givenMethod ?? target?.method ?? 'get') as VisitMethod;
   // Its visit is under way: `data-pending` — whichever component started a visit of the same URL and method.

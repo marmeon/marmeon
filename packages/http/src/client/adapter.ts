@@ -82,6 +82,7 @@ export type { FormLiveValidation } from './lazy.ts';
 export { ERROR_PAGE, isPackagePageName, LAYER_BACKDROP, pageInfo, pageName, scriptJson } from '../page-support.ts';
 export type { ErrorPageProps } from '../page-support.ts';
 export { matchesPath } from '@marmeon/router/url';
+export { matchesRoute } from './routes.ts';
 export type { FlashChannel, FlashListener } from './flash.ts';
 export type { OnceStore } from './once.ts';
 export type { LiveRegion } from './owner.ts';

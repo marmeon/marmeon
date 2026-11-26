@@ -62,6 +62,10 @@ describe('query state in the client core (no UI framework)', () => {
     );
     expect(() => assertQueryPage('show', '/users/:user', { url: '/users/1' })).toThrow('Route [show] has no query schema to keep state in');
     expect(() => assertQueryPage('show', '/users/:user{[0-9]+}', { url: '/users/12', queryDefaults: {} })).not.toThrow();
+    // A localized route's page without a prefix belongs to its route once the page names the locale that has none.
+    expect(() => assertQueryPage('home', { path: '/:locale/people', localized: true }, { url: '/people', queryDefaults: {}, urlLocales: { unprefixed: 'de', supported: ['en', 'de'] } })).not.toThrow();
+    expect(() => assertQueryPage('home', { path: '/:locale/people', localized: true }, { url: '/people', queryDefaults: {} })).toThrow('[marmeon:C3]');
+    expect(() => assertQueryPage('home', '/:locale/people', { url: '/people', queryDefaults: {}, urlLocales: { unprefixed: 'de', supported: ['en', 'de'] } })).toThrow('[marmeon:C3]');
   });
 
   it('typing: the state changes at once, the URL once per pause — one partial reload, replacing the history entry, the list replaced', async () => {

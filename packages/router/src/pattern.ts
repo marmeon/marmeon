@@ -116,7 +116,7 @@ export function patternProblem(pattern: string): string | undefined {
 
 /**
  * The parameters of `pathname` read against `pattern`, as they stand in the path (not decoded); `undefined` when the path is
- * none of the pattern's. An optional parameter the path leaves out is no key. A trailing slash is ignored.
+ * none of the pattern's. An optional parameter the path leaves out is no key; a pattern that can be empty also matches `/`. A trailing slash is ignored.
  */
 export function matchParams(pattern: string, pathname: string): Record<string, string> | undefined {
   let source = '';
@@ -136,7 +136,9 @@ export function matchParams(pattern: string, pathname: string): Record<string, s
   }
   // The lookbehind starts a match only at the first slash of a run: linear on a long run that does not reach the end.
   const trimmed = pathname.length > 1 ? pathname.replace(/(?<!\/)\/+$/, '') : pathname;
-  const found = new RegExp(`^${source || '/'}$`).exec(trimmed || '/');
+  const matcher = new RegExp(`^${source || '/'}$`);
+  // A pattern that can be empty (`/:page?`, `/:path*`) answers `/`, as the server's router does.
+  const found = matcher.exec(trimmed || '/') ?? (trimmed === '/' ? matcher.exec('') : null);
   if (!found) return undefined;
   const params: Record<string, string> = {};
   for (const [name, value] of Object.entries(found.groups ?? {})) if (value !== undefined) params[name] = value;

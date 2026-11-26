@@ -61,7 +61,7 @@ export class CsrfProtection {
   except(...paths: string[]): this {
     for (const path of paths) {
       if (path !== '' && !/^\/[^/*]+(?:\/|$)/.test(path)) {
-        throw new TypeError(`CSRF exclusion '${path}' must start with a fixed segment ('/webhooks/*'); write each locale out ('/de/unsubscribe/*'). A placeholder up front covers routes that need the protection.`);
+        throw new TypeError(`CSRF exclusion '${path}' must start with a fixed segment ('/webhooks/*'); write each locale out ('/de/unsubscribe/*'); the default locale without a prefix is '/unsubscribe/*'. A placeholder up front covers routes that need the protection.`);
       }
       // `**` is split off first, so that the single `*` inside the pieces stops at a `/`.
       const pattern = path.split('**').map((piece) => piece.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*')).join('.*');

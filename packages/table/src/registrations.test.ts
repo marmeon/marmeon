@@ -112,6 +112,35 @@ describe.each(drivers)('a table that is not attached to the page (%s)', (driver)
   });
 });
 
+describe.each(drivers)('a table on a localized page (%s)', (driver) => {
+  const localizedPage = () => {
+    const router = new Router().load(defineRoutes((Root) => void Root.authorize(everyone).localized().get('/members', () => 'page').attach(MembersTable.endpoints() as never)));
+    return router.routes.find((route) => route.path === '/:locale/members')!;
+  };
+  const urlsAt = async (url: string, locale: string) => {
+    open = await tableApp(driver);
+    const ctx = { route: localizedPage(), params: { locale }, request: new Request(url), query: { per_page: 25, page: 1 }, user: USERS[ADA], team: 1 } as never;
+    const data = (await tablesOn(open).resolve(MembersTable, ctx)) as unknown as TableData;
+    return { action: data.actions[0]!.url, bulk: data.bulk[0]!.url, export: data.exports[0]!.url };
+  };
+
+  it('links the endpoints under the address without a prefix when the page answered there, not a 500', async () => {
+    expect(await urlsAt('http://localhost/members', 'de')).toEqual({
+      action: '/members/_tables/members/actions/deactivate',
+      bulk: '/members/_tables/members/bulk/deactivate',
+      export: '/members/_tables/members/export/csv',
+    });
+  });
+
+  it('links the endpoints under the prefix when the page answered with one', async () => {
+    expect(await urlsAt('http://localhost/en/members', 'en')).toEqual({
+      action: '/en/members/_tables/members/actions/deactivate',
+      bulk: '/en/members/_tables/members/bulk/deactivate',
+      export: '/en/members/_tables/members/export/csv',
+    });
+  });
+});
+
 describe('the endpoints a table has', () => {
   it('registers a route only for the kinds it has: none for a table without actions, bulk actions and exports', () => {
     const router = routerOf((Root) => void Root.get('/x', () => 'page').attach(WithTeamTable.endpoints() as never));

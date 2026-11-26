@@ -160,7 +160,7 @@ describe('RequestLocale', () => {
   it('names the cause: use() on a localized request throws its own error', () => {
     const current = new CurrentLocale('en');
     current.localized = true;
-    expect(() => new RequestLocale(current, new Locales({ locale: 'en', fallback: 'en', locales: ['en', 'de'] } as never)).use('de')).toThrow('RequestLocale.use(): this route is localized');
+    expect(() => new RequestLocale(current, new Locales({ locale: 'en', fallback: 'en', locales: ['en', 'de'], prefixDefault: true } as never)).use('de')).toThrow('RequestLocale.use(): this route is localized');
     expect(current.value).toBe('en');
   });
 

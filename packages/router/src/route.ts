@@ -174,8 +174,10 @@ export class Route<TState extends object = EmptyObject, TParams extends object =
 
   /**
    * Puts every route registered through the returned registrar under `/:locale`, which the server limits to the app's locales:
-   * `Route.localized().prefix('/about')` serves `/de/about` and `/en/about`; `/about` redirects to the visitor's language. Only
-   * as the first call: the locale is the first segment of the path. See docs/routing.md#routes-under-a-locale.
+   * `Route.localized().prefix('/about')` serves `/de/about` and `/en/about`; `/about` redirects to the visitor's language. With
+   * `APP_LOCALE_PREFIX=false` and `de` as the default locale, its pages answer at `/about` and `/de/about` redirects there. Only as the first
+   * call: the locale is the first segment of the path. See docs/routing.md#routes-under-a-locale and
+   * docs/routing.md#the-default-locale-without-a-prefix.
    */
   localized(): Route<TState, Simplify<TParams & { locale: string }>, TBindings> {
     if (this.#attributes.localized || this.#attributes.prefix !== '/') {

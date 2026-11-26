@@ -2,7 +2,7 @@ import type { FeatureHandle } from '@marmeon/http/client';
 import { loadInstant, loadPageMessages, readAppOrigin, markBusy, Navigator, laterTarget, loadOptimistic, pageLocale, prefetchWith, RegionOwner, TitleRegistry, type Feature, type Layer, type LayerStack as LayersFeature, type PatchTarget, type RegionOwner as RegionOwnerType } from '@marmeon/http/client/adapter';
 import type { ConfirmAnswer, ConfirmRequest, OptimisticUpdate, PrefetchOptions, Reloading, ProgressIndicator, TitleTemplate, ViewTransitionOption, VisitError, VisitEvent, VisitEvents, VisitOptions } from '@marmeon/http/client';
 import type { BrowserRouteNameInput, CheckIslandRouteName, PageInfo, PageProps, RouteManifest, SharedProps } from '@marmeon/http/page';
-import { matchesPath, pageInfo } from '@marmeon/http/client/adapter';
+import { matchesRoute, pageInfo } from '@marmeon/http/client/adapter';
 import type { PageObject } from '@marmeon/http/protocol';
 import type { Catalog, MessageLoader } from '@marmeon/i18n/messages';
 import {
@@ -144,6 +144,7 @@ export function reloadsOf(
   owner: RegionOwnerType | null,
   manifest: RouteManifest | undefined,
   { only, except, reset, islands }: { only?: readonly string[]; except?: readonly string[]; reset?: readonly string[]; islands?: readonly string[] } = {},
+  urlLocales?: PageObject['urlLocales'],
 ): readonly Reloading[] {
   const reloads: Reloading[] = [];
   if (!islands || only || except) reloads.push(own({ ...(only ? { only } : {}), ...(except ? { except } : {}), ...(reset ? { reset } : {}) }));
@@ -156,9 +157,20 @@ export function reloadsOf(
           : `[marmeon:R8] ${name}`,
       );
     }
-    for (const region of owner?.live.values() ?? []) if (matchesPath(route.path, new URL(region.url, 'http://marmeon.invalid').pathname)) reloads.push(region.reloading());
+    for (const region of owner?.live.values() ?? []) if (matchesRoute(route, new URL(region.url, 'http://marmeon.invalid').pathname, urlLocales)) reloads.push(region.reloading());
   }
   return reloads;
+}
+
+/**
+ * `page.urlLocales` as one value for as long as its content stays: a page object is a new one with every reload, and a hook
+ * that depends on the locales must not run again for the same ones.
+ * @internal
+ */
+export function useStableUrlLocales(urlLocales: PageObject['urlLocales']): PageObject['urlLocales'] {
+  const key = urlLocales === undefined ? undefined : `${urlLocales.unprefixed}\n${urlLocales.supported.join('\n')}`;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- `key` is the content of `urlLocales`
+  return useMemo(() => urlLocales, [key]);
 }
 
 /** The layer stack's module, loading or loaded — marked the way React reads a settled promise (`use()` returns at once). */
@@ -271,7 +283,8 @@ const infoOf = (page: PageObject | undefined): PageInfo | undefined => (page ? p
  * ```
  */
 export function useRouter<T = unknown>(): ClientRouter<T> {
-  const { visit: visitPage, reload: reloadPage, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
+  const { page, visit: visitPage, reload: reloadPage, prefetch, on, optimistic: own, reloading: ownReloading, navigator } = useRouterContext();
+  const urlLocales = useStableUrlLocales(page.urlLocales);
   const routes = useContext(RoutesContext);
   // The page's patches and reloads are those of its history entry — never in its props in memory. The optimistic patches
   // attach on first use: an app that never patches the page carries none of their code (a layer brings its own).
@@ -281,8 +294,8 @@ export function useRouter<T = unknown>(): ClientRouter<T> {
   );
   const reloading = useCallback(
     (options?: ReloadingOptions) =>
-      ownReloading ? ownReloading(options as never) : reloadsOf((spec) => ({ target: pagePatches(navigator()), spec }), navigator()?.regionOwner ?? null, routes, options as Parameters<typeof reloadsOf>[3]),
-    [ownReloading, navigator, routes],
+      ownReloading ? ownReloading(options as never) : reloadsOf((spec) => ({ target: pagePatches(navigator()), spec }), navigator()?.regionOwner ?? null, routes, options as Parameters<typeof reloadsOf>[3], urlLocales),
+    [ownReloading, navigator, routes, urlLocales],
   );
   // The app sees the page's info, never the wire object the navigator resolves with.
   const visit = useCallback(async (url: string, options?: VisitOptions) => infoOf(await visitPage(url, options)), [visitPage]);

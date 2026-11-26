@@ -17,7 +17,7 @@ import type { AnyAction, AnyMiddleware, ClassResolver, ControllerClass, HttpCont
 import { localLocation } from './local-location.ts';
 import { matchParams, restSegmentProblem, tokenizePattern } from './pattern.ts';
 import { restParam, restShape } from './rest-path.ts';
-import { fillPath, toSearchParams, urlFor, type Query } from './url.ts';
+import { fillPath, namesLocaleSegment, toSearchParams, urlFor, withoutLocale, type Query } from './url.ts';
 
 /** A module's route file. Nothing is registered until a `Router` loads it. */
 export interface RouteDefinitions {
@@ -86,7 +86,7 @@ export interface DispatchOptions {
   onTerminable?: (handler: MiddlewareHandler<any, any>, ctx: HttpContext) => void;
   /** Turns errors into responses inside the pipeline, so outer middleware still applies (see `runPipeline`). */
   onError?: (error: unknown, ctx: HttpContext) => Response | Promise<Response>;
-  /** The locales a localized route's URL can name; the route without its locale redirects with them (`Route.localized()`). @internal */
+  /** The locales a localized route's URL can name; the route without its locale redirects with them (`Route.localized()`). `dispatch` reads `unprefixed` too: its value, also none, replaces the bound one. @internal */
   urlLocales?: UrlLocales | undefined;
 }
 
@@ -129,6 +129,17 @@ const DEFAULT_HEALTH_PATHS: readonly string[] = ['/up', '/up/ready'];
  */
 export const namesOtherLocale = (params: Readonly<Record<string, string>>, supported: readonly string[] | undefined): boolean =>
   supported !== undefined && params.locale !== undefined && !supported.includes(params.locale);
+
+/**
+ * The locale without a prefix that `urlLocales` holds, if any. One that is none of its `supported` ones (a wrong spelling, another
+ * case) would send every page to a prefix that no request carries, so every reader of it throws.
+ */
+function unprefixedOf(urlLocales: UrlLocales | undefined): string | undefined {
+  const value = urlLocales?.unprefixed;
+  if (value === undefined) return undefined;
+  if (!urlLocales!.supported.includes(value)) throw new Error(`The locale without a prefix [${value}] is none of the supported ones (${urlLocales!.supported.join(', ')}).`);
+  return value;
+}
 
 const isReserved = (path: string): boolean => {
   const lower = path.toLowerCase();
@@ -250,10 +261,14 @@ export class Router {
   readonly #unprefixed = new Map<RouteDefinition, RouteDefinition>();
   /** The addresses without a locale that belong to a localized fallback: they sit with the fallbacks, not among the routes. */
   readonly #fallbackVariants = new WeakSet<RouteDefinition>();
+  /** The address of the unprefixed locale of each localized route, any method: it answers the page itself, once `UrlLocales.unprefixed` is bound. */
+  readonly #defaultAddresses = new Map<RouteDefinition, RouteDefinition>();
+  /** The addresses in {@link Router.#defaultAddresses} that belong to a localized fallback. */
+  readonly #fallbackDefaults = new WeakSet<RouteDefinition>();
   /** The fallback of each slot, by {@link fallbackSlots}: one per prefix and kind. */
   readonly #fallbackSlots = new Map<string, RouteDefinition>();
   #snapshot: readonly RouteDefinition[] | undefined;
-  /** The locales a localized route's first segment can name, once `@marmeon/i18n` binds them; the owner's object, read at every call, never copied. None before. */
+  /** The locales a localized route's first segment can name and the one without a prefix, once `@marmeon/i18n` binds them; the owner's object, read at every call, never copied. None before. */
   #urlLocales: UrlLocales | undefined;
   /** The paths the server's health check answers; before `@marmeon/server` binds them, the default ones. */
   #healthPaths: readonly string[] = DEFAULT_HEALTH_PATHS;
@@ -285,12 +300,18 @@ export class Router {
   /**
    * The routes in the order the server registers them: the framework's paths under `/_marmeon/` first, so no parameter or
    * wildcard route of an app matches ahead of them. The order inside each group is the order of loading. The fallbacks are
-   * not in it — {@link Router.fallbacks} has them, and the server registers them after everything else.
+   * not in it — {@link Router.fallbacks} has them, and the server registers them after everything else. With a locale without a
+   * prefix bound, the address of that locale stands right behind its route and the redirecting variants are left out.
    *
    * @internal
    */
   get registrationOrder(): readonly RouteDefinition[] {
     const routes = this.#routes.filter((route) => !isFallbackDefinition(route));
+    if (this.#unprefixedLocale !== undefined) {
+      // The address of the unprefixed locale is a page like the others: it sits right behind its route, so the order of the route files holds for it too.
+      const placed = (list: readonly RouteDefinition[]) => list.flatMap((route) => [route, ...(this.#defaultAddresses.has(route) ? [this.#defaultAddresses.get(route)!] : [])]);
+      return [...placed(routes.filter((route) => route.reserved)), ...placed(routes.filter((route) => !route.reserved))];
+    }
     // The routes without a locale come last: a route of the app always wins, and they answer only what would be a 404 otherwise.
     const variants = [...this.#unprefixed.values()].filter((variant) => !this.#fallbackVariants.has(variant));
     return [...routes.filter((route) => route.reserved), ...routes.filter((route) => !route.reserved), ...variants];
@@ -298,12 +319,16 @@ export class Router {
 
   /**
    * The routes `Route.fallback()` made, and the address without a locale of each localized one, the one under the longest prefix
-   * first: the server registers them after every other route, so they answer what nothing else takes.
+   * first: the server registers them after every other route, so they answer what nothing else takes. With a locale without a
+   * prefix bound, the address of that locale replaces the redirecting variant.
    *
    * @internal
    */
   get fallbacks(): readonly RouteDefinition[] {
-    return [...this.#routes.filter(isFallbackDefinition), ...[...this.#unprefixed.values()].filter((variant) => this.#fallbackVariants.has(variant))].sort(fallbackOrder);
+    const addresses = this.#unprefixedLocale === undefined
+      ? [...this.#unprefixed.values()].filter((variant) => this.#fallbackVariants.has(variant))
+      : [...this.#defaultAddresses.values()].filter((address) => this.#fallbackDefaults.has(address));
+    return [...this.#routes.filter(isFallbackDefinition), ...addresses].sort(fallbackOrder);
   }
 
   /** Whether `Route.fallback()` made the route; a definition built by hand never is. @internal */
@@ -332,6 +357,8 @@ export class Router {
       if (!params) continue;
       // Not bound (an app without `@marmeon/i18n`): any first segment may be a locale, so the route claims it.
       if (route.localized && namesOtherLocale(params, this.#urlLocales?.supported)) continue;
+      // A path that starts with a locale is that locale's, never the address of the unprefixed one.
+      if (this.#isDefaultAddress(route) && this.#namesLocale(seen)) continue;
       return { by: 'route', route: route.generatedFrom ?? route };
     }
     return undefined;
@@ -349,13 +376,13 @@ export class Router {
     // The server limits a localized fallback to the app's locales: `/fr/x` is for the address without a locale (or a fallback of the root), not for it.
     return this.fallbacks.find((route) => {
       const params = matchParams(route.path, seen);
-      return params !== undefined && !(route.localized && namesOtherLocale(params, this.#urlLocales?.supported));
+      return params !== undefined && !(route.localized && namesOtherLocale(params, this.#urlLocales?.supported)) && !(this.#isDefaultAddress(route) && this.#namesLocale(seen));
     });
   }
 
   /**
-   * @internal `@marmeon/i18n` tells the router the locales a localized route's URL can name, while the app boots, for
-   * {@link Router.claimedBy}. The owner holds the values; the router reads them at every call and never copies them. The
+   * @internal `@marmeon/i18n` tells the router the locales a localized route's URL can name, and the one that has no prefix, while
+   * the app boots. `registrationOrder`, `fallbacks`, `urlFor`, `dispatch` and {@link Router.claimedBy} read them. The owner holds the values; the router reads them at every call and never copies them. The
    * kernel binds again when an app supplies `UrlLocales` without `@marmeon/i18n`. Unbound, any first segment may be a locale.
    */
   bindUrlLocales(urlLocales: UrlLocales): void {
@@ -369,6 +396,31 @@ export class Router {
    */
   bindHealthPaths(paths: readonly string[]): void {
     this.#healthPaths = paths;
+  }
+
+  /** @internal The locale whose pages have no prefix, when the app has one; read from the bound `UrlLocales` at every call, never kept. Where {@link urlFor} finds it. */
+  get unprefixedLocale(): string | undefined {
+    return this.#unprefixedLocale;
+  }
+
+  get #unprefixedLocale(): string | undefined {
+    return unprefixedOf(this.#urlLocales);
+  }
+
+  /** @internal The app's locales, once bound; the other thing {@link urlFor} needs to refuse an address without a prefix that starts with one. */
+  get locales(): readonly string[] | undefined {
+    return this.#urlLocales?.supported;
+  }
+
+  /** Whether `route` is the address a localized route has for the unprefixed locale (not the redirecting one of the other mode). */
+  #isDefaultAddress(route: RouteDefinition): boolean {
+    return this.#unprefixedLocale !== undefined && route.generatedFrom !== undefined && this.#defaultAddresses.get(route.generatedFrom) === route;
+  }
+
+  /** Whether the path's first segment is a locale of the app; unbound (no locales known) it is not asked, the router stays conservative. */
+  #namesLocale(path: string): boolean {
+    const supported = this.#urlLocales?.supported;
+    return supported !== undefined && namesLocaleSegment(path, supported);
   }
 
   /**
@@ -472,10 +524,25 @@ export class Router {
     // Nothing a request does (`ctx.route`) may change a route for the requests after it.
     for (const route of this.#routes.slice(before)) route.seal();
     for (const route of this.#routes.slice(before)) {
-      if (!route.localized || !route.methods.includes('GET')) continue;
+      if (!route.localized) continue;
+      // For every method: which of the two addresses answers is decided per request, by what the owner of the locales has bound.
+      const address = new RouteDefinition({
+        methods: route.methods,
+        path: withoutLocale(route.path),
+        action: unprefixedAction,
+        middleware: [],
+        namePrefix: '',
+        group: route.group,
+        site: route.site,
+        generatedFrom: route,
+      });
+      address.seal();
+      this.#defaultAddresses.set(route, address);
+      if (isFallbackDefinition(route)) this.#fallbackDefaults.add(address);
+      if (!route.methods.includes('GET')) continue;
       const variant = new RouteDefinition({
         methods: ['GET'],
-        path: route.path.replace(/^\/:locale/, '') || '/',
+        path: withoutLocale(route.path),
         action: unprefixedAction,
         middleware: [],
         namePrefix: '',
@@ -687,6 +754,56 @@ export class Router {
       }
       input = { request: given.request, params: { ...given.params, [rest.name]: found.value } };
     }
+    // Read at every request from what the owner of the locales holds (the options' wins, also with none): nothing about the mode is kept here.
+    const urlLocales = options.urlLocales ?? this.#urlLocales;
+    let unprefixed: string | undefined;
+    try {
+      unprefixed = options.urlLocales !== undefined ? unprefixedOf(options.urlLocales) : this.#unprefixedLocale;
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    const from = route.generatedFrom;
+    const isAddress = from !== undefined && this.#defaultAddresses.get(from) === route;
+    // In the mode the redirecting variant answers like the address does: a kernel that registered it before the mode was bound must not send a visitor round in a loop.
+    if (from !== undefined && (isAddress || this.#unprefixed.get(from) === route) && unprefixed !== undefined) {
+      // A path that starts with a locale is that locale's own, never this address's: a page of the route is no answer to it.
+      if (namesLocaleSegment(new URL(input.request.url).pathname, urlLocales!.supported)) return this.dispatchGlobal(input.request, () => Promise.reject(new HttpError(404)), options);
+      // The address of the unprefixed locale is the route itself: it answers as the route does, in that locale.
+      return this.#dispatchMatched(from, { request: input.request, params: { ...input.params, locale: unprefixed } }, options);
+    }
+    // The address has no answer of its own without the mode.
+    if (isAddress) return this.dispatchGlobal(input.request, () => Promise.reject(new HttpError(404)), options);
+    if (route.localized && unprefixed !== undefined && input.params.locale === unprefixed) return this.#redirectToDefaultAddress(route, input, options, urlLocales!.supported);
+    return this.#dispatchMatched(route, input, options);
+  }
+
+  /**
+   * The page at its own prefix, for the locale without one (`/de/about`): a GET or HEAD goes to the page's address with a 301, any
+   * other method is a 404 — one page, one address. Only the global middleware runs: no session, no cookie, no check answers it. The target
+   * is the route's pattern filled with the matched values, each encoded, and the query — never the path of the request, so no
+   * `//host` or `/\\host` can become the `Location`. The `max-age` keeps a browser from holding the 301 for good, which a switch
+   * back would turn into a loop. Where the address would start with a locale (`/de/EN` for a user named `EN` → `/EN`), the prefix is
+   * its address: the page answers itself, for any method.
+   */
+  #redirectToDefaultAddress(route: RouteDefinition, input: DispatchInput, options: DispatchOptions, supported: readonly string[]): Promise<Response> {
+    const method = input.request.method.toUpperCase();
+    const { locale: _locale, ...values } = input.params;
+    let path: string | undefined;
+    try {
+      path = fillPath(route.routeName ?? route.path, withoutLocale(route.path), values).path;
+    } catch {
+      // Hono decodes the path: `%2E%2E` arrives as `..`, which `fillPath` refuses — such a URL is no page.
+      path = undefined;
+    }
+    if (path !== undefined && namesLocaleSegment(path, supported)) return this.#dispatchMatched(route, input, options);
+    return this.dispatchGlobal(input.request, () => {
+      if (path === undefined || (method !== 'GET' && method !== 'HEAD')) throw new HttpError(404);
+      return new Response(null, { status: 301, headers: { location: localLocation(path, new URL(input.request.url).search), 'cache-control': 'max-age=3600' } });
+    }, options);
+  }
+
+  /** What `dispatch` does once the rest of the path is read: the route's bindings, checks and action behind its middleware. */
+  #dispatchMatched(route: RouteDefinition, input: DispatchInput, options: DispatchOptions): Promise<Response> {
     const state = options.state ?? createRequestState(input.request);
     // Whoever calls dispatch directly (a custom server) gets no way around the rules the kernel enforces at start.
     const unscoped = unscopedBinder(route);

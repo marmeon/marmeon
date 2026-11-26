@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { PageAlternates, type PageAlternatesSource } from './page-alternates.ts';
 
-const source = (pattern: string, search = ''): PageAlternatesSource => ({ name: 'help.page', pattern, search, locales: ['en', 'de'] });
+const source = (pattern: string, search = ''): PageAlternatesSource => ({ name: 'help.page', pattern, search, locales: ['en', 'de'], unprefixed: undefined });
 const page = (pattern = '/:locale/help/:slug', search = ''): PageAlternates => {
   const alternates = new PageAlternates();
   alternates.set({ en: '/en/help/x', de: '/de/help/x', 'x-default': '/help/x' }, source(pattern, search));
@@ -86,5 +86,46 @@ describe('the types of PageAlternates', () => {
     expect(() => alternates.replace({ en: '/en/about' })).toThrow();
     // @ts-expect-error a parameter is a string or a number
     expect(() => alternates.replace({ en: { slug: true } })).toThrow();
+  });
+});
+
+describe('PageAlternates.replace() with a locale without a prefix', () => {
+  const unprefixedPage = (pattern = '/:locale/help/:slug', search = ''): PageAlternates => {
+    const alternates = new PageAlternates();
+    alternates.set(undefined, { ...source(pattern, search), unprefixed: 'de' });
+    return alternates;
+  };
+
+  it('builds that locale\'s version and the one without a locale with no prefix, the others with theirs', () => {
+    const alternates = unprefixedPage('/:locale/help/:slug', '?q=1');
+    alternates.replace({ de: { slug: 'erste-schritte' }, en: { slug: 'getting-started' }, 'x-default': { locale: 'de', slug: 'erste-schritte' } });
+    expect(alternates.paths).toEqual({ de: '/help/erste-schritte?q=1', en: '/en/help/getting-started?q=1', 'x-default': '/help/erste-schritte?q=1' });
+    const bare = unprefixedPage();
+    bare.replace({ 'x-default': { slug: 'x' } });
+    expect(bare.paths).toEqual({ 'x-default': '/help/x' });
+  });
+
+  it('builds the prefix for every locale without the mode', () => {
+    const alternates = page();
+    alternates.replace({ de: { slug: 'x' } });
+    expect(alternates.paths).toEqual({ de: '/de/help/x' });
+  });
+
+  it('builds the root for a page whose only parameter is optional, left out: `/` for the default locale, `/en` for the other', () => {
+    const optional = unprefixedPage('/:locale/:page?');
+    optional.replace({ de: {}, en: {}, 'x-default': {} });
+    expect(optional.paths).toEqual({ de: '/', en: '/en', 'x-default': '/' });
+  });
+
+  it('keeps the prefix of a version whose address without one would start with a locale (a page named EN)', () => {
+    const rest = unprefixedPage('/:locale/:path*');
+    rest.replace({ de: { path: 'EN' }, en: { path: 'en/x' }, 'x-default': { locale: 'de', path: 'de/x' } });
+    expect(rest.paths).toEqual({ de: '/de/EN', en: '/en/en/x', 'x-default': '/de/de/x' });
+    rest.replace({ de: { path: 'x/en' }, 'x-default': { path: 'en' } });
+    expect(rest.paths).toEqual({ de: '/x/en', 'x-default': '/de/en' });
+    // Only the first segment counts: a locale further down is a value like any other.
+    const slug = unprefixedPage('/:locale/help/:slug');
+    slug.replace({ de: { slug: 'De' } });
+    expect(slug.paths).toEqual({ de: '/help/De' });
   });
 });

@@ -1,6 +1,7 @@
 import type { Router } from '@marmeon/router';
 import type { UrlLocales } from '@marmeon/router/internal';
 import { withCode } from '@marmeon/core/internal';
+import { matchParams, tokenizePattern, withoutLocale } from '@marmeon/router/internal';
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -14,10 +15,16 @@ const trimmed = (path: string): string => (path.length > 1 ? path.replace(/(?<!\
 
 /**
  * Refuses the start when the localized routes cannot work: no locales are bound, a route without `localized()` sits under the
- * first segment a locale owns, or the route without its locale (which redirects) is taken by a route of the app. `path`
- * masks secrets in the paths the message names.
+ * first segment a locale owns, or the route without its locale (which redirects) is taken by a route of the app. With a locale
+ * without a prefix the address of that locale is the route itself, so the same holds for it, for any method the two share, and
+ * the locale has to be one the app supports. `path` masks secrets in the paths the message names.
  */
 export function checkLocalizedRoutes(router: Router, urlLocales: UrlLocales | undefined, path: (route: { path: string }) => string = (route) => route.path): void {
+  // Before the early return: an app without a localized route reads the locale too (the router registers by it), and must stop with a code, not an error.
+  const unprefixed = urlLocales?.unprefixed;
+  if (urlLocales && unprefixed !== undefined && !urlLocales.supported.includes(unprefixed)) {
+    throw new Error(withCode('H9', `The default locale without a prefix [${unprefixed}] is none of the supported ones (${urlLocales.supported.join(', ') || 'none'}): its pages would have no address. Give it the spelling of one of them. See docs/routing.md#the-default-locale-without-a-prefix.`));
+  }
   const localized = router.routes.filter((route) => route.localized);
   if (localized.length === 0) return;
   const first = localized[0]!;
@@ -38,6 +45,15 @@ export function checkLocalizedRoutes(router: Router, urlLocales: UrlLocales | un
       throw new Error(withCode('H9', `${route.methods.join('|')} ${path(route)} starts with the locale [${segment}], which ${first.methods.join('|')} ${path(first)} (Route.localized()) serves: the URL would have two owners. Register it through Route.localized(), or give it another path. See docs/routing.md#routes-under-a-locale.`));
     }
   }
+  // The address of the locale without a prefix is a literal segment of the route: `/en/x` would be that locale's own path, which the address never answers.
+  if (unprefixed !== undefined) {
+    for (const route of localized) {
+      const segment = withoutLocale(route.path).split('/')[1] ?? '';
+      if (segment !== '' && !segment.startsWith(':') && owned.has(segment.toLowerCase())) {
+        throw new Error(withCode('H9', `${route.methods.join('|')} ${path(route)} (Route.localized()) starts with the locale [${segment}] after its prefix: the address of the default locale without a prefix, ${path({ path: withoutLocale(route.path) })}, would be the path of the locale [${segment}], which that locale's own address serves. Give the route another first segment. See docs/routing.md#the-default-locale-without-a-prefix.`));
+      }
+    }
+  }
   // The address without a locale of a localized fallback sits among the fallbacks and is asked before the localized one when its first
   // segment is literal: `/en/:path*` would take `/en/x` and send it to the visitor's language, so the locale `en` would be lost.
   for (const variant of router.fallbacks) {
@@ -48,6 +64,39 @@ export function checkLocalizedRoutes(router: Router, urlLocales: UrlLocales | un
     }
   }
   const taken = router.registrationOrder.filter((route) => !route.generatedFrom);
+  if (unprefixed !== undefined) {
+    // Hono answers HEAD through the GET routes: a route of HEAD alone never runs, so it answers nothing (as `routeConflicts` counts).
+    const methodsOf = (route: { methods: readonly string[] }) => new Set(route.methods.filter((method) => method !== 'HEAD'));
+    const listed = router.routes.some((route) => route.inSitemap);
+    const order = router.registrationOrder;
+    for (const [index, address] of order.entries()) {
+      const source = address.generatedFrom;
+      if (!source) continue;
+      const mine = methodsOf(address);
+      // An address with a parameter first (`/:username`) answers the fixed path of a route registered after it, so that route never runs.
+      // Not the paths it hands on: the sitemap's reach their owner (a path that starts with a locale is refused above).
+      for (const [offset, later] of order.slice(index + 1).entries()) {
+        const fixed = tokenizePattern(later.path).every((token) => 'text' in token);
+        if (!fixed) continue;
+        if (listed && (later.path === '/sitemap.xml' || later.path === '/robots.txt')) continue;
+        if (later.path === address.path || matchParams(address.path, later.path) === undefined) continue;
+        const before = order.slice(0, index + 1 + offset);
+        // Only where this address is the first to answer the path for the method: a route before it that does shadows it already, address or not.
+        // A localized route itself answers no path without its prefix (its `/:locale` would read `/login` as a locale, which a fixed path never starts with).
+        const shared = [...methodsOf(later)].filter((method) => mine.has(method) && before.find((route) => !(route.localized && !route.generatedFrom) && methodsOf(route).has(method) && matchParams(route.path, later.path) !== undefined) === address);
+        if (shared.length === 0) continue;
+        throw new Error(withCode('H9', `${source.methods.join('|')} ${path(source)} (Route.localized()) answers ${shared.join('|')} ${path(later)} at the address of the default locale without a prefix [${unprefixed}] (${path(address)}), ahead of ${later.methods.join('|')} ${path(later)}: that route would never run. Register ${path(later)} before it, or answer the rest of the paths with Route.fallback(). See docs/routing.md#the-default-locale-without-a-prefix.`));
+      }
+      for (const other of taken) {
+        // Route paths are stored without a trailing slash (`/about/` is `/about`), so the strings compare as they are.
+        if (other.path !== address.path) continue;
+        const shared = [...methodsOf(other)].filter((method) => mine.has(method));
+        if (shared.length === 0) continue;
+        throw new Error(withCode('H9', `${other.methods.join('|')} ${path(other)} and ${source.methods.join('|')} ${path(source)} (Route.localized()) both answer ${shared.join('|')} ${path(address)}: the address of the default locale without a prefix [${unprefixed}] is that route's. Give ${path(other)} another path, or register it through Route.localized(). See docs/routing.md#the-default-locale-without-a-prefix.`));
+      }
+    }
+    return;
+  }
   for (const variant of router.registrationOrder) {
     const source = variant.generatedFrom;
     if (!source) continue;

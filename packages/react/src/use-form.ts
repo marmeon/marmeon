@@ -4,7 +4,7 @@ import type { ActionConflictOf, BrowserParamsOf, BrowserRouteNameInput, CheckBro
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
-import { RoutesContext } from './routes.ts';
+import { pageUrlOptions, RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
 
 /**
@@ -411,7 +411,7 @@ export function useForm(...args: unknown[]): unknown {
 
   const { visit, page } = useRouterContext();
   const manifest = useContext(RoutesContext);
-  const target = name === undefined ? undefined : resolveRoute(manifest, name, { params, pageLocale: page.locale });
+  const target = name === undefined ? undefined : resolveRoute(manifest, name, { params, ...pageUrlOptions(page) });
   // Remembered input: what this history entry kept of the form, back where it was typed — sensitive fields never were.
   const remember = rememberSetting(options.remember, name);
   const { store, key: rememberKey } = useRememberStore(remember?.key ?? '');

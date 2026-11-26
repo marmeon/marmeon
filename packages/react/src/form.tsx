@@ -16,7 +16,7 @@ import {
 } from 'react';
 import { useRouterContext } from './app.tsx';
 import { useRememberStore } from './remember.ts';
-import { RoutesContext } from './routes.ts';
+import { pageUrlOptions, RoutesContext } from './routes.ts';
 import { useGuard } from './state.ts';
 import type { FormConflict, LiveValidationSetting, PasswordNeverRemembered, RouteFormFields } from './use-form.ts';
 
@@ -173,7 +173,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
   } = props as FormProps<string> & { params?: Record<string, string | number> };
   const { visit, page } = useRouterContext();
   const manifest = useContext(RoutesContext);
-  const target = resolveRoute(manifest, route as string, { params, pageLocale: page.locale });
+  const target = resolveRoute(manifest, route as string, { params, ...pageUrlOptions(page) });
   const method = target.method.toLowerCase() as VisitMethod;
   const element = useRef<HTMLFormElement | null>(null);
 
@@ -266,7 +266,7 @@ export function Form<const N extends BrowserRouteNameInput>(props: FormProps<N>)
         const current = query[name];
         query[name] = current === undefined ? value : [...(Array.isArray(current) ? current : [current]), value];
       }
-      url = resolveRoute(manifest, route as string, { params, query: linkQuery(page as never, target.url, query), pageLocale: page.locale }).url;
+      url = resolveRoute(manifest, route as string, { params, query: linkQuery(page as never, target.url, query), ...pageUrlOptions(page) }).url;
     } else {
       // Files: multipart (with progress), as the browser would; else the fields as the server parses them.
       body = entries.some(([, value]) => value instanceof Blob) ? data : formObject(entries);

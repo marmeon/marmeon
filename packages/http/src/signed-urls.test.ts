@@ -232,6 +232,47 @@ describe('signed() middleware', () => {
   });
 });
 
+describe('UrlSigner with the locale without a prefix', () => {
+  const localized = () => new Router().load(defineRoutes((Route) => {
+    Route.localized().middleware(signed()).get('/invite/:id', () => 'invite').name('invite');
+    Route.localized().middleware(signed()).get('/:username', () => 'profile').name('profile');
+  }));
+  const signerOf = (from: Router) => new UrlSigner(from, { key: keyOf(KEY), previousKeys: [] } as unknown as EncryptionConfig, clock);
+  const passes = (from: Router, href: string) =>
+    Promise.resolve()
+      .then(() => new ValidateSignature(signerOf(from)).handle({ request: new Request(href) } as never, async () => new Response('ok')))
+      .then((response) => response.status, (error: { status: number }) => error.status);
+
+  it('signs the page of that locale at its address, and the signature holds for that path only', async () => {
+    const app = localized();
+    app.bindUrlLocales({ supported: ['en', 'de'], unprefixed: 'de', preferred: async () => 'de' });
+    const de = signerOf(app).signedRoute('invite' as never, { locale: 'de', id: 7 } as never, { expiresIn: 60 });
+    expect(de).toMatch(/^\/invite\/7\?expires=\d+&signature=[0-9a-f]{64}$/);
+    expect(await passes(app, `http://app.test${de}`)).toBe(200);
+    // The signer and the router build the same address.
+    expect(de.split('?')[0]).toBe(app.url('invite' as never, { locale: 'de', id: 7 } as never));
+    // The path of the other address (the one that redirects) is another path: the signature does not carry over.
+    expect(await passes(app, `http://app.test/de${de}`)).toBe(403);
+    // Another locale keeps its prefix.
+    const en = signerOf(app).foreverSignedRoute('invite' as never, { locale: 'en', id: 7 } as never);
+    expect(en).toMatch(/^\/en\/invite\/7\?signature=/);
+  });
+
+  it('signs a page whose address without a prefix would start with a locale at the prefixed one', () => {
+    const app = localized();
+    app.bindUrlLocales({ supported: ['en', 'de'], unprefixed: 'de', preferred: async () => 'de' });
+    expect(signerOf(app).foreverSignedRoute('profile' as never, { locale: 'de', username: 'EN' } as never)).toMatch(/^\/de\/EN\?signature=/);
+    expect(signerOf(app).foreverSignedRoute('profile' as never, { locale: 'de', username: 'ada' } as never)).toMatch(/^\/ada\?signature=/);
+  });
+
+  it('signs /<locale>/… as before without the mode', () => {
+    const app = localized();
+    app.bindUrlLocales({ supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'de' });
+    expect(signerOf(app).foreverSignedRoute('invite' as never, { locale: 'de', id: 7 } as never)).toMatch(/^\/de\/invite\/7\?signature=/);
+    expect(signerOf(localized()).foreverSignedRoute('invite' as never, { locale: 'de', id: 7 } as never)).toMatch(/^\/de\/invite\/7\?signature=/);
+  });
+});
+
 describe('signed({ withoutCsrf: true })', () => {
   it('is marked for the CSRF check, with the policy on expiry it checks by; no other middleware is', () => {
     expect(withoutCsrfSignature(signed({ withoutCsrf: true }))).toEqual({ forever: false });

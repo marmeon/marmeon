@@ -250,7 +250,7 @@ describe('/sitemap.xml', () => {
   });
 
   it('is not taken by the route without its locale of a localized `/:page`', async () => {
-    const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'de' };
+    const urlLocales: UrlLocales = { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'de' };
     const withMark = openRoutes((Route) => {
       Route.get('/about', () => 'about').sitemap();
       Route.localized().get('/:page', () => 'page');
@@ -269,7 +269,7 @@ describe('/sitemap.xml', () => {
   });
 
   describe('a localized route', () => {
-    const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'en' };
+    const urlLocales: UrlLocales = { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'en' };
     const features = openRoutes((Route) => {
       Route.localized().get('/about', AboutController).name('about').sitemap();
       Route.localized().get('/features/:slug', PostController).name('features.show').sitemap();
@@ -571,7 +571,7 @@ describe('/sitemap.xml', () => {
     });
 
     it('ignores the alternates of a localized route, and warns once', async () => {
-      const urlLocales: UrlLocales = { supported: ['en', 'de'], preferred: async () => 'en' };
+      const urlLocales: UrlLocales = { supported: ['en', 'de'], unprefixed: undefined, preferred: async () => 'en' };
       state.slugs = [{ params: { slug: 'a' }, alternates: { en: { slug: 'a' }, fr: { slug: 'x' } } }, { params: { slug: 'b' }, alternates: { en: { slug: 'b' } } }];
       const { xml, logger } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/features/:slug', PostController).sitemap()), urlLocales);
       expect(links(xml.split('<url>').slice(1, 2).join(''))).toEqual([`en ${url}/en/features/a`, `de ${url}/de/features/a`, `x-default ${url}/features/a`]);
@@ -832,7 +832,7 @@ describe('/sitemap.xml of a fallback', () => {
       }
     }
     const { application, create } = await boot({
-      urlLocales: { supported: ['de', 'en'], preferred: async () => 'de' },
+      urlLocales: { supported: ['de', 'en'], unprefixed: undefined, preferred: async () => 'de' },
       routes: openRoutes((Route) => {
         Route.localized().fallback(Pages).sitemap();
         Route.localized().prefix('/docs').fallback(() => 'docs');
@@ -876,7 +876,7 @@ describe('/sitemap.xml of a fallback', () => {
   });
 
   describe('a localized fallback', () => {
-    const urlLocales: UrlLocales = { supported: ['de', 'en'], preferred: async () => 'de' };
+    const urlLocales: UrlLocales = { supported: ['de', 'en'], unprefixed: undefined, preferred: async () => 'de' };
     const links = (xml: string): string[] => [...xml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"\/>/g)].map((match) => `${match[1]} ${match[2]}`);
 
     it('leaves x-default out of an entry whose address without a locale another route answers, and keeps the other links', async () => {
@@ -975,6 +975,143 @@ describe('/sitemap.xml of a fallback', () => {
     }) });
     try {
       expect(locs(await (await create().request('/sitemap.xml')).text())).toEqual([`${url}/posts/x`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+});
+
+describe('/sitemap.xml with the default locale without a prefix', () => {
+  const urlLocales: UrlLocales = { supported: ['de', 'en'], unprefixed: 'de', preferred: async () => 'de' };
+  const links = (xml: string): string[] => [...xml.matchAll(/<xhtml:link rel="alternate" hreflang="([^"]+)" href="([^"]+)"\/>/g)].map((match) => `${match[1]} ${match[2]}`);
+  const sitemapOf = async (routes: RouteDefinitions) => {
+    const { application, logger, create } = await boot({ routes, urlLocales });
+    try {
+      return { xml: await (await create().request('/sitemap.xml')).text(), warnings: logger.warnings };
+    } finally {
+      await application.shutdown();
+    }
+  };
+
+  it('lists the page of the default locale without its prefix, and x-default as that same address', async () => {
+    const { xml } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/about', AboutController).name('about').sitemap()));
+    expect(locs(xml)).toEqual([`${url}/about`, `${url}/en/about`]);
+    const set = [`de ${url}/about`, `en ${url}/en/about`, `x-default ${url}/about`];
+    for (const entry of xml.split('<url>').slice(1)) expect(links(entry)).toEqual(set);
+  });
+
+  it('lists the root of a page whose only parameter is optional, left out', async () => {
+    aboutEntries.list = [{ params: {} }];
+    const { xml, warnings } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/:page?', LocalizedAboutController).name('start').sitemap()));
+    expect(locs(xml)).toEqual([`${url}/`, `${url}/en`]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('builds the address of a page with a parameter and of the root the same way', async () => {
+    state.slugs = [{ params: { slug: 'a' } }];
+    const { xml } = await sitemapOf(openRoutes((Route) => {
+      Route.localized().get('/', AboutController).name('home').sitemap();
+      Route.localized().get('/features/:slug', PostController).name('features.show').sitemap();
+    }));
+    expect(locs(xml)).toEqual([`${url}/`, `${url}/en`, `${url}/features/a`, `${url}/en/features/a`]);
+    expect(links(xml.split('<url>')[3]!)).toEqual([`de ${url}/features/a`, `en ${url}/en/features/a`, `x-default ${url}/features/a`]);
+  });
+
+  it('lists an entry that names the default locale without a prefix, and its alternates the same way', async () => {
+    aboutEntries.list = [{ params: { locale: 'de' }, alternates: { de: { locale: 'de' }, en: { locale: 'en' }, 'x-default': { locale: 'de' } } }];
+    const { xml } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/about', LocalizedAboutController).name('about').sitemap()));
+    expect(locs(xml)).toEqual([`${url}/about`]);
+    expect(links(xml)).toEqual([`de ${url}/about`, `en ${url}/en/about`, `x-default ${url}/about`]);
+  });
+
+  it('keeps the prefix of a default-locale page whose address without one would start with a locale: /de/en/x, also as x-default', async () => {
+    class Pages {
+      handle() {
+        return 'page';
+      }
+      sitemap(): SitemapEntries<{ path: string }> {
+        return [{ params: { path: 'en/x' } }, { params: { path: 'x' } }];
+      }
+    }
+    const { xml, warnings } = await sitemapOf(openRoutes((Route) => void Route.localized().fallback(Pages).sitemap()));
+    expect(locs(xml)).toEqual([`${url}/de/en/x`, `${url}/en/en/x`, `${url}/x`, `${url}/en/x`]);
+    expect(links(xml.split('<url>')[1]!)).toEqual([`de ${url}/de/en/x`, `en ${url}/en/en/x`, `x-default ${url}/de/en/x`]);
+    expect(links(xml.split('<url>')[3]!)).toEqual([`de ${url}/x`, `en ${url}/en/x`, `x-default ${url}/x`]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('keeps the prefix of a page whose first parameter looks like a locale (a user named EN), and only that one', async () => {
+    state.slugs = [{ params: { slug: 'EN' } }];
+    const { xml } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/users/:slug', PostController).name('users').sitemap()));
+    // The value is no first segment here: `/users/EN` is a page of the default locale like any other.
+    expect(locs(xml)).toEqual([`${url}/users/EN`, `${url}/en/users/EN`]);
+    state.slugs = [{ params: { slug: 'a' } }];
+    const first = await sitemapOf(openRoutes((Route) => void Route.localized().get('/:slug/edit', PostController).name('slug').sitemap()));
+    expect(locs(first.xml)).toEqual([`${url}/a/edit`, `${url}/en/a/edit`]);
+    state.slugs = [{ params: { slug: 'EN' } }];
+    const named = await sitemapOf(openRoutes((Route) => void Route.localized().get('/:slug/edit', PostController).name('slug').sitemap()));
+    expect(locs(named.xml)).toEqual([`${url}/de/EN/edit`, `${url}/en/EN/edit`]);
+    expect(links(named.xml)).toContain(`x-default ${url}/de/EN/edit`);
+  });
+
+  it('leaves out the default-locale version and x-default of an entry another route answers, with one warning, and keeps the rest', async () => {
+    class Pages {
+      handle() {
+        return 'page';
+      }
+      sitemap(): SitemapEntries<{ path: string }> {
+        return [{ params: { path: 'free' } }, { params: { path: 'about' } }, { params: { path: 'contact' } }];
+      }
+    }
+    const { xml, warnings } = await sitemapOf(openRoutes((Route) => {
+      Route.get('/about', () => 'about');
+      Route.get('/contact', () => 'contact');
+      Route.localized().fallback(Pages).sitemap();
+    }));
+    const urls = xml.split('<url>').slice(1);
+    expect(locs(xml)).toEqual([`${url}/free`, `${url}/en/free`, `${url}/en/about`, `${url}/en/contact`]);
+    expect(links(urls[0]!)).toEqual([`de ${url}/free`, `en ${url}/en/free`, `x-default ${url}/free`]);
+    expect(links(urls[2]!)).toEqual([`en ${url}/en/about`]);
+    expect(links(urls[3]!)).toEqual([`en ${url}/en/contact`]);
+    expect(warnings.filter((warning) => warning.includes('are left out: another route or the framework answers its address'))).toHaveLength(1);
+  });
+
+  it('leaves out the version without a prefix of an ordinary localized page when the framework answers its address, with one warning', async () => {
+    state.slugs = [{ params: { slug: 'about' } }, { params: { slug: 'sitemap.xml' } }];
+    const { xml, warnings } = await sitemapOf(openRoutes((Route) => void Route.localized().get('/:slug', PostController).name('slug').sitemap()));
+    expect(locs(xml)).toEqual([`${url}/about`, `${url}/en/about`, `${url}/en/sitemap.xml`]);
+    expect(links(xml.split('<url>')[1]!)).toEqual([`de ${url}/about`, `en ${url}/en/about`, `x-default ${url}/about`]);
+    expect(links(xml.split('<url>')[3]!)).toEqual([`en ${url}/en/sitemap.xml`]);
+    expect(warnings.filter((warning) => warning.includes('are left out: another route or the framework answers its address'))).toHaveLength(1);
+  });
+
+  it('leaves out the version without a prefix of a page an earlier route answers, and keeps the versions with a prefix', async () => {
+    state.slugs = [{ params: { slug: 'foo' } }];
+    const routes = openRoutes((Route) => {
+      Route.get('/:username{[a-z]+}', () => 'user');
+      Route.localized().get('/:slug', PostController).name('slug').sitemap();
+    });
+    const { xml, warnings } = await sitemapOf(routes);
+    expect(locs(xml)).toEqual([`${url}/en/foo`]);
+    expect(links(xml)).toEqual([`en ${url}/en/foo`]);
+    expect(warnings.filter((warning) => warning.includes('are left out: another route or the framework answers its address'))).toHaveLength(1);
+    // Without the mode the same routes are listed as they were: the prefix on every version, x-default without one.
+    const { application, create } = await boot({ routes, urlLocales: { ...urlLocales, unprefixed: undefined } });
+    try {
+      const plain = await (await create().request('/sitemap.xml')).text();
+      expect(locs(plain)).toEqual([`${url}/de/foo`, `${url}/en/foo`]);
+      expect(links(plain.split('<url>')[1]!)).toEqual([`de ${url}/de/foo`, `en ${url}/en/foo`, `x-default ${url}/foo`]);
+    } finally {
+      await application.shutdown();
+    }
+  });
+
+  it('is unchanged without the mode: the prefix on every version, x-default without one', async () => {
+    const { application, create } = await boot({ routes: openRoutes((Route) => void Route.localized().get('/about', AboutController).name('about').sitemap()), urlLocales: { ...urlLocales, unprefixed: undefined } });
+    try {
+      const xml = await (await create().request('/sitemap.xml')).text();
+      expect(locs(xml)).toEqual([`${url}/de/about`, `${url}/en/about`]);
+      expect(links(xml.split('<url>')[1]!)).toEqual([`de ${url}/de/about`, `en ${url}/en/about`, `x-default ${url}/about`]);
     } finally {
       await application.shutdown();
     }

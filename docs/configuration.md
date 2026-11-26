@@ -459,6 +459,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `APP_KEY` | encryption | value | required | [Encryption](encryption.md#the-application-key) |
 | `APP_LOCALE` | i18n | value | `"en"` | [Localization](localization.md#configuration) |
 | `APP_LOCALES` | i18n | value | `[]` | [Localization](localization.md#configuration) |
+| `APP_LOCALE_PREFIX` | i18n | switch | `true` | [Localization](localization.md#configuration) |
 | `APP_NAME` | auth, redis | value | optional | [Configuration](configuration.md#the-variables-of-a-new-app) |
 | `APP_PREVIOUS_KEYS` | encryption | value | `[]` | [Encryption](encryption.md#the-application-key) |
 | `APP_SHUTDOWN_TIMEOUT_SECONDS` | core | duration | `10` | [Providers](providers.md#shutting-down) |
