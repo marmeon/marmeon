@@ -316,10 +316,24 @@ export class QueueFake implements Queue {
 
     // Like the real queue: the lock now (the app's cache), freed by a rollback; a duplicate is not recorded.
     const record = prepared[0]!.record as JobRecord & { unique: UniqueRecord };
+    // The transaction is checked before the lock is taken, so a refused dispatch holds nothing.
+    inTransaction();
     const lock = uniqueLock(await this.#owner.#container.make(QueueConnections).cache(), record);
-    if (!(await lock.get())) return [undefined];
-    await afterRollback(() => lock.release());
-    return this.#store(entries, options);
+    let taken: boolean;
+    try {
+      taken = await lock.get();
+    } catch (error) {
+      await lock.release().catch(() => {});
+      throw error;
+    }
+    if (!taken) return [undefined];
+    try {
+      await afterRollback(() => lock.release());
+      return await this.#store(entries, options);
+    } catch (error) {
+      await lock.release().catch(() => {});
+      throw error;
+    }
   }
 
   async #store(

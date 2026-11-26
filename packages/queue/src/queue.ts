@@ -42,7 +42,7 @@ export interface Queue {
    *
    * With `unique`: a no-op — resolving `undefined` — while one of this job with the same key is queued (or
    * running, with `uniqueUntil: 'done'`). The key's lock lives in the app's cache, taken right here (visible to every
-   * process at once); a rollback of a transaction around the dispatch frees it again.
+   * process at once); a dispatch that fails, or a rollback of a transaction around it, frees it again.
    */
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
   /**
@@ -247,13 +247,23 @@ export class QueueManager implements Queue {
     if (this.#detached()) {
       throw new QueueError('A unique job cannot follow a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): its lock could not be freed when the transaction rolls back. Dispatch it inside connections.transaction() instead.');
     }
+    // Where afterRollback() would throw for a finished transaction: before the lock is taken, so a refused dispatch holds nothing.
+    inTransaction();
     const lock = uniqueLock(await this.#cache(), record);
-    if (!(await lock.get())) {
+    let taken: boolean;
+    try {
+      taken = await lock.get();
+    } catch (error) {
+      // The lock may be set although its reply was lost: free it (owner-checked, so only this dispatch's).
+      await lock.release().catch(() => {});
+      throw error;
+    }
+    if (!taken) {
       this.#deps.logger.child({ job: record.job, unique: record.unique.key }).debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`);
       return undefined;
     }
-    await afterRollback(() => lock.release());
     try {
+      await afterRollback(() => lock.release());
       await this.#push([prepared], options, () => lock.release());
     } catch (error) {
       await lock.release().catch(() => {});
@@ -262,7 +272,7 @@ export class QueueManager implements Queue {
     return record.uuid;
   }
 
-  /** `failed`: frees what the dispatch took (a unique lock) when a push held until the commit fails after it. */
+  /** `failed`: frees what the dispatch took (a unique lock) when the work held until the commit fails — the push, or the run of a sync job. */
   async #push(prepared: readonly Prepared[], options: DispatchOptions | UniqueDispatchOptions, failed?: () => Promise<unknown>): Promise<string[]> {
     const name = options.connection ?? this.#deps.default;
     const connection = this.#connection(name);
@@ -282,8 +292,14 @@ export class QueueManager implements Queue {
       }
       // Held until the commit inside a transaction: a sync job must never act on data that is rolled back.
       await afterCommit(async () => {
-        await queued();
-        await this.#runNow(prepared, queue, name);
+        try {
+          await queued();
+          await this.#runNow(prepared, queue, name);
+        } catch (error) {
+          // The job never ran (or failed before its own release): free what the dispatch took, by its owner.
+          await failed?.().catch(() => {});
+          throw error;
+        }
       });
       return ids;
     }
