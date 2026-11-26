@@ -402,9 +402,15 @@ The TypeScript input relies on Node's `module.stripTypeScriptTypes`, which Node 
 | `config.<name>` | The resolved configuration: `config.app`, `config.mail`, … It shows secrets as they are, the `APP_KEY` bytes and SMTP and Redis passwords included: mind the scrollback and the CI logs of `tinker -e`. |
 
 Every class and token the container binds, every class a module lists, such as jobs, listeners and seeders, and every repository is
-there by its name: `make(Mailer)` and `jobs.dispatch(SendWelcomeMailJob, …)` need no import. A helper is built on first use, and
-one whose package the app lacks says what to install. A result that is a promise is awaited. Tab completes the helpers, the names,
-`repos.`, `config.` and route names in `url('`. `.ls` lists them all, `.help` the REPL's commands.
+there by its name: `make(Mailer)` and `jobs.dispatch(SendWelcomeMailJob, …)` need no import. A helper is built on first use.
+A result that is a promise is awaited. Tab completes the helpers, the names, `repos.`, `config.` and route names in `url('`.
+`.ls` lists them all, `.help` the REPL's commands.
+
+`db`, `repos`, `jobs`, `mail` and the `--sandbox` transaction come from `@marmeon/database`, `@marmeon/queue` and `@marmeon/mail`
+as your app's `package.json` lists them, and only when your app's container binds what the package provides. A class or token of
+the same name from anywhere else never stands in for them, and neither does a copy of the package that only another package
+depends on. A helper without its package says what to install. One whose package is installed but cannot be loaded says to
+reinstall it, and one whose provider is not registered says to run `marmeon discover`.
 
 Tinker also knows the jobs of every provider by class name. Such a name never takes the place of another name or of a helper. A repository takes its name back once the repositories are loaded, and an input that writes the name out loads them.
 

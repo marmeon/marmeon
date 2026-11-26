@@ -2,9 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections, freshDatabase, silent, withMysql } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
+import { runMigration } from './migrations/run.ts';
 import { projectMigrations } from './schema/projection.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -172,7 +173,7 @@ describe.each(drivers)('migrations on %s', (driver) => {
 
   it.each([
     ['a migration without down()', 'down-order', /^\[marmeon:D16\] Cannot roll back "2026_03_30_000000_create_first_table" \(module "down-order"\): it has no down\(\)/, 'second_with_down'],
-    ['a down() the driver cannot run', 'down-checked', driver === 'sqlite' ? /^\[marmeon:D18\] schema\.alter\('first_checked'\) cannot make the column "name" NOT NULL on SQLite/ : /^\[marmeon:D5\] The index name "i+" is 70 bytes/, 'second_checked'],
+    ['a down() the driver cannot run', 'down-checked', driver === 'sqlite' ? /^\[marmeon:D18\] schema\.alter\('first_checked'\) cannot make the column "name" NOT NULL on SQLite/ : /^\[marmeon:D5\] The index name "i+" is longer than Postgres's 63 bytes in this database's encoding/, 'second_checked'],
   ])('stops a rollback with %s before it undoes anything', async (_name, fixture, error, newer) => {
     const own = await freshConnections(driver);
     try {
@@ -870,5 +871,188 @@ describe.each(drivers)('the data step a generator writes (%s)', (driver) => {
       { name: 'draft', text: '"quoted"' },
     ]);
     await run.rollback();
+  });
+});
+
+// Postgres measures the names itself, in the encoding of the database: the same name is cut in one and kept in another.
+describe.runIf(drivers.includes('pgsql' as never))('names Postgres measures in the encoding of the database', () => {
+  const root = workspaceTempDir('marmeon-name-encoding-');
+  const stamp = (n: number) => `2026_03_0${n}_000000`;
+  const moduleOf = (files: Record<string, string>): ModuleDefinition => {
+    const dir = mkdtempSync(join(root, 'm-'));
+    addFiles(dir, files);
+    return { name: 'measured', migrations: dir };
+  };
+  const addFiles = (dir: string, files: Record<string, string>) => {
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, `${name}.ts`), text);
+  };
+  const source = (body: string, down = '') => `export default {\n  up: (schema: any) => {\n${body}\n  },\n  down: (schema: any) => {\n${down}\n  },\n};\n`;
+  const withIndex = (table: string, index: string) => `    schema.create(${JSON.stringify(table)}, (table: any) => { table.string('a'); table.index(['a'], ${JSON.stringify(index)}); });`;
+  const plain = (table: string) => `    schema.create(${JSON.stringify(table)}, (table: any) => { table.string('a'); });`;
+  const tablesOf = async (connections: Connections) => (await connections.get<any>().introspection.getTables()).map((t) => t.name).filter((name) => name !== LOCK_TABLE).sort();
+  const indexesOf = async (connections: Connections) => (await sql<{ name: string }>`select indexname as name from pg_indexes where schemaname = 'public' order by indexname`.execute(connections.get<any>())).rows.map((row) => row.name);
+  const recordOf = async (connections: Connections) => (await sql<{ name: string }>`select name from migrations order by id`.execute(connections.get<any>())).rows.map((row) => row.name);
+  const failure = async (promise: Promise<unknown>): Promise<Error> => {
+    const error = await promise.then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    return error as Error;
+  };
+  const d5 = (what: string, name: string) => `[marmeon:D5] The ${what} "${name}" is longer than Postgres's 63 bytes in this database's encoding; Postgres would cut it and so change it silently.`;
+
+  describe.each([
+    ['UTF8', undefined],
+    ['LATIN1', 'LATIN1'],
+    ['EUC_JP', 'EUC_JP'],
+  ] as const)('a database in %s', (_label, encoding) => {
+    let own: Awaited<ReturnType<typeof freshConnections>>;
+    // A database per test: what one leaves in the record of migrations is not what the next one starts from.
+    beforeEach(async () => void (own = await freshConnections('pgsql', { ...(encoding ? { encoding } : {}) })));
+    afterEach(() => own.close());
+    const migrate = (files: Record<string, string>) => migrator(own.connections, moduleOf(files)).migrate();
+
+    if (encoding === 'LATIN1') {
+      it('keeps an index of 40 letters of two bytes in UTF-8 and one byte in LATIN1', async () => {
+        const name = 'é'.repeat(40);
+        await migrate({ [`${stamp(1)}_latin`]: source(withIndex('latin_items', name)) });
+        expect(await indexesOf(own.connections)).toContain(name);
+      });
+
+      it('keeps a table renamed with indexes: true to a name whose index is 38 bytes in LATIN1 and 68 in UTF-8', async () => {
+        const to = 'é'.repeat(30);
+        await migrate({
+          [`${stamp(2)}_create`]: source(withIndex('latin_before', 'latin_before_a_index')),
+          [`${stamp(3)}_rename`]: source(`    schema.rename('latin_before', ${JSON.stringify(to)}, { indexes: true });`),
+        });
+        expect(await indexesOf(own.connections)).toContain(`${to}_a_index`);
+      });
+
+      it('refuses a name the encoding cannot hold, names it, and runs nothing', async () => {
+        const name = '日本語_index';
+        const error = await failure(migrate({ [`${stamp(4)}_cjk`]: source(withIndex('cjk_items', name)) }));
+        expect(error.message).toMatch(new RegExp(`^\\[marmeon:D5\\] One of these names cannot be held in this database's encoding: "${name}"`));
+        expect(await tablesOf(own.connections)).not.toContain('cjk_items');
+      });
+    }
+
+    if (encoding === 'EUC_JP') {
+      it('refuses an index of 22 letters of three bytes in EUC_JP and runs nothing', async () => {
+        const name = 'é'.repeat(22);
+        const error = await failure(migrate({ [`${stamp(2)}_eucjp`]: source(withIndex('eucjp_items', name)) }));
+        expect(error.message).toContain(d5('index name', name));
+        expect(await tablesOf(own.connections)).not.toContain('eucjp_items');
+        expect((await indexesOf(own.connections)).filter((name) => !name.startsWith('migrations_'))).toEqual([]);
+      });
+    }
+
+    if (!encoding) {
+      it('creates an index of exactly 63 bytes, and one of 62 bytes in 31 two-byte letters', async () => {
+        const exact = 'i'.repeat(63);
+        const accents = 'é'.repeat(31);
+        await migrate({ [`${stamp(1)}_limit`]: source(withIndex('limit_a', exact) + '\n' + withIndex('limit_b', accents)) });
+        expect(await indexesOf(own.connections)).toEqual(expect.arrayContaining([exact, accents]));
+      });
+
+      it('refuses an index of 32 two-byte letters, 64 bytes', async () => {
+        const name = 'é'.repeat(32);
+        const error = await failure(migrate({ [`${stamp(2)}_over`]: source(withIndex('over_items', name)) }));
+        expect(error.message).toContain(d5('index name', name));
+        expect(await tablesOf(own.connections)).not.toContain('over_items');
+      });
+
+      it('refuses an index of 64 bytes before the first migration of a run of two, and leaves no record', async () => {
+        const name = 'i'.repeat(64);
+        const error = await failure(migrate({ [`${stamp(3)}_first`]: source(plain('first_of_two')), [`${stamp(4)}_second`]: source(withIndex('second_of_two', name)) }));
+        expect(error.message).toContain(d5('index name', name));
+        expect(await tablesOf(own.connections)).not.toContain('first_of_two');
+        expect(await recordOf(own.connections)).toEqual([]);
+      });
+
+      it('refuses a table renamed with indexes: true to a name whose index would be cut', async () => {
+        const to = 't'.repeat(60);
+        const error = await failure(migrate({
+          [`${stamp(5)}_create`]: source(withIndex('before_rename', 'before_rename_a_index')),
+          [`${stamp(6)}_rename`]: source(`    schema.rename('before_rename', ${JSON.stringify(to)}, { indexes: true });`),
+        }));
+        // Which of the table's cut names comes first depends on the server's version (it names NOT NULL constraints since 18).
+        expect(error.message).toMatch(new RegExp(`^\\[marmeon:D5\\] The name after the rename "${to}_a_\\w+" is longer than Postgres's 63 bytes in this database's encoding`));
+        expect(await tablesOf(own.connections)).not.toContain(to);
+        // The names of a rename come from the catalog, so they are asked when it runs: it rolls back, the migration before it stays.
+        expect(await recordOf(own.connections)).toEqual([`${stamp(5)}_create`]);
+      });
+
+      it('refuses a table renamed to 30 two-byte letters, whose index is 68 bytes in UTF-8 (LATIN1 keeps the same)', async () => {
+        const to = 'é'.repeat(30);
+        const error = await failure(migrate({
+          [`${stamp(7)}_create`]: source(withIndex('utf8_before', 'utf8_before_a_index')),
+          [`${stamp(8)}_rename`]: source(`    schema.rename('utf8_before', ${JSON.stringify(to)}, { indexes: true });`),
+        }));
+        // Which of the table's cut names comes first depends on the server's version (it names NOT NULL constraints since 18).
+        expect(error.message).toMatch(new RegExp(`^\\[marmeon:D5\\] The name after the rename "${to}_a_\\w+" is longer than Postgres's 63 bytes in this database's encoding`));
+        expect(await tablesOf(own.connections)).toEqual(['migrations', 'utf8_before']);
+        expect(await recordOf(own.connections)).toEqual([`${stamp(7)}_create`]);
+      });
+
+      it('refuses a list oneOf() gives an existing column without one when its constraint name is too long, before the run starts', async () => {
+        const table = 'o'.repeat(30);
+        const column = 'c'.repeat(30);
+        const module = moduleOf({ [`${stamp(1)}_create_listless`]: source(`    schema.create(${JSON.stringify(table)}, (table: any) => { table.string(${JSON.stringify(column)}); });`) });
+        await migrator(own.connections, module).migrate();
+        const dir = module.migrations as string;
+        addFiles(dir, {
+          [`${stamp(2)}_harmless`]: source(plain('harmless_one')),
+          [`${stamp(3)}_list`]: source(`    schema.alter(${JSON.stringify(table)}, (table: any) => { table.oneOf(${JSON.stringify(column)}, ['a', 'b']); });`),
+        });
+        const error = await failure(migrator(own.connections, module).migrate());
+        expect(error.message).toMatch(/^\[marmeon:D5\] The check constraint name "o+_c+_check" is longer than Postgres's 63 bytes/);
+        expect(await tablesOf(own.connections)).not.toContain('harmless_one');
+        expect(await recordOf(own.connections)).toEqual([`${stamp(1)}_create_listless`]);
+      });
+
+      it('gives an existing column a list whose constraint name fits', async () => {
+        const module = moduleOf({ [`${stamp(4)}_create_control`]: source(`    schema.create('control', (table: any) => { table.string('state'); });`) });
+        await migrator(own.connections, module).migrate();
+        addFiles(module.migrations as string, { [`${stamp(5)}_list_control`]: source(`    schema.alter('control', (table: any) => { table.oneOf('state', ['a', 'b']); });`) });
+        expect((await migrator(own.connections, module).migrate()).map((run) => run.name)).toEqual([`${stamp(5)}_list_control`]);
+      });
+
+      it('refuses, through runMigration, a list oneOf() gives a listless column whose constraint name is over 63 bytes, and leaves the table', async () => {
+        const table = 'p'.repeat(30);
+        const column = 'q'.repeat(30);
+        await runMigration(own.connections, { up: (schema) => schema.create(table, (blueprint) => blueprint.string(column)) });
+        const error = await failure(runMigration(own.connections, { up: (schema) => schema.alter(table, (blueprint) => blueprint.oneOf(column, ['a', 'b'])) }));
+        expect(error.message).toContain(d5('check constraint name', `${table}_${column}_check`));
+        const constraints = await sql<{ name: string }>`select conname as name from pg_constraint where conrelid = ${sql.lit(table)}::regclass and contype = 'c'`.execute(own.connections.get<any>());
+        expect(constraints.rows).toEqual([]);
+      });
+
+      it('still finds the columns of a table raw SQL made when the app parses booleans as strings', async () => {
+        await sql`create table raw_made (id int, secret text)`.execute(own.connections.get<any>());
+        const { default: pg } = await import('pg');
+        const BOOL = 16;
+        const original = pg.types.getTypeParser(BOOL);
+        // The app's own parser for booleans, global to `pg`: it gives back the text of the answer, and 'f' is truthy.
+        pg.types.setTypeParser(BOOL, (value: string) => value);
+        try {
+          const { columns } = await migrator(own.connections).undescribedColumns('default', []);
+          expect([...(columns.get('raw_made') ?? [])]).toEqual(['id', 'secret']);
+        } finally {
+          pg.types.setTypeParser(BOOL, original);
+        }
+      });
+
+      it('refuses a rollback whose later down() gives a name UTF-8 cuts, before the first down() runs', async () => {
+        const name = 'é'.repeat(40);
+        const module = moduleOf({
+          [`${stamp(1)}_older`]: source(plain('older_one'), withIndex('from_down', name)),
+          [`${stamp(2)}_newer`]: source(plain('newer_one'), `    schema.dropIfExists('newer_one');`),
+        });
+        // The same migrations in the same run, so they share a batch: the rollback undoes both.
+        await migrator(own.connections, module).migrate();
+        const error = await failure(migrator(own.connections, module).rollback());
+        expect(error.message).toContain(d5('index name', name));
+        expect(await tablesOf(own.connections)).toEqual(expect.arrayContaining(['newer_one', 'older_one']));
+        expect(await recordOf(own.connections)).toEqual(expect.arrayContaining([`${stamp(1)}_older`, `${stamp(2)}_newer`]));
+      });
+    }
   });
 });

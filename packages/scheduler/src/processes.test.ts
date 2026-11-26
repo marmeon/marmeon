@@ -119,8 +119,8 @@ function kill(processes: readonly SchedulerProcess[]): void {
   for (const process of processes) if (process.child.exitCode === null && process.child.signalCode === null) process.child.kill('SIGKILL');
 }
 
-function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule:run', processEnv: Record<string, string>): SchedulerProcess {
-  const child = spawn(process.execPath, ['--conditions=@marmeon/source', CLI, command], {
+function start(started: SchedulerProcess[], command: 'schedule:work' | 'schedule:run', processEnv: Record<string, string>, args: string[] = []): SchedulerProcess {
+  const child = spawn(process.execPath, ['--conditions=@marmeon/source', CLI, command, ...args], {
     cwd: APP,
     // Through the launcher, in this one process: the condition is set, so it neither re-executes nor needs MARMEON_CHILD.
     env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test', LOG_LEVEL: 'info', ...processEnv },
@@ -263,6 +263,36 @@ describe.concurrent('the scheduler processes (sqlite)', () => {
         ['record', back.minute],
       ]);
       expect(after.lines.some((line) => line.includes('Running missed — missed while the scheduler was down'))).toBe(true);
+    } finally {
+      kill(started);
+      await drop();
+    }
+  });
+
+  it('stopping while a run hangs with no handle warns after --stop-timeout and exits 0 instead of ending early', { timeout: 30_000 }, async () => {
+    const { target, drop } = await freshTarget('sqlite');
+    const started: SchedulerProcess[] = [];
+    try {
+      const work = start(started, 'schedule:work', { ...env(target), ...boundary().clock, FIXTURE_HANG: '1' }, ['--stop-timeout=1']);
+      await work.waitFor(/Running hang/);
+      work.child.kill('SIGTERM');
+      expect(await work.exited()).toBe(0);
+      expect(work.lines.some((line) => line.includes('1 run did not finish within 1s and end with the process'))).toBe(true);
+    } finally {
+      kill(started);
+      await drop();
+    }
+  });
+
+  it('stopping a worker whose run ends on its own exits 0 without the warning', { timeout: 30_000 }, async () => {
+    const { target, drop } = await freshTarget('sqlite');
+    const started: SchedulerProcess[] = [];
+    try {
+      const work = start(started, 'schedule:work', { ...env(target), ...boundary().clock });
+      await work.waitFor(/Running record/);
+      await stop(work);
+      expect(work.lines.some((line) => line.includes('did not finish'))).toBe(false);
+      expect(work.lines.some((line) => line.includes('Scheduler stopped'))).toBe(true);
     } finally {
       kill(started);
       await drop();

@@ -305,6 +305,12 @@ export class AcmeJobsServiceProvider {
     await expect(boot([Pkg], { encryption: true })).resolves.toBeDefined();
   });
 
+  it('refuse a job whose `encrypted` is truthy but not true when the app has no Encrypter', async () => {
+    const Truthy = jobClass('pkg.truthy', { encrypted: 1 }, 'TruthyJob');
+    const Pkg = providerOf('TruthyProvider', { [providerJobs]: [Truthy] });
+    await expect(boot([Pkg])).rejects.toThrow(/An encrypted job \(static encrypted\) needs the EncryptionServiceProvider of @marmeon\/encryption and an APP_KEY — TruthyJob \(pkg\.truthy, provider TruthyProvider\) is one\./);
+  });
+
   it('refuse a queued listener without an Encrypter in the old words, naming no job', async () => {
     class Paid {
       static readonly event = 'shop.paid';

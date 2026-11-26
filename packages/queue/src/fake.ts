@@ -12,7 +12,7 @@ import { CallQueuedListener, QueuedListeners } from './listeners.ts';
 import { uniqueLock, uniqueRecord } from './locks.ts';
 import { prepareChain, prepareRecord, recordOptionsOf, type PendingJobs, type Queue } from './queue.ts';
 import { QueueError, JobRegistry } from './registry.ts';
-import { delaySeconds, JobRunner } from './runner.ts';
+import { delaySeconds, isEncryptedJob, JobRunner } from './runner.ts';
 import { Worker, type WorkOptions, type WorkResult } from './worker.ts';
 
 /** The unique lock a recorded dispatch carried. */
@@ -120,7 +120,7 @@ export class QueueFake implements Queue {
       kind,
       jobs: pending.map(([job]) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
       payloads: pending.map(([, payload]) => payload),
-      encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
+      encrypted: pending.map(([job]) => isEncryptedJob(job)),
       connection: options.connection ?? FAKE_CONNECTION,
       queue: options.queue ?? 'default',
       delaySeconds: 0,
@@ -316,10 +316,24 @@ export class QueueFake implements Queue {
 
     // Like the real queue: the lock now (the app's cache), freed by a rollback; a duplicate is not recorded.
     const record = prepared[0]!.record as JobRecord & { unique: UniqueRecord };
+    // The transaction is checked before the lock is taken, so a refused dispatch holds nothing.
+    inTransaction();
     const lock = uniqueLock(await this.#owner.#container.make(QueueConnections).cache(), record);
-    if (!(await lock.get())) return [undefined];
-    await afterRollback(() => lock.release());
-    return this.#store(entries, options);
+    let taken: boolean;
+    try {
+      taken = await lock.get();
+    } catch (error) {
+      await lock.release().catch(() => {});
+      throw error;
+    }
+    if (!taken) return [undefined];
+    try {
+      await afterRollback(() => lock.release());
+      return await this.#store(entries, options);
+    } catch (error) {
+      await lock.release().catch(() => {});
+      throw error;
+    }
   }
 
   async #store(

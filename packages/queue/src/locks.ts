@@ -107,7 +107,7 @@ export async function runOnce(cache: CacheSource, key: string, fn: () => unknown
   if (await store.has(marker)) return false;
   // Two attempts with the same key at once (a claim that expired while its worker still ran): only one runs `fn`.
   const lock = store.lock(`queue:once-lock:${key}`, options.lockSeconds);
-  if (!(await lock.get())) throw new JobOnceBusyError(`job.once('${key}') is running in another attempt right now — this attempt runs again in ${ONCE_BUSY_DELAY}s, without using up a try.`);
+  if (!(await lock.get())) throw new JobOnceBusyError(`job.once('${key}') is running in another attempt right now.`);
   try {
     if (await store.has(marker)) return false;
     await fn();

@@ -530,7 +530,7 @@ export class RefreshMemberStats {
 Ten registrations in a burst queue one rebuild. The key belongs to the job class: `stats:1` of one job does not block another job.
 A unique key and a `withoutOverlapping()` key without `shared` are named by the job's name and the key, so `reports` with the key `daily:7` and `reports:daily` with the key `7` would name one lock. The queue refuses such a unique key with a `QueueError` at dispatch: with both jobs registered, `dispatch(ReportsJob, payload, { unique: 'daily:7' })` throws. A `withoutOverlapping()` key of `reports` that continues past `daily:` fails the job at once, without retrying, with the same error: it goes to the failed jobs (on `sync`, the dispatch call throws). Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with `daily:`. A rename does not change the stored jobs, so keep the old name registered until its waiting jobs are gone. `queue:work` also warns at its start when two job names meet that way. A job named `<name>:schedule` makes `s.job()` of the job `<name>` fail with a `ScheduleError`, because the unique key of a scheduled job starts with `schedule:`. Rename that job.
 A lock in the app's cache holds the key. It is taken at the dispatch, outside any transaction, so every process sees it at once, and
-it is freed again when the transaction around the dispatch rolls back. Otherwise it is freed:
+it is freed again when the dispatch fails or the transaction around it rolls back. Otherwise it is freed:
 
 - with `uniqueUntil: 'done'`, the default, when the job leaves the queue: processed, failed or discarded,
 - with `uniqueUntil: 'processing'`, when a worker starts the job. A dispatch during the run queues the next one,

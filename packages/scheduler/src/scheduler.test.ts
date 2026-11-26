@@ -387,6 +387,30 @@ describe('missed runs (catchUp)', () => {
     await app.shutdown();
   });
 
+  it('drain cancels its timer once the runs ended: no timer outlives the wait', async () => {
+    const { scheduler, clock, gate, app, log } = await boot(defineSchedule((s) => void s.call(SlowTask).everyMinute().name('slow')));
+    clock.freeze(at('2026-10-05T09:59:30Z'));
+    const worker = new ScheduleWorker(scheduler, clock, log, app.container.make(Redactor));
+    const stop = new AbortController();
+    await worker.run({
+      signal: stop.signal,
+      sleep: async (ms) => {
+        clock.travel({ milliseconds: ms });
+        await Promise.resolve();
+      },
+      onTick: () => stop.abort(),
+    });
+    expect(worker.running).toBe(1);
+    const timers = () => process.getActiveResourcesInfo().filter((resource) => resource === 'Timeout').length;
+    const before = timers();
+    const drained = worker.drain(3600);
+    expect(timers()).toBe(before + 1);
+    gate.open();
+    expect(await drained).toBe(true);
+    expect(timers()).toBe(before);
+    await app.shutdown();
+  });
+
   it('nothing to catch up on the first tick ever', async () => {
     const { schedule, app } = await boot(tasks);
     expect((await schedule.run('2026-10-05T10:10:00Z')).map((result) => result.task)).toEqual(['count']);
@@ -835,7 +859,7 @@ describe('s.job()', () => {
     const jobTask = (name: string, target: unknown, environments?: string[]) => ({ name, definition: { kind: 'job', target, environments } });
 
     /** `schedule:work` as the process runs it: stopped by SIGTERM after its start line — or at once, before the check ends. Waits for `lines` warnings. */
-    async function work(app: Application, options: { lines?: number; early?: boolean; scheduler?: Scheduler; logger?: Logger } = {}) {
+    async function work(app: Application, options: { lines?: number; early?: boolean; scheduler?: Scheduler; logger?: Logger; stopTimeout?: string } = {}) {
       const out: string[] = [];
       const wanted = options.lines ?? 0;
       let started!: () => void;
@@ -857,7 +881,7 @@ describe('s.job()', () => {
       // The command arms a timer that ends the process after the stop timeout; a test never lets it count down.
       vi.useFakeTimers({ toFake: ['setTimeout'] });
       const command = new ScheduleWorkCommand(options.scheduler ?? app.container.make(Scheduler), app.container.make(Clock), options.logger ?? app.container.make(Logger), app.container.make(Redactor), app);
-      const done = (command as unknown as { handle(input: unknown): Promise<number> }).handle({ args: [], options: { 'stop-timeout': '0' }, output: new Output(), root: app.root });
+      const done = (command as unknown as { handle(input: unknown): Promise<number> }).handle({ args: [], options: { 'stop-timeout': options.stopTimeout ?? '0' }, output: new Output(), root: app.root });
       try {
         await running;
         process.emit('SIGTERM');
@@ -898,6 +922,12 @@ describe('s.job()', () => {
       expect(text).toContain(full('other', 'PkgOtherJob', 'pkg.sync', 'PkgJob'));
       expect(log.entries.some((entry) => entry.message === 'Scheduler stopped')).toBe(true);
       expect(log.entries.filter((entry) => entry.level === 'warn')).toEqual([]);
+      await app.shutdown();
+    });
+
+    it('schedule:work accepts the longest --stop-timeout, 2073600 seconds', { timeout: 20_000 }, async () => {
+      const { app } = await withQueue(defineSchedule((s) => void s.call(CountRun).everyMinute().name('count')));
+      expect((await work(app, { stopTimeout: '2073600' })).code).toBe(0);
       await app.shutdown();
     });
 

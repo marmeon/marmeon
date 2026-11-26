@@ -526,6 +526,9 @@ export class I18nServiceProvider implements ServiceProvider {
     if (skipped.length > 0) {
       app.container.make(Logger).debug(`Language files of locales not in APP_LOCALES (${locales.supported.join(', ')}) are not loaded`, { files: skipped });
     }
-    app.container.make(Router).middleware.append('web', SetLocale, MiddlewarePriority.setLocale);
+    const router = app.container.make(Router);
+    router.middleware.append('web', SetLocale, MiddlewarePriority.setLocale);
+    // `claimedBy()` answers by the locales the app has, in a command as in a request.
+    router.bindUrlLocales(app.container.make(UrlLocales));
   }
 }

@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, v
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { createApplication } from '../application.ts';
 import type { Key } from '../token.ts';
-import { DiscoveryError, generateManifest, loadDiscoveredPackages, manifestPath, marmeonField, writeManifest } from './discover.ts';
+import { combineDigests, DiscoveryError, fileDigest, generateManifest, loadDiscoveredPackages, manifestHash, manifestPath, marmeonField, writeManifest } from './discover.ts';
 import { findPackage, printable, resolveExports, runtimeConditions, splitSpecifier, type PackageInfo } from './resolve.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -309,6 +309,306 @@ describe('marmeon discover', () => {
       Mailer: Key<{ send(to: string): string }>;
     };
     expect(container.make(mailer.Mailer).send('ada@example.com')).toBe('SMTP → ada@example.com at 09:00');
+  });
+});
+
+describe('the manifest and the package.json of a package in the workspace', () => {
+  interface Layout {
+    /** Where the app lies in the temporary folder `top`, which holds `root` (the workspace candidate) and what lies beside it. */
+    readonly app?: string;
+    /** Files made empty, relative to `top`. */
+    readonly files?: readonly string[];
+    /** The linked package has no `marmeon` field until `write` adds one. */
+    readonly plain?: boolean;
+  }
+
+  /** An app with one package linked from `place` (relative to the app). */
+  function linkedApp(place: string, { app: appPath = 'app', files = [], plain = false }: Layout = {}) {
+    const top = realpathSync(tempDir('marmeon-sources-'));
+    const app = join(top, appPath);
+    const dir = join(app, place);
+    mkdirSync(app, { recursive: true });
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    for (const file of files) {
+      mkdirSync(dirname(join(top, file)), { recursive: true });
+      writeFileSync(join(top, file), '');
+    }
+    writeFileSync(join(dir, 'src/index.ts'), 'export class First {}\nexport class Second {}\n');
+    const write = (provider?: string) =>
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({ name: '@acme/linked', type: 'module', exports: { '.': './src/index.ts' }, ...(provider === undefined ? {} : { marmeon: { providers: [provider] } }) }),
+      );
+    write(plain ? undefined : 'First');
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@acme/linked': 'link:./linked' } }));
+    mkdirSync(join(app, 'node_modules/@acme'), { recursive: true });
+    symlinkSync(dir, join(app, 'node_modules/@acme/linked'), 'dir');
+    const manifestFile = manifestPath(app, PROD);
+    const read = (file = manifestFile) => JSON.parse(readFileSync(file, 'utf8')) as { sources: string[]; sourcesHash: string; providers: [number, string][] };
+    return { top, app, dir, write, manifestFile, manifest: () => read() };
+  }
+
+  it('writes the manifest again when the package.json of a linked package changes', async () => {
+    const { app, write, manifest } = linkedApp('linked');
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+    expect(manifest().providers.map(([, name]) => name)).toEqual(['First']);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+
+    write('Second');
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().providers.map(([, name]) => name)).toEqual(['Second']);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('does not list a package outside the workspace, so two boots in a row write once', async () => {
+    const { app, manifest } = linkedApp('../elsewhere');
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual([]);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('regenerates a manifest whose sources name another file than a package.json, and does not read it', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    const secret = join(app, 'secret.txt');
+    writeFileSync(secret, 'secret');
+    // The hash a reader would get from the file's bytes: had it been read, the manifest would count as fresh and nothing would be regenerated.
+    const bytes = combineDigests([fileDigest(readFileSync(secret))]);
+    writeFileSync(manifestFile, JSON.stringify({ ...manifest(), sources: ['secret.txt'], sourcesHash: bytes }));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+  });
+
+  it('regenerates a manifest whose sources name a package.json that links out of the workspace, and does not read it', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    const outside = join(dirname(app), 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'package.json'), '{"name":"outside"}');
+    mkdirSync(join(app, 'leak'));
+    symlinkSync(join(outside, 'package.json'), join(app, 'leak/package.json'));
+    const bytes = combineDigests([fileDigest(readFileSync(join(outside, 'package.json')))]);
+    writeFileSync(manifestFile, JSON.stringify({ ...manifest(), sources: ['leak/package.json'], sourcesHash: bytes }));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+  });
+
+  it('lists the packages of a monorepo outside the app, by the lockfile at its root, and not one beside it', async () => {
+    const layout = { app: 'root/apps/app', files: ['root/pnpm-lock.yaml'] };
+    const inside = linkedApp('../../packages/linked', layout);
+    expect((await loadDiscoveredPackages({ root: inside.app, conditions: PROD })).regenerated).toBe(true);
+    expect(inside.manifest().sources).toEqual(['../../packages/linked/package.json']);
+    expect((await loadDiscoveredPackages({ root: inside.app, conditions: PROD })).regenerated).toBe(false);
+    inside.write('Second');
+    expect((await loadDiscoveredPackages({ root: inside.app, conditions: PROD })).regenerated).toBe(true);
+    expect(inside.manifest().providers.map(([, name]) => name)).toEqual(['Second']);
+
+    const beside = linkedApp('../../../beside', layout);
+    expect((await loadDiscoveredPackages({ root: beside.app, conditions: PROD })).regenerated).toBe(true);
+    expect(beside.manifest().sources).toEqual([]);
+    expect((await loadDiscoveredPackages({ root: beside.app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('takes the folder with pnpm-workspace.yaml as the workspace, though the app has a lockfile of its own', async () => {
+    const { app, manifest } = linkedApp('../../packages/linked', { app: 'root/apps/app', files: ['root/pnpm-workspace.yaml', 'root/apps/app/pnpm-lock.yaml'] });
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(manifest().sources).toEqual(['../../packages/linked/package.json']);
+  });
+
+  it('takes the folder of a package.json with workspaces as the workspace', async () => {
+    const { top, app, manifest } = linkedApp('../../packages/linked', { app: 'root/apps/app' });
+    writeFileSync(join(top, 'root/package.json'), JSON.stringify({ private: true, workspaces: ['apps/*', 'packages/*'] }));
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(manifest().sources).toEqual(['../../packages/linked/package.json']);
+  });
+
+  it('lists a workspace package without a marmeon field, and loads its provider once it names one', async () => {
+    const { app, write, manifest } = linkedApp('linked', { plain: true });
+    const first = await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(first.providers).toEqual([]);
+    expect(manifest().sources).toEqual(['linked/package.json']);
+
+    write('Second');
+    const second = await loadDiscoveredPackages({ root: app, conditions: PROD });
+    expect(second.regenerated).toBe(true);
+    expect(second.providers.map((provider) => provider.name)).toEqual(['Second']);
+  });
+
+  it('regenerates when a listed package.json is deleted', async () => {
+    const { app, dir } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    rmSync(join(dir, 'package.json'));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+  });
+
+  it('regenerates a manifest of the previous version, whatever its sources say', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    writeFileSync(manifestFile, JSON.stringify({ ...manifest(), version: '3' }));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+  });
+
+  it('lists the packages of an app reached through a symlinked folder', async () => {
+    const { top, app, write } = linkedApp('linked');
+    const through = join(top, 'through');
+    symlinkSync(app, through, 'dir');
+    await loadDiscoveredPackages({ root: through, conditions: PROD });
+    const file = manifestPath(through, PROD);
+    expect(JSON.parse(readFileSync(file, 'utf8')).sources).toEqual([expect.stringMatching(/linked\/package\.json$/)]);
+    expect((await loadDiscoveredPackages({ root: through, conditions: PROD })).regenerated).toBe(false);
+    // The same app by its real path: the entries read alike, so nothing is written again.
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(false);
+    write('Second');
+    expect((await loadDiscoveredPackages({ root: through, conditions: PROD })).regenerated).toBe(true);
+  });
+
+  describe('where the way up to the workspace ends', () => {
+    const listed = (app: string) => JSON.parse(readFileSync(manifestPath(app, PROD), 'utf8')).sources as string[];
+
+
+
+    it('reads a lockfile above the app only in a folder that others cannot write to', async () => {
+      if (process.platform === 'win32' || process.getuid?.() === 0) return;
+      const { top, app, manifestFile } = linkedApp('linked', { app: 'above/app', files: ['above/pnpm-lock.yaml'] });
+      const lockfile = join(top, 'above/pnpm-lock.yaml');
+      const regenerates = async () => (await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated;
+      expect(await regenerates()).toBe(true);
+      // Trusted folder: the lockfile counts.
+      writeFileSync(lockfile, 'a');
+      expect(await regenerates()).toBe(true);
+      expect(await regenerates()).toBe(false);
+
+      // Open to everyone: the lockfile is not read, so a change of it regenerates nothing.
+      chmodSync(join(top, 'above'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'above'), 0o755));
+      expect(await regenerates()).toBe(true);
+      expect(readFileSync(manifestFile, 'utf8')).toContain('sourcesHash');
+      writeFileSync(lockfile, 'b');
+      expect(await regenerates()).toBe(false);
+    });
+
+    it('reads a lockfile that is a link to a regular file', async () => {
+      const { app } = linkedApp('linked');
+      const target = join(app, 'lock-real.yaml');
+      writeFileSync(target, 'a');
+      symlinkSync(target, join(app, 'pnpm-lock.yaml'));
+      const regenerates = async () => (await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated;
+      expect(await regenerates()).toBe(true);
+      expect(await regenerates()).toBe(false);
+      writeFileSync(target, 'b');
+      expect(await regenerates()).toBe(true);
+    });
+
+    it('does not take a pnpm-workspace.yaml that is a link as a marker', async () => {
+      const { top, app } = linkedApp('../../packages/linked', { app: 'root/apps/app' });
+      writeFileSync(join(top, 'real.yaml'), 'packages: []\n');
+      symlinkSync(join(top, 'real.yaml'), join(top, 'root/pnpm-workspace.yaml'));
+      await loadDiscoveredPackages({ root: app, conditions: PROD });
+      expect(listed(app)).toEqual([]);
+    });
+
+    it('takes "workspaces" as a marker only as a list or an object with packages', async () => {
+      const declared = async (workspaces: unknown) => {
+        const { top, app } = linkedApp('../../packages/linked', { app: 'root/apps/app' });
+        writeFileSync(join(top, 'root/package.json'), JSON.stringify({ private: true, workspaces }));
+        await loadDiscoveredPackages({ root: app, conditions: PROD });
+        return listed(app);
+      };
+      expect(await declared(null)).toEqual([]);
+      expect(await declared('packages/*')).toEqual([]);
+      expect(await declared({})).toEqual([]);
+      expect(await declared({ packages: ['packages/*'] })).toEqual(['../../packages/linked/package.json']);
+    });
+
+    it('ends the way up at a folder that everyone can write to', async () => {
+      if (process.platform === 'win32') return;
+      const { top, app } = linkedApp('../pkgs/linked', { app: 'open/app', files: ['open/pnpm-workspace.yaml'] });
+      chmodSync(join(top, 'open'), 0o777);
+      await loadDiscoveredPackages({ root: app, conditions: PROD });
+      expect(listed(app)).toEqual([]);
+      chmodSync(join(top, 'open'), 0o755);
+      await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
+      expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+    });
+
+    it('does not cross a folder that everyone can write to to reach a lockfile above it', async () => {
+      if (process.platform === 'win32') return;
+      const { top, app } = linkedApp('../pkgs/linked', { app: 'open/app', files: ['pnpm-lock.yaml'] });
+      chmodSync(join(top, 'open'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'open'), 0o755));
+      await loadDiscoveredPackages({ root: app, conditions: PROD });
+      // The lockfile lies behind `open`: the workspace is the app, so the package in `open/pkgs` is not listed.
+      expect(listed(app)).toEqual([]);
+      chmodSync(join(top, 'open'), 0o755);
+      await loadDiscoveredPackages({ root: app, conditions: PROD, force: true });
+      expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+    });
+
+    it('reads a lockfile in the last trusted folder above the app, and a workspace marker there', async () => {
+      if (process.platform === 'win32') return;
+      for (const file of ['open/mid/pnpm-lock.yaml', 'open/mid/pnpm-workspace.yaml']) {
+        const { top, app } = linkedApp('../pkgs/linked', { app: 'open/mid/app', files: [file] });
+        // The package lies in `open/mid/pkgs`: inside `mid`, the ceiling, which `open` (open to everyone) ends.
+        chmodSync(join(top, 'open'), 0o777);
+        onTestFinished(() => chmodSync(join(top, 'open'), 0o755));
+        await loadDiscoveredPackages({ root: app, conditions: PROD });
+        expect(listed(app)).toEqual(['../pkgs/linked/package.json']);
+      }
+    });
+
+    it('does not read a lockfile behind a folder that everyone can write to into the manifest hash', () => {
+      if (process.platform === 'win32') return;
+      const { top, app } = linkedApp('linked', { app: 'open/app', files: ['pnpm-lock.yaml'] });
+      chmodSync(join(top, 'open'), 0o777);
+      onTestFinished(() => chmodSync(join(top, 'open'), 0o755));
+      const before = manifestHash(app, PROD);
+      writeFileSync(join(top, 'pnpm-lock.yaml'), 'changed');
+      expect(manifestHash(app, PROD)).toBe(before);
+      chmodSync(join(top, 'open'), 0o755);
+      expect(manifestHash(app, PROD)).not.toBe(before);
+    });
+  });
+
+  it('lists a package whose package.json resolution read, though the walk did not reach it', async () => {
+    const top = realpathSync(tempDir('marmeon-sources-'));
+    const app = join(top, 'app');
+    const lay = (dir: string, files: Record<string, string>) => {
+      for (const [name, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(dir, name)), { recursive: true });
+        writeFileSync(join(dir, name), text);
+      }
+    };
+    const entry = (js: string) => JSON.stringify({ name: '@acme/b', type: 'module', exports: { '.': { types: `./dist/${js}.d.ts`, default: `./dist/${js}.js` } } });
+    lay(join(app, 'b'), { 'package.json': entry('index'), 'dist/index.js': 'export class Clock {}\n', 'dist/index.d.ts': 'export declare class Clock {}\n', 'dist/other.js': 'export class Clock {}\n', 'dist/other.d.ts': 'export declare class Clock {}\n' });
+    lay(join(app, 'a'), {
+      'package.json': JSON.stringify({ name: '@acme/a', type: 'module', exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } }, devDependencies: { '@acme/b': '*' }, marmeon: { providers: ['AProvider'] } }),
+      'dist/index.js': 'export class Mailer { constructor(clock) {} }\nexport class AProvider {}\n',
+      'dist/index.d.ts': "import { Clock } from '@acme/b';\nexport declare class Mailer { constructor(clock: Clock); }\nexport declare class AProvider {}\n",
+    });
+    mkdirSync(join(app, 'a/node_modules/@acme'), { recursive: true });
+    symlinkSync(join(app, 'b'), join(app, 'a/node_modules/@acme/b'), 'dir');
+    mkdirSync(join(app, 'node_modules/@acme'), { recursive: true });
+    symlinkSync(join(app, 'a'), join(app, 'node_modules/@acme/a'), 'dir');
+    writeFileSync(join(app, 'package.json'), JSON.stringify({ type: 'module', dependencies: { '@acme/a': '*' } }));
+    const manifest = () => JSON.parse(readFileSync(manifestPath(app, PROD), 'utf8')) as { sources: string[]; modules: string[] };
+
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().sources).toEqual(['a/package.json', 'b/package.json']);
+    expect(manifest().modules).toContain('b/dist/index.js');
+
+    writeFileSync(join(app, 'b/package.json'), entry('other'));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
+    expect(manifest().modules).toContain('b/dist/other.js');
+  });
+
+  it('regenerates a manifest that has no sources, however fresh its hash is', async () => {
+    const { app, manifestFile, manifest } = linkedApp('linked');
+    await loadDiscoveredPackages({ root: app, conditions: PROD });
+    const { sources: _sources, sourcesHash: _hash, ...old } = manifest();
+    writeFileSync(manifestFile, JSON.stringify(old));
+    expect((await loadDiscoveredPackages({ root: app, conditions: PROD })).regenerated).toBe(true);
   });
 });
 
@@ -661,6 +961,247 @@ describe('a hostile package.json and its declarations', () => {
         const { app } = appWith(entry, { 'index.js': empty, 'index.d.ts': types });
         expect(() => generateManifest({ root: app, conditions: PROD }), types).toThrow(outsideRefusal);
       }
+    });
+
+    it('are followed for an import that the entry exports again, and only inside the package', () => {
+      const files = {
+        'index.js': 'export class Mailer {}\nexport class Clock {}\n',
+        'index.d.ts': "import { Mailer } from './mailer.js';\nimport { Clock } from './clock.js';\nexport { Mailer, Clock };\n",
+        'mailer.d.ts': "import { Clock } from './clock.js';\nexport declare class Mailer {\n    constructor(clock: Clock);\n}\n",
+        'clock.d.ts': 'export declare class Clock {}\n',
+      };
+      const { manifest } = generateManifest({ root: appWith(entry, files).app, conditions: PROD });
+      const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+      expect(mailer && 'inject' in mailer ? mailer.inject.map(([, name]) => name) : mailer).toEqual(['Clock']);
+
+      // The same class, imported with `import type` next to a class of the package that is exported at run time: Mailer gets no injection list.
+      const typeOnly = { ...files, 'index.d.ts': "import type { Mailer } from './mailer.js';\nimport { Clock } from './clock.js';\nexport { Mailer, Clock };\n" };
+      const hidden = generateManifest({ root: appWith(entry, typeOnly).app, conditions: PROD }).manifest;
+      expect(hidden.injections.map((item) => item.class[1])).not.toContain('Mailer');
+
+      const outside = { ...files, 'index.d.ts': "import { Outside } from '../../../outside.js';\nexport { Outside };\n" };
+      expect(() => generateManifest({ root: appWith(entry, outside).app, conditions: PROD })).toThrow(outsideRefusal);
+    });
+
+    it('keep a provider that an import from another package, or a shim that re-exports it, makes the entry export', () => {
+      const entryFiles = {
+        'index.js': 'export class Prov {\n  register() {}\n}\n',
+        'anonymous.js': 'export default class {\n  register() {}\n}\n',
+      };
+      const forms: Record<string, string> = {
+        'a named re-export': "import { Prov } from './shim.js';\nexport { Prov };\n",
+        'an export *': "import { Prov } from './star.js';\nexport { Prov };\n",
+        'a default that has no name': "import Prov from './anonymous.js';\nexport { Prov };\n",
+        'a default re-exported by name': "export { default as Prov } from './anonymous.js';\n",
+      };
+      for (const [name, types] of Object.entries(forms)) {
+        const { app } = appWith({ ...entry, marmeon: { providers: ['Prov'] } }, {
+          ...entryFiles,
+          'index.d.ts': types,
+          'shim.d.ts': "export { Prov } from 'other';\n",
+          'star.d.ts': "export * from 'other';\n",
+          'anonymous.d.ts': 'export default class {\n    register(): void;\n}\n',
+        });
+        expect(generateManifest({ root: app, conditions: PROD }).manifest.providers.map(([, provider]) => provider), name).toEqual(['Prov']);
+      }
+    });
+
+    it('inject the class a string-literal import names, for the entry and for a parameter type', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Clock {}\nexport class Mailer {}\nexport default class Other {}\n',
+          'index.d.ts': "import { \"Clock\" as C } from './clock.js';\nimport { \"Real\" as Mailer } from './mailer.js';\nexport { Mailer, C as Clock };\n",
+          'mailer.d.ts': "import { \"Clock\" as C } from './clock.js';\nexport declare class Real {\n    constructor(c: C);\n}\n",
+          'clock.d.ts': 'export declare class Clock {}\nexport default class Other {}\n',
+        }).app,
+        conditions: PROD,
+      });
+      const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+      expect(mailer && 'inject' in mailer ? mailer.inject.map(([, name]) => name) : mailer).toEqual(['Clock']);
+    });
+
+    const providersOf = (json: object, files: Record<string, string>, provider: string) =>
+      generateManifest({ root: appWith({ ...entry, marmeon: { providers: [provider] }, ...json }, { 'index.js': 'export class P {}\n', ...files }).app, conditions: PROD }).manifest.providers.map(
+        ([, name]) => name,
+      );
+    const cycle = {
+      'y.d.ts': "export * from './p.js';\nexport * from './x.js';\nexport declare class Q {}\n",
+      'x.d.ts': "export * from './y.js';\n",
+      'p.d.ts': 'export declare class P {}\n',
+      'y.js': 'export class Q {}\n',
+    };
+
+    it('find a provider through an "export *" cycle, from the entry or from a subpath read before it', () => {
+      expect(providersOf({}, { ...cycle, 'index.d.ts': "export { Q } from './y.js';\nexport * from './x.js';\n" }, 'P')).toEqual(['P']);
+      expect(
+        providersOf({ exports: { './y': './y.js', '.': './index.js' } }, { ...cycle, 'index.d.ts': "export * from './x.js';\n" }, 'P'),
+      ).toEqual(['P']);
+      const swapped = { ...cycle, 'y.d.ts': "export * from './x.js';\nexport * from './p.js';\nexport declare class Q {}\n" };
+      expect(providersOf({}, { ...swapped, 'index.d.ts': "export { Q } from './y.js';\nexport * from './x.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({ exports: { './y': './y.js', '.': './index.js' } }, { ...swapped, 'index.d.ts': "export * from './x.js';\n" }, 'P')).toEqual(['P']);
+    });
+
+    it('find a provider that a file declares after the "export *" and the import that lead back to the file being read', () => {
+      const files = {
+        'index.d.ts': "export { helper } from './a.js';\nexport * from './b.js';\n",
+        'a.d.ts': "import { B } from './b.js';\nexport { B };\nexport declare function helper(): void;\nexport declare class P {\n    register(): void;\n}\n",
+        'b.d.ts': "export * from './a.js';\nexport declare class B {}\n",
+      };
+      expect(providersOf({}, files, 'P')).toEqual(['P']);
+    });
+
+    it('find a provider of a file that imports and exports a class of the file a subpath reads before it', () => {
+      const files = {
+        'token.js': 'export class Token {}\n',
+        'index.js': 'export class Prov {\n  register() {}\n}\n',
+        'index.d.ts': "import { Token } from './token.js';\nexport { Token };\nexport declare class Prov {\n    register(): void;\n}\n",
+        'token.d.ts': "import { Prov } from './index.js';\nexport { Prov };\nexport declare class Token {}\n",
+      };
+      expect(providersOf({ main: './token.js', types: './token.d.ts', exports: { './index': './index.js', '.': './token.js' } }, files, 'Prov')).toEqual(['Prov']);
+    });
+
+    it('take no location from a file still being read: a later export of its own may shadow the one it shows now', () => {
+      const { manifest } = generateManifest({
+        root: appWith(
+          { exports: { './q': './q.js', './p': './p.js', '.': './index.js' } },
+          {
+            'index.js': 'export class Clock {}\nexport class Key {}\nexport class Mailer {}\n',
+            'q.js': 'export class Clock {}\n',
+            'p.js': 'export class Mailer {}\n',
+            'index.d.ts':
+              "export * from './s.js';\nexport { helper } from './h.js';\nexport declare class Clock {}\nexport declare class Key {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n",
+            's.d.ts': "import { Key } from './index.js';\nexport declare class Mailer {\n    constructor(k: Key);\n}\n",
+            'h.d.ts': "export declare function helper(): void;\nexport * from './p.js';\n",
+            'p.d.ts': "export { Mailer } from './index.js';\n",
+            'q.d.ts': "import { Clock } from './index.js';\nexport { Clock };\n",
+          },
+        ).app,
+        conditions: PROD,
+      });
+      const lists = manifest.injections.filter((item) => item.class[1] === 'Mailer' && 'inject' in item).map((item) => ('inject' in item ? item.inject.map(([, name]) => name) : []));
+      expect(lists.length).toBeGreaterThan(0);
+      for (const list of lists) expect(list).toEqual(['Clock']);
+    });
+
+    describe('an injected class that the entry and a subpath both export', () => {
+      const files = {
+        'index.js': 'export class Clock {}\nexport class Mailer {}\n',
+        'extra.js': 'export class Clock {}\nexport class Mailer {}\n',
+        'index.d.ts': 'export declare class Clock {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n',
+        'extra.d.ts': "export { Clock, Mailer } from './index.js';\n",
+      };
+      const found = (exports: Record<string, string>, more: Record<string, string> = {}) => {
+        const { manifest } = generateManifest({ root: appWith({ exports }, { ...files, ...more }).app, conditions: PROD });
+        const file = (index: number) => manifest.modules[index]!.replace(/^.*\//, '');
+        const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+        return {
+          modules: manifest.modules.map((url) => url.replace(/^.*\//, '')),
+          class: mailer && [file(mailer.class[0]), mailer.class[1]],
+          inject: mailer && 'inject' in mailer ? mailer.inject.map(([index, name]) => [file(index), name]) : undefined,
+        };
+      };
+
+      it('comes from the first of them in the order of "exports"', () => {
+        expect(found({ './extra': './extra.js', '.': './index.js' })).toEqual({
+          modules: ['extra.js'],
+          class: ['extra.js', 'Mailer'],
+          inject: [['extra.js', 'Clock']],
+        });
+        expect(found({ '.': './index.js', './extra': './extra.js' })).toEqual({
+          modules: ['index.js'],
+          class: ['index.js', 'Mailer'],
+          inject: [['index.js', 'Clock']],
+        });
+      });
+
+      it('comes from a subpath when the entry does not export it', () => {
+        const entry = { 'entry.js': 'export const v = 1;\n', 'entry.d.ts': 'export declare const v: number;\n' };
+        expect(found({ './extra': './extra.js', '.': './entry.js' }, entry)).toEqual({
+          modules: ['extra.js'],
+          class: ['extra.js', 'Mailer'],
+          inject: [['extra.js', 'Clock']],
+        });
+      });
+    });
+
+    it('leave a package whose root has no declaration file alone when its types import ".."', () => {
+      const { app } = appWith(
+        { main: './dist/index.js', types: './dist/index.d.ts' },
+        { 'dist/index.js': 'export const v = 1;\n', 'dist/index.d.ts': "import { v } from '..';\nexport { v };\n" },
+      );
+      expect(generateManifest({ root: app, conditions: PROD }).summary.packages).toEqual(['hostile']);
+    });
+
+    it('keep the list of a local class when the default export of another file takes its public name', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Internal {}\nexport class Mailer {}\nexport class Clock {}\nexport class Key {}\n',
+          'index.d.ts':
+            "export declare class Key {}\ndeclare class Mailer {\n    constructor(k: Key);\n}\nexport { Mailer as Internal };\nexport { default as Mailer, Clock } from './anon.js';\n",
+          'anon.d.ts': 'export default class {\n    constructor(c: Clock);\n}\n',
+        }).app,
+        conditions: PROD,
+      });
+      const listOf = (name: string) => manifest.injections.find((item) => item.class[1] === name);
+      expect(listOf('Mailer')).toBeUndefined();
+      const internal = listOf('Internal');
+      expect(internal && 'inject' in internal ? internal.inject.map(([, name]) => name) : internal).toEqual(['Key']);
+    });
+
+    it('refuse a provider that the entry exports as a type only, with the message that names the package', () => {
+      expect(() =>
+        providersOf({}, { 'index.d.ts': "export { T } from './t.js';\n", 't.d.ts': 'export interface T {}\n' }, 'T'),
+      ).toThrow(/^\[marmeon:K7\] hostile lists provider "T" in package\.json, but its entry does not export it\.$/);
+    });
+
+    it('accept a provider that the entry exports from another package, directly or through "export *" of a file it reaches', () => {
+      expect(providersOf({}, { 'index.d.ts': "export { P } from '@x/other';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "export * from './star.js';\n", 'star.d.ts': "export * from '@x/other';\n" }, 'P')).toEqual(['P']);
+    });
+
+    it('keep a provider that the entry exports from a file without declarations, or from a JSON file', () => {
+      expect(providersOf({}, { 'index.d.ts': "import { P } from './p.js';\nexport { P };\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "export { P } from './p.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "export * from './p.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "import P from './data.json';\nexport { P };\n", 'data.json': '{}' }, 'P')).toEqual(['P']);
+    });
+
+    it('still refuse a JSON file that is a symlink out of the package', () => {
+      const { app, dir } = appWith({ ...entry, marmeon: { providers: ['P'] } }, { 'index.js': 'export class P {}\n', 'index.d.ts': "import P from './data.json';\nexport { P };\n" });
+      symlinkSync(join(app, '../outside.d.ts'), join(dir, 'data.json'));
+      expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(outsideRefusal);
+    });
+
+    it('follow a ".cjs" import to its ".d.cts" and give the class its list', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Mailer {}\nexport class Clock {}\n',
+          'index.d.ts': "import { Mailer, Clock } from './m.cjs';\nexport { Mailer, Clock };\n",
+          'm.d.cts': 'export declare class Clock {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n',
+        }).app,
+        conditions: PROD,
+      });
+      const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+      expect(mailer && 'inject' in mailer ? mailer.inject.map(([, name]) => name) : mailer).toEqual(['Clock']);
+    });
+
+    it('treat "export type *" as no value: no injection entry for a class there, and no provider from another package', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Mailer {}\n',
+          'index.d.ts': "export type * from './mailer.js';\n",
+          'mailer.d.ts': 'export declare class Mailer {\n    constructor(x: number);\n}\n',
+        }).app,
+        conditions: PROD,
+      });
+      expect(manifest.injections).toEqual([]);
+      expect(() => providersOf({}, { 'index.d.ts': "export type * from 'other';\n" }, 'P')).toThrow(
+        /^\[marmeon:K7\] hostile lists provider "P" in package\.json, but its entry does not export it\.$/,
+      );
+    });
+
+    it('do not read the file of "export * as ns", so one that leads out of the package refuses nothing', () => {
+      expect(providersOf({}, { 'index.d.ts': "export * as ns from './x.js';\nexport * from './p.js';\n", 'x.d.ts': "export * from '../../../outside.js';\n", 'p.d.ts': 'export declare class P {}\n' }, 'P')).toEqual(['P']);
     });
 
     it('are not followed through a symlink out of the package', () => {

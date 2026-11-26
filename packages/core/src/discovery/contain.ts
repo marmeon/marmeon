@@ -14,6 +14,21 @@ export function belongsTo(root: string, path: string): boolean {
   return !inside.split(sep).some((segment) => segment.toLowerCase() === 'node_modules');
 }
 
+/** ENOENT, or ENOTDIR: a path below a file (`data.json/index.d.ts`) is absent, and the file above it is what is judged. */
+function absent(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
+}
+
+function isLink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch (error) {
+    if (absent(error)) return false;
+    throw error;
+  }
+}
+
 /**
  * Whether the file `entry` belongs to the package in `dir`: it lies in it by its path (no `..` or `node_modules` segment) and by its
  * real path, so a symlink cannot lead out. A file that does not exist yet (an unbuilt subpath) is tolerated, unless it is a dangling
@@ -25,18 +40,18 @@ export function entryInside(dir: string, entry: string): boolean {
   try {
     return isInside(root, realpathSync.native(entry));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false;
+    if (!absent(error)) return false;
   }
-  if (lstatSync(entry, { throwIfNoEntry: false })?.isSymbolicLink()) return false;
+  if (isLink(entry)) return false;
   let ancestor = dirname(resolve(entry));
   for (;;) {
     try {
       const real = realpathSync.native(ancestor);
       return real === root || isInside(root, real);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false;
+      if (!absent(error)) return false;
     }
-    if (lstatSync(ancestor, { throwIfNoEntry: false })?.isSymbolicLink()) return false;
+    if (isLink(ancestor)) return false;
     const parent = dirname(ancestor);
     if (parent === ancestor) return false;
     ancestor = parent;

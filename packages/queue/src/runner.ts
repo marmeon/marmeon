@@ -59,8 +59,14 @@ export function schemaMismatch(job: string, issues: readonly StandardIssue[]): E
   return new Error(`The data of ${job} does not match its schema (fields: ${paths.join(', ')}).`);
 }
 
+/** Whether a job's payload is encrypted: any truthy `static encrypted`, as the queue encrypts it. @internal */
+export function isEncryptedJob(job: unknown): boolean {
+  // Fails closed: anything with a truthy `encrypted` counts, whatever a JS caller passed; only null and primitives do not.
+  return job !== null && (typeof job === 'object' || typeof job === 'function') && Boolean((job as { encrypted?: unknown }).encrypted);
+}
+
 /** Validates a payload against a job's schema; the schema's output, or a {@link JobPayloadError}. */
-export async function validatePayload(job: JobClass, payload: unknown, when: 'dispatch' | 'run', encrypted: boolean = job.encrypted === true): Promise<unknown> {
+export async function validatePayload(job: JobClass, payload: unknown, when: 'dispatch' | 'run', encrypted: boolean = isEncryptedJob(job)): Promise<unknown> {
   const result = await job.schema['~standard'].validate(payload);
   if (result.issues) {
     // The issues quote the values, and the message reaches retries, `failed_jobs` and reporters (a dispatch often runs inside
@@ -173,7 +179,7 @@ export class JobRunner {
     }
 
     let data: unknown = record.data;
-    if (job.encrypted && !record.encrypted) {
+    if (isEncryptedJob(job) && !record.encrypted) {
       return { kind: 'poison', record, reason: `${record.job} takes an encrypted payload (static encrypted), but this one is plain — not queued by this app.` };
     }
     if (record.encrypted) {
@@ -200,7 +206,8 @@ export class JobRunner {
       }
     }
     try {
-      const payload = await validatePayload(job, data, 'run', job.encrypted === true || record.encrypted === true);
+      // `isEncryptedJob(job)` is defensive: a plain record for an encrypted class is poisoned above.
+      const payload = await validatePayload(job, data, 'run', isEncryptedJob(job) || record.encrypted === true);
       const unknown = await (job as { [TARGET_UNKNOWN]?: (container: Container, payload: unknown) => string | undefined | Promise<string | undefined> })[TARGET_UNKNOWN]?.(this.#container, payload);
       if (unknown) return { kind: 'foreign', reason: unknown, envelope: envelopeOf(record), record };
       return { kind: 'ready', record, job, payload };
@@ -231,7 +238,8 @@ export class JobRunner {
       ...(record.requestId === undefined ? {} : { originRequestId: record.requestId }),
       ...(record.traceparent === undefined ? {} : { traceparent: record.traceparent }),
       payload: prepared.payload,
-      encrypted: (prepared.job as { encrypted?: unknown }).encrypted === true,
+      // `isEncryptedJob(prepared.job)` is defensive: a plain record for an encrypted class is poisoned before a job is prepared.
+      encrypted: isEncryptedJob(prepared.job) || prepared.record.encrypted === true,
     };
     return trace(attempts, message, () => this.#run(prepared, attempt), (ended, requested) => {
       ended.outcome = requested === undefined ? 'done' : requested.kind === 'discard' ? 'discarded' : requested.kind === 'release' ? 'released' : 'failed';
@@ -246,6 +254,8 @@ export class JobRunner {
   async unrunnable<T>(record: JobRecord, attempt: { readonly attempt: number; readonly queue: string; readonly connection: string }, error: Error, then: () => Promise<T>): Promise<T> {
     const info = { job: record.job, jobId: record.uuid, attempt: attempt.attempt, ...(record.requestId === undefined ? {} : { requestId: record.requestId }), ...(record.fromReporter ? { fromReporter: true as const } : {}) };
     if (!attempts.hasSubscribers || !this.#container.has(Application)) return runWithJob(info, then);
+    // Encrypted as queued, or by the class registered now (a plain record for a class that took `static encrypted` since).
+    const encrypted = record.encrypted === true || isEncryptedJob(this.#registry.get(record.job));
     const message: QueueJobMessage = {
       ...messageBase(this.#container.make(Application)),
       job: record.job,
@@ -256,7 +266,7 @@ export class JobRunner {
       ...(record.requestId === undefined ? {} : { originRequestId: record.requestId }),
       ...(record.traceparent === undefined ? {} : { traceparent: record.traceparent }),
       // As queued — not checked against any schema: shown only through the redactor, a ciphertext never.
-      ...(record.encrypted ? { encrypted: true } : { payload: record.data }),
+      ...(encrypted ? { encrypted: true } : { payload: record.data }),
     };
     let result: { value: T } | undefined;
     try {

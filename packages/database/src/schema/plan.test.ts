@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application } from '@marmeon/core';
-import { DummyDriver, Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, sql, type RawBuilder } from 'kysely';
+import { DummyDriver, Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, sql, type RawBuilder } from 'kysely';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { drivers, freshConnections, type TestDriver } from '../__fixtures__/databases.ts';
@@ -9,7 +9,7 @@ import type { Connections } from '../connections.ts';
 import { Migrator } from '../index.ts';
 import { runMigration } from '../migrations/run.ts';
 import type { Blueprint } from './blueprint.ts';
-import { planOf } from './plan.ts';
+import { assertNamesFitPgsql, pgsqlNames, planOf } from './plan.ts';
 import { Schema, SchemaError } from './schema.ts';
 
 describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => {
@@ -516,5 +516,75 @@ describe('what up() refuses while it builds the plan', () => {
         'up',
       ),
     ).toThrow(/\[marmeon:D4\]/);
+  });
+});
+
+/** A Postgres-flavoured Kysely whose server answers every query with `answer` (rows) or fails with `failure`. */
+function answering(answer: () => unknown[]): Kysely<any> {
+  const driver = {
+    init: async () => {},
+    acquireConnection: async () => ({ executeQuery: async () => ({ rows: answer() }), streamQuery: async function* () {} }),
+    beginTransaction: async () => {},
+    commitTransaction: async () => {},
+    rollbackTransaction: async () => {},
+    releaseConnection: async () => {},
+    destroy: async () => {},
+  };
+  return new Kysely<any>({
+    dialect: { createAdapter: () => new PostgresAdapter(), createDriver: () => driver as never, createIntrospector: (db) => new PostgresIntrospector(db), createQueryCompiler: () => new PostgresQueryCompiler() },
+  });
+}
+
+describe('asking Postgres whether the names of a plan fit', () => {
+  const names = [
+    { name: 'short_index', what: 'index name', hint: 'Shorten it.' },
+    { name: 'the_long_one', what: 'index name', hint: 'Shorten it.' },
+  ];
+
+  it('refuses the name the server sends back, whatever the app makes of booleans', async () => {
+    // The query returns the misfits only, so no row of it is a boolean a parser could turn into the string 'f'.
+    await expect(assertNamesFitPgsql(answering(() => [{ n: 'the_long_one' }]), names)).rejects.toThrow(/^\[marmeon:D5\] The index name "the_long_one" is longer than Postgres's 63 bytes in this database's encoding.*Shorten it\./);
+  });
+
+  it('lets a plan through when the server sends nothing back, and asks nothing for no names', async () => {
+    let asked = 0;
+    await assertNamesFitPgsql(answering(() => (asked++, [])), names);
+    await assertNamesFitPgsql(answering(() => (asked++, [{ n: 'x' }])), []);
+    expect(asked).toBe(1);
+  });
+
+  it.each(['22P05', '22021'])('refuses a name the encoding cannot hold (%s) with D5 and the names, and keeps the error as the cause', async (code) => {
+    const failure = Object.assign(new Error('character has no equivalent'), { code });
+    const error = await assertNamesFitPgsql(
+      answering(() => { throw failure; }),
+      [...names, { name: 'indéx_日本', what: 'index name', hint: '' }],
+    ).then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SchemaError);
+    expect((error as SchemaError).message).toMatch(/^\[marmeon:D5\] One of these names cannot be held in this database's encoding: "indéx_日本"\./);
+    expect((error as SchemaError).cause).toBe(failure);
+  });
+
+  it('names a name with a NUL character among the ones the encoding cannot hold, besides the non-ASCII ones', async () => {
+    const failure = Object.assign(new Error('invalid byte sequence'), { code: '22021' });
+    const error = await assertNamesFitPgsql(
+      answering(() => { throw failure; }),
+      [...names, { name: 'nul\0name', what: 'index name', hint: '' }, { name: 'indéx', what: 'index name', hint: '' }],
+    ).then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SchemaError);
+    expect((error as SchemaError).message).toContain('"nul\\u0000name", "indéx"');
+    expect((error as SchemaError).message).not.toContain('short_index');
+    expect((error as SchemaError).message).not.toContain('\0');
+  });
+
+  it('lets every other error of the query through unchanged', async () => {
+    const failure = Object.assign(new Error('connection lost'), { code: '08006' });
+    await expect(assertNamesFitPgsql(answering(() => { throw failure; }), names)).rejects.toBe(failure);
+  });
+
+  it('collects the name a oneOf() gives a column that had no list, from what the migrations know', () => {
+    const steps = planOf({ up: (schema) => schema.alter('items', (table) => table.oneOf('state', ['a', 'b'])) }, 'up');
+    expect(pgsqlNames(steps, () => ({ name: 'items_state_check', had: false })).map((entry) => entry.name)).toEqual(['items_state_check']);
+    expect(pgsqlNames(steps, () => ({ name: 'items_state_check', had: true }))).toEqual([]);
+    expect(pgsqlNames(steps)).toEqual([]);
   });
 });

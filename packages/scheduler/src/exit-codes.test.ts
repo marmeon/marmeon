@@ -32,7 +32,14 @@ describe('exit codes of the schedule commands', { timeout: 30_000 }, () => {
   it('schedule:work --stop-timeout=x exits with 2 and says why on stderr', () => {
     const result = marmeon('schedule:work', '--stop-timeout=x');
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain('--stop-timeout must be a number of seconds ≥ 0, not x.');
+    expect(result.stderr).toContain('--stop-timeout must be a number of seconds from 0 to 2073600 (24 days), not x.');
+  });
+
+  it('schedule:work --stop-timeout=2073601 exits with 2 before any tick: a timer longer than Node allows would fire at once', () => {
+    const result = marmeon('schedule:work', '--stop-timeout=2073601');
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('--stop-timeout must be a number of seconds from 0 to 2073600 (24 days), not 2073601.');
+    expect(result.stdout).not.toContain('Running the schedule');
   });
 
   it('schedule:test without a name exits with 2 and lists the tasks', () => {

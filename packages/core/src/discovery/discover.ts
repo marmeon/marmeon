@@ -9,8 +9,8 @@ import { entryInside } from './contain.ts';
 import { ConfigError } from '../environment.ts';
 import { unreadableGeneratedPath, unsafeGeneratedPath } from '../paths.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
@@ -21,16 +21,17 @@ export { DiscoveryError };
 export type { PackageSurface };
 import {
   exportedSubpaths,
-  findPackage,
+  findFoundPackage,
   resolveExports,
   resolveTypes,
   runtimeConditions,
   splitSpecifier,
+  type FoundPackage,
   type PackageInfo,
 } from './resolve.ts';
 
 /** Bump when the manifest format changes, so old manifests are regenerated. */
-const MANIFEST_VERSION = '3';
+const MANIFEST_VERSION = '4';
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
 const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
 
@@ -83,6 +84,14 @@ export interface Manifest {
     | { readonly class: ExportRef; readonly unresolvable: string; readonly package: string }
   )[];
   readonly providers: readonly ExportRef[];
+  /**
+   * `package.json` files, relative to the app's real path, of the packages the dependency walk reaches that live in the app's workspace
+   * outside `node_modules` (a workspace package, a `link:` inside the workspace), with or without a `marmeon` field; a package outside the
+   * workspace is not listed. Their change makes the manifest stale.
+   */
+  readonly sources: readonly string[];
+  /** Over the bytes of the files in `sources`: differs when one of them changes or is deleted. */
+  readonly sourcesHash: string;
 }
 
 /** Builds the manifest data (without writing it). */
@@ -101,9 +110,13 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   const injections: Manifest['injections'][number][] = [];
   const providers: ExportRef[] = [];
   const names: string[] = [];
+  // Before the walk reads anything: an edit while it runs leaves a hash of older bytes, so the manifest is stale at the next start, never fresh.
+  const hash = manifestHash(root, conditions);
+  const { ordered, visited } = walk(root);
+  const reached = new Map<string, FoundPackage>();
   const namespaces: { package: string; dir: string; namespace: string }[] = [];
 
-  for (const pkg of walkDependencies(root)) {
+  for (const pkg of ordered) {
     const ui = marmeonField(pkg);
     if (ui?.namespace !== undefined) {
       namespaces.push({ package: pkg.name, dir: pkg.dir, namespace: ui.namespace });
@@ -148,7 +161,7 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
             if (!param.type) {
               throw new DiscoveryError(`Cannot inject ${where}: only classes and tokens can be injected.`);
             }
-            const ref = resolveDependency(param.type, location, pkg, { reader, conditions, where });
+            const ref = resolveDependency(param.type, location, pkg, { reached, reader, conditions, where });
             return [moduleIndex(ref.url), ref.exportName];
           });
           injections.push({ class: target, inject, package: pkg.name });
@@ -161,7 +174,8 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
 
     for (const provider of marmeonField(pkg)?.providers ?? []) {
       const typesEntry = rootEntry && typesEntryOf(pkg, '.', rootEntry);
-      if (!rootEntry || !typesEntry || !reader.read(typesEntry, pkg).exports.has(provider)) {
+      const entry = typesEntry ? reader.read(typesEntry, pkg) : undefined;
+      if (!rootEntry || !entry || !(entry.names.has(provider) || entry.opaque)) {
         throw new DiscoveryError(`${pkg.name} lists provider "${provider}" in package.json, but its entry does not export it.`);
       }
       providers.push([moduleIndex(pathToFileURL(rootEntry).href), provider]);
@@ -171,11 +185,12 @@ export function generateManifest({ root, conditions = runtimeConditions() }: Dis
   checkNamespaces(namespaces);
   const manifest: Manifest = {
     version: MANIFEST_VERSION,
-    hash: manifestHash(root, conditions),
+    hash,
     packages: names,
     modules,
     injections,
     providers,
+    ...workspaceSources(root, [...visited, ...[...reached.values()].filter((pkg) => !visited.some((seen) => seen.dir === pkg.dir))]),
   };
   const unresolvable = injections.filter((entry) => 'unresolvable' in entry).length;
   return {
@@ -353,22 +368,29 @@ export function packageTexts({ root, conditions = runtimeConditions() }: Discove
 
 /** Post-order walk over installed dependencies: a package's dependencies come before it. */
 function walkDependencies(root: string): PackageInfo[] {
+  return walk(root).ordered;
+}
+
+/** The walk: `ordered` are the packages with a `marmeon` field; `visited` every package it reached, with or without one. */
+function walk(root: string): { ordered: FoundPackage[]; visited: FoundPackage[] } {
   const rootJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const seen = new Set<string>();
-  const ordered: PackageInfo[] = [];
+  const ordered: FoundPackage[] = [];
+  const visited: FoundPackage[] = [];
 
   // A package's peers are what the package depending on it provides (as a package manager resolves them) — looked up from
   // that dependent's directory, not the package's own: in a workspace a package's own node_modules also links its dev
   // dependencies, and an app with @marmeon/testing would otherwise discover every package testing is tested with.
-  const visit = (pkg: PackageInfo, dependentDir: string) => {
+  const visit = (pkg: FoundPackage, dependentDir: string) => {
     if (seen.has(pkg.dir)) return;
     seen.add(pkg.dir);
+    visited.push(pkg);
     for (const dep of [...Object.keys(ownRecord(pkg.json, 'dependencies')), ...Object.keys(ownRecord(pkg.json, 'optionalDependencies'))]) {
-      const found = findPackage(dep, pkg.dir);
+      const found = findFoundPackage(dep, pkg.dir);
       if (found) visit(found, pkg.dir);
     }
     for (const dep of Object.keys(ownRecord(pkg.json, 'peerDependencies'))) {
-      const found = findPackage(dep, dependentDir);
+      const found = findFoundPackage(dep, dependentDir);
       if (found) visit(found, dependentDir);
     }
     if (marmeonField(pkg)) ordered.push(pkg);
@@ -376,10 +398,10 @@ function walkDependencies(root: string): PackageInfo[] {
 
   // The app's dev dependencies count too — they are simply absent in production installs.
   for (const dep of [...dependencyNames(rootJson), ...Object.keys(ownRecord(rootJson, 'devDependencies'))]) {
-    const found = findPackage(dep, root);
+    const found = findFoundPackage(dep, root);
     if (found) visit(found, root);
   }
-  return ordered;
+  return { ordered, visited };
 }
 
 /** A dependency list of a `package.json`, from its own properties only — never one an altered Object.prototype supplies. */
@@ -403,6 +425,8 @@ function firstOptional(params: readonly { optional: boolean }[]): number {
 }
 
 interface ResolveContext {
+  /** Collects the packages resolution reads the `package.json` of, by directory: they decide `sources` too. */
+  readonly reached: Map<string, FoundPackage>;
   readonly reader: DeclarationReader;
   readonly conditions: readonly string[];
   readonly where: string;
@@ -433,8 +457,9 @@ function resolveDependency(type: string, location: Location, pkg: PackageInfo, c
       declared = target ? reader.read(target, pkg).exports.get(name) : undefined;
     } else {
       const { name: packageName, subpath } = splitSpecifier(imported.from);
-      const found = findPackage(packageName, pkg.dir); // from the OWNER's directory
+      const found = findFoundPackage(packageName, pkg.dir); // from the OWNER's directory
       if (!found) throw new DiscoveryError(`Cannot inject ${where}: package "${packageName}" is not installed.`);
+      context.reached.set(found.dir, found);
       home = found;
       const js = jsEntryOf(home, subpath, conditions);
       const types = js && typesEntryOf(home, subpath, js);
@@ -482,17 +507,173 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   // Resolution depends on the *set* of conditions, not their order or repetition.
   const hash = createHash('sha256').update(MANIFEST_VERSION).update([...new Set(conditions)].sort().join('\0'));
   hash.update(readFileSync(join(root, 'package.json')));
-  const lockfile = findLockfile(root);
-  if (lockfile) hash.update(readFileSync(lockfile));
+  // The same rule as the way up to the workspace: a lockfile above the last trusted folder (behind a folder that others can write to,
+  // or that someone other than this user or root owns) counts as absent, and so does one that is no regular file.
+  const app = realRoot(root);
+  const lockfile = findLockfile(app, trustedTop(app));
+  hash.update(lockfile !== undefined && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
   return hash.digest('hex').slice(0, 16);
 }
 
-function findLockfile(root: string): string | undefined {
+/** The real path of the app, the base of `sources`: two spellings of one app (a link, the real path) list the same entries. */
+function realRoot(root: string): string {
+  try {
+    return realpathSync.native(root);
+  } catch {
+    return root;
+  }
+}
+
+/**
+ * Whether `dir` may be a root above the app: not writable by everyone (so not `/tmp`, where anyone can plant a marker), and owned by the
+ * user of the process or by root. The same rule as `trusted` in `@marmeon/database`. Windows has no `getuid`, and its `mode` says nothing
+ * about who may write, so there the check passes.
+ */
+function trusted(dir: string): boolean {
+  if (process.platform === 'win32') return true;
+  try {
+    const { mode, uid } = statSync(dir);
+    if (mode & 0o002) return false;
+    const me = process.getuid?.();
+    return me === undefined || uid === me || uid === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `path` is a regular file itself: no FIFO or device that a read could block on, and no link. */
+function isRegularFile(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `path` is a regular file once links are followed (a lockfile may be a link): a FIFO or device at the target is refused. */
+function isFileAfterLinks(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The last folder of the way up from the app that can be trusted: the way ends below the first folder above the app that `trusted`
+ * refuses, so markers and lockfiles are looked for only up to here. The app folder itself is always accepted.
+ */
+function trustedTop(app: string): string {
+  let top = app;
+  for (let dir = dirname(app); dir !== top && trusted(dir); dir = dirname(dir)) top = dir;
+  return top;
+}
+
+/** Whether `dir` declares a workspace: a `pnpm-workspace.yaml`, or `workspaces` in its `package.json` (a list, or an object with `packages`). */
+function declaresWorkspace(dir: string): boolean {
+  if (isRegularFile(join(dir, 'pnpm-workspace.yaml'))) return true;
+  const file = join(dir, 'package.json');
+  if (!isRegularFile(file)) return false;
+  try {
+    const { workspaces } = JSON.parse(readFileSync(file, 'utf8')) as { workspaces?: unknown };
+    if (Array.isArray(workspaces)) return true;
+    return typeof workspaces === 'object' && workspaces !== null && Array.isArray((workspaces as { packages?: unknown }).packages);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The app's workspace: the nearest folder at or above the app that declares one (a `pnpm-workspace.yaml`, or a `package.json` with
+ * `workspaces`); else the folder of the nearest lockfile above the app; else the app folder. The way up, for markers and lockfile alike,
+ * ends below the first folder that others can write to or that someone other than this user or root owns: what it holds is no one's
+ * to trust. A real path, like the directories of the packages.
+ */
+function workspaceRoot(root: string): string {
+  const app = realRoot(root);
+  const top = trustedTop(app);
+  for (let dir = app; ; dir = dirname(dir)) {
+    if (declaresWorkspace(dir)) return dir;
+    if (dir === top) break;
+  }
+  const lockfile = findLockfile(app, top);
+  return lockfile === undefined ? app : dirname(lockfile);
+}
+
+/** Whether `file` is a `package.json` that lies in `boundary` by its path and its real path, outside `node_modules`: no link leads out. */
+function isWorkspaceFile(boundary: string, file: string): boolean {
+  if (basename(file) !== 'package.json') return false;
+  try {
+    return entryInside(boundary, file);
+  } catch {
+    return false;
+  }
+}
+
+/** The `sources` and `sourcesHash` of a manifest: the packages of the walk that lie in the app's workspace, hashed from the bytes the walk parsed. */
+function workspaceSources(root: string, visited: readonly FoundPackage[]): Pick<Manifest, 'sources' | 'sourcesHash'> {
+  const sources: string[] = [];
+  // No package reached, nothing to place: an app without dependencies does not look above itself.
+  if (visited.length === 0) return { sources, sourcesHash: combineDigests([]) };
+  const boundary = workspaceRoot(root);
+  const base = realRoot(root);
+  const digests: (string | undefined)[] = [];
+  for (const pkg of visited) {
+    const file = join(pkg.dir, 'package.json');
+    if (!isWorkspaceFile(boundary, file)) continue;
+    sources.push(relative(base, file).split(sep).join('/'));
+    digests.push(pkg.digest);
+  }
+  return { sources, sourcesHash: combineDigests(digests) };
+}
+
+/**
+ * Changes whenever one of the listed `package.json` files does. `undefined` when an entry is not what generation writes — not a string,
+ * not a `package.json`, or leading out of the workspace: such an entry is never read, and the manifest counts as stale.
+ */
+function currentSourcesHash(root: string, sources: unknown): string | undefined {
+  if (!Array.isArray(sources)) return undefined;
+  // Nothing listed: nothing to read, so no walk above the app at start.
+  if (sources.length === 0) return combineDigests([]);
+  const boundary = workspaceRoot(root);
+  const base = realRoot(root);
+  const digests: (string | undefined)[] = [];
+  for (const entry of sources) {
+    if (typeof entry !== 'string') return undefined;
+    const file = resolvePath(base, entry);
+    if (!isWorkspaceFile(boundary, file)) return undefined;
+    try {
+      digests.push(fileDigest(readFileSync(file)));
+    } catch {
+      digests.push(undefined);
+    }
+  }
+  return combineDigests(digests);
+}
+
+function sourcesFresh(root: string, manifest: Manifest): boolean {
+  const current = currentSourcesHash(root, manifest.sources);
+  return current !== undefined && current === manifest.sourcesHash;
+}
+
+/** The digest of one file's bytes, as {@link combineDigests} takes it. */
+export function fileDigest(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+/** SHA-256 (16 hex digits) over the digests of the files in order; a fixed marker stands for a missing one. */
+export function combineDigests(digests: readonly (string | undefined)[]): string {
+  const hash = createHash('sha256');
+  for (const digest of digests) hash.update(digest ?? 'missing').update('\0');
+  return hash.digest('hex').slice(0, 16);
+}
+
+function findLockfile(root: string, top: string): string | undefined {
   for (let dir = root; ; dir = dirname(dir)) {
     for (const name of LOCKFILES) {
       if (existsSync(join(dir, name))) return join(dir, name);
     }
-    if (dirname(dir) === dir) return undefined;
+    if (dir === top || dirname(dir) === dir) return undefined;
   }
 }
 
@@ -576,7 +757,7 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   const unreadable = unreadableGeneratedPath(options.root, path);
   if (unreadable !== undefined) throw new ConfigError(unreadable);
   let manifest = readManifest(path);
-  let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION;
+  let regenerated = options.force === true || manifest?.hash !== expected || manifest.version !== MANIFEST_VERSION || !sourcesFresh(options.root, manifest);
   // Use what was just generated — re-reading the file could see another process's write.
   if (regenerated) manifest = discover();
 
