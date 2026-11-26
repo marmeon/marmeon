@@ -22,7 +22,7 @@ describe('auth:end-sessions', () => {
   });
   afterAll(() => close());
 
-  async function setup() {
+  async function setup(info = vi.fn()) {
     const db = connections.get<any>();
     for (const table of [SIGN_INS_TABLE, PASSWORD_RESET_TABLE, ACCESS_TOKEN_TABLE]) await db.deleteFrom(table).execute();
     const clock = new TestClock();
@@ -37,7 +37,6 @@ describe('auth:end-sessions', () => {
     const accounts = new AccountSessions(guardContext({ users, signIns, passwordResets: resets, accessTokens: access, clock }));
     const lines: string[] = [];
     const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
-    const info = vi.fn();
     const run = (args: string[], options: Record<string, boolean> = { force: true }, target: Pick<AccountSessions, 'end'> = accounts) =>
       new EndSessionsCommand(commandGuards(guardContext({ users, accountSessions: target as AccountSessions })), { info } as unknown as Logger).handle({ args, options, output, root: '/', spawn: async () => 0 } as never);
     const key = () => users.rows.get(1)!.key;
@@ -53,6 +52,18 @@ describe('auth:end-sessions', () => {
     expect(await signInRows()).toBe(0);
     expect(lines).toEqual([expect.stringContaining('of ada@example.com;'), 'Kept: second factors, passkeys']);
     expect(info).toHaveBeenCalledWith(expect.stringContaining('every session'), { userId: 1 });
+  });
+
+  it('exits 0 with its output when the log cannot be written', async () => {
+    const down = vi.fn(() => {
+      throw new Error('log sink down');
+    });
+    const { run, lines, key, signInRows } = await setup(down);
+    expect(await run(['ada@example.com'])).toBe(0);
+    expect(down).toHaveBeenCalled();
+    expect(key()).toMatch(/^[\w-]{43}$/);
+    expect(await signInRows()).toBe(0);
+    expect(lines[0]).toContain('of ada@example.com;');
   });
 
   it('revokes the API tokens and deletes the reset link, and says what it kept', async () => {

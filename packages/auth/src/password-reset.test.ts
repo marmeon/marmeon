@@ -53,8 +53,8 @@ describe.each(setCases)('password reset on %s, on the %s tables', (driver, setNa
   const signIns = signInStore({ endAll: async (id) => (forgotten.push(id), 0) });
   const logged: unknown[] = [];
   const logger = Object.assign(new ConsoleLogger(), { info: (message: string, context?: unknown) => void logged.push({ message, context }) });
-  const broker = (revokeTokensOnPasswordChange = false, accessTokens: AccessTokenStore = apiTokens) =>
-    new PasswordBroker(guardContext({ users, passwordResets: tokens, settings: { resetMinutes: 60, resetThrottleSeconds: 60 } as never, newPassword: new NewPassword(guardContext({ accessTokens, settings: { revokeTokensOnPasswordChange } as never, signIns, connections, logger })), signInThrottle: { ...NO_LOGIN_LIMITS, clearAccount: async (id: number | string) => void cleared.push(id) } as never }), hasher, { dispatch: async (event: object) => void events.push(event) } as never);
+  const broker = (revokeTokensOnPasswordChange = false, accessTokens: AccessTokenStore = apiTokens, endings?: { endAccount(scope: string): Promise<void> }) =>
+    new PasswordBroker(guardContext({ users, passwordResets: tokens, settings: { resetMinutes: 60, resetThrottleSeconds: 60 } as never, newPassword: new NewPassword(guardContext({ accessTokens, settings: { revokeTokensOnPasswordChange } as never, signIns, connections, logger, ...(endings === undefined ? {} : { endings: endings as never }) })), signInThrottle: { ...NO_LOGIN_LIMITS, clearAccount: async (id: number | string) => void cleared.push(id) } as never }), hasher, { dispatch: async (event: object) => void events.push(event) } as never);
   let apiTokens: DatabaseAccessTokens;
 
   beforeAll(async () => {
@@ -162,6 +162,31 @@ describe.each(setCases)('password reset on %s, on the %s tables', (driver, setNa
     const again = must(await tokens.create('ada@example.com', 0));
     expect(await broker().reset('ada@example.com', again, 'newer password')).toMatchObject({ ok: true, value: ada });
     expect(await apiTokens.find(kept.plainText), 'revoked without the option').toBeDefined();
+  });
+
+  it('a reset still dispatches PasswordReset and tells the live streams when nothing can be logged', async () => {
+    const down = (): never => {
+      throw new Error('log sink down');
+    };
+    const info = vi.spyOn(logger, 'info').mockImplementation(down);
+    const error = vi.spyOn(logger, 'error').mockImplementation(down);
+    const heard: string[] = [];
+    try {
+      const created = must(await broker(true).createToken('ada@example.com'));
+      expect(await broker(true, apiTokens, { endAccount: async (scope) => void heard.push(scope) }).reset('ada@example.com', created.token, 'new password')).toMatchObject({ ok: true, value: ada });
+      expect(info, 'the revocation was logged, and the log threw').toHaveBeenCalled();
+      expect(events).toEqual([expect.objectContaining({ user: ada })]);
+      expect(heard).toHaveLength(1);
+      // The streams cannot be told either, and the error cannot be logged: the reset stands.
+      const again = must(await tokens.create('ada@example.com', 0));
+      events.length = 0;
+      expect(await broker(true, apiTokens, { endAccount: () => Promise.reject(new Error('stream hub down')) }).reset('ada@example.com', again, 'newer password')).toMatchObject({ ok: true, value: ada });
+      expect(error).toHaveBeenCalled();
+      expect(events).toEqual([expect.objectContaining({ user: ada })]);
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+    }
   });
 
   it('a failed revocation rolls the transaction back — every token stays valid', async () => {

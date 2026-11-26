@@ -118,12 +118,12 @@ function seenByServer(path: string): string | undefined {
   }
 }
 
-/** The health check's paths with no configuration: what the CLI, which never starts the kernel, assumes. */
+/** The health check's paths with no configuration: what an app without `@marmeon/server` assumes. */
 const DEFAULT_HEALTH_PATHS: readonly string[] = ['/up', '/up/ready'];
 
 /**
  * Whether a localized route's match names a locale the app does not have. A match with no `locale` (a pattern that does not name
- * it) names none, and locales not yet bound (the CLI) leave every value possible: both claim the path.
+ * it) names none, and locales not bound (an app without `@marmeon/i18n`) leave every value possible: both claim the path.
  *
  * @internal
  */
@@ -253,9 +253,9 @@ export class Router {
   /** The fallback of each slot, by {@link fallbackSlots}: one per prefix and kind. */
   readonly #fallbackSlots = new Map<string, RouteDefinition>();
   #snapshot: readonly RouteDefinition[] | undefined;
-  /** The locales a localized route's first segment can name, once the kernel binds them; none before. */
-  #urlLocales: readonly string[] | undefined;
-  /** The paths the server's health check answers; before the kernel binds them, the default ones. */
+  /** The locales a localized route's first segment can name, once `@marmeon/i18n` binds them; the owner's object, read at every call, never copied. None before. */
+  #urlLocales: UrlLocales | undefined;
+  /** The paths the server's health check answers; before `@marmeon/server` binds them, the default ones. */
   #healthPaths: readonly string[] = DEFAULT_HEALTH_PATHS;
   readonly #resolve: ClassResolver;
   /** The routes loaded with {@link FRAMEWORK_ROUTES}. A private set: `RouteDefinition.reserved` is a field an app could write. */
@@ -330,8 +330,8 @@ export class Router {
       if (!route.methods.includes('GET')) continue;
       const params = matchParams(route.path, seen);
       if (!params) continue;
-      // Not bound (the CLI): any first segment may be a locale, so the route claims it.
-      if (route.localized && namesOtherLocale(params, this.#urlLocales)) continue;
+      // Not bound (an app without `@marmeon/i18n`): any first segment may be a locale, so the route claims it.
+      if (route.localized && namesOtherLocale(params, this.#urlLocales?.supported)) continue;
       return { by: 'route', route: route.generatedFrom ?? route };
     }
     return undefined;
@@ -349,18 +349,26 @@ export class Router {
     // The server limits a localized fallback to the app's locales: `/fr/x` is for the address without a locale (or a fallback of the root), not for it.
     return this.fallbacks.find((route) => {
       const params = matchParams(route.path, seen);
-      return params !== undefined && !(route.localized && namesOtherLocale(params, this.#urlLocales));
+      return params !== undefined && !(route.localized && namesOtherLocale(params, this.#urlLocales?.supported));
     });
   }
 
   /**
-   * @internal The kernel tells the router what the server owns besides routes, for {@link Router.claimedBy}: the locales a
-   * localized route's URL can name, and the paths of the health check (none when it is off). Unbound, any first segment may be a
-   * locale and the default health paths count.
+   * @internal `@marmeon/i18n` tells the router the locales a localized route's URL can name, while the app boots, for
+   * {@link Router.claimedBy}. The owner holds the values; the router reads them at every call and never copies them. The
+   * kernel binds again when an app supplies `UrlLocales` without `@marmeon/i18n`. Unbound, any first segment may be a locale.
    */
-  bindServerPaths({ locales, health }: { readonly locales?: readonly string[] | undefined; readonly health: readonly string[] }): void {
-    this.#urlLocales = locales;
-    this.#healthPaths = health;
+  bindUrlLocales(urlLocales: UrlLocales): void {
+    this.#urlLocales = urlLocales;
+  }
+
+  /**
+   * @internal `@marmeon/server` tells the router the paths of the health check (none when it is off), while the app boots, for
+   * {@link Router.claimedBy}. The kernel binds again because its `health` option may override
+   * the configuration. Unbound, the default `/up` and `/up/ready` count.
+   */
+  bindHealthPaths(paths: readonly string[]): void {
+    this.#healthPaths = paths;
   }
 
   /**

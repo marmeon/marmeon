@@ -14,6 +14,7 @@ import type { JobClass } from './job.ts';
 import { CallQueuedListener, QueuedListeners, QueueListenerDispatcher } from './listeners.ts';
 import { Queue, QueueManager } from './queue.ts';
 import { addFromProvider, FRAMEWORK_PREFIX, JobRegistry, kindOf, nameOf, providerSourceOf, QueueSetupError } from './registry.ts';
+import { isEncryptedJob } from './runner.ts';
 import { withCode } from '@marmeon/core/internal';
 
 export { QueueConfig, queueTablesConnection } from './config.ts';
@@ -203,7 +204,7 @@ export class QueueServiceProvider implements ServiceProvider {
     // Every event with a queued listener can be queued, names are unique, `static queue` is sane — or the start fails.
     const queuedListeners = app.container.make(QueuedListeners);
     // Framework jobs need the Encrypter only when they are used (a queued listener here; a queued mail says so itself).
-    const encrypted = registry.all().find((job) => job.encrypted && !job.job.startsWith(FRAMEWORK_PREFIX));
+    const encrypted = registry.all().find((job) => isEncryptedJob(job) && !job.job.startsWith(FRAMEWORK_PREFIX));
     if (encrypted || queuedListeners.any) {
       // Only a provider's job is named here: any other gets the message without a name.
       const source = encrypted && providerSourceOf(registry, encrypted);
