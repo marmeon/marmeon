@@ -7,6 +7,7 @@ import { EventDispatcher, EventRegistry, Translator, type Application, type Cont
 import { belongsTo, findPackage, importPackage, isInside, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
 import { appListedProviders, providerJobsOf } from '../app-providers.ts';
+import { secondCopies, UnreadableTree } from '../check/packages.ts';
 
 /** A helper of the session — what `.ls` lists. */
 export interface Helper {
@@ -289,7 +290,7 @@ export class TinkerSession {
    * Runs one input (`run` evaluates the JavaScript). Repositories are loaded first when it names them. In the sandbox it
    * runs inside the session's transaction — as a savepoint of its own: an input that fails takes back only its own
    * writes, and on Postgres the transaction stays usable after a failed statement. As in every `transaction()`,
-   * await database work in the input that starts it.
+   * await database work in the input that starts it. In a sandbox that is not open (refused, or closed) it throws and runs nothing.
    */
   async evaluate<R>(code: string, run: () => Promise<R>): Promise<R> {
     if (/\brepos\b|Repository\b/.test(code)) await this.loadRepositories();
@@ -297,6 +298,8 @@ export class TinkerSession {
     // and never runs a package's class in the repository's place.
     else if (code.match(/[\w$]+/g)?.some((word) => this.#fallback.has(word) && !this.#names.has(word))) await this.loadRepositories();
     const inside = this.#inside;
+    // The sandbox promises a rollback: an input never runs outside its transaction (open() refused, or the session closed).
+    if (this.sandbox && !inside) throw new Error('The sandbox is not open, so the input did not run (it was refused at the start or the session has ended).');
     if (!inside) return run();
     const connections = this.#connections()!;
     return inside(() => connections.transaction(() => run()));
@@ -304,7 +307,8 @@ export class TinkerSession {
 
   /**
    * Resolves the app's own classes and tokens of the helpers and, with `--sandbox`, opens the transaction; call it before anything
-   * else — the helpers and the banner refuse until it ran.
+   * else — the helpers and the banner refuse until it ran. With `--sandbox` it throws when the app's @marmeon/database cannot be used (not listed,
+   * not loadable, its provider not registered) and when the installed tree holds a second copy of it, or cannot be checked for one.
    */
   async open(): Promise<void> {
     await this.#resolveOwn();
@@ -312,6 +316,7 @@ export class TinkerSession {
     const own = this.#own();
     const problem = this.#problem(own.Connections, '--sandbox', '@marmeon/database', 'Connections');
     if (problem !== undefined) throw new Error(problem.message);
+    this.#refuseSecondCopy();
     const connections = this.#connections()!;
     const inside = Promise.withResolvers<<R>(fn: () => R) => R>();
     const end = Promise.withResolvers<void>();
@@ -401,6 +406,26 @@ export class TinkerSession {
   }
 
   // -- Internals ---------------------------------------------------------------------------------------------------
+
+  /**
+   * Refuses the sandbox when the installed tree holds another copy of @marmeon/database than the one tinker loaded: that copy writes through a pool of
+   * its own, which the sandbox's transaction cannot roll back. Refuses as well when the tree cannot be checked, and when discovery listed the package
+   * more than once (one name per real directory). Reads the disk now, after boot: an install that runs in between is not seen.
+   */
+  #refuseSecondCopy(): void {
+    const name = '@marmeon/database';
+    const lead = `--sandbox refuses: ${name} is installed more than once, and writes through another copy would not be rolled back.`;
+    let lines: string[];
+    try {
+      lines = secondCopies(this.app.root, name);
+    } catch (error) {
+      if (!(error instanceof UnreadableTree)) throw error;
+      throw new Error(`--sandbox refuses: the install could not be checked for a second copy of ${name} (${error.message}).`);
+    }
+    if (lines.length === 0 && this.app.packages.filter((listed) => listed === name).length > 1) lines = [`discovery found ${name} in more than one directory`];
+    if (lines.length === 0) return;
+    throw new Error([lead, ...lines.map((line) => `  ${line}`), 'Install one copy: docs/package-development.md#one-copy-of-a-framework-package'].join('\n'));
+  }
 
   #own(): OwnExports {
     if (!this.#resolved) throw new Error('TinkerSession: call open() first.');
