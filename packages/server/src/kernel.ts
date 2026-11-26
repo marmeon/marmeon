@@ -43,6 +43,7 @@ import {
   ResponseLifecycle,
   isVisit,
   speaksProtocol,
+  isResponseStatus,
   VERSION_HEADER,
   partialReloadOf,
   AssetVersion,
@@ -512,7 +513,7 @@ export function createHttpKernel(
   const reported = new WeakMap<Request, WeakSet<object>>();
   /** Hands a server error (not a client one, an `HttpError` below 500) to the reporters: the request's method, route name and path, never its body, cookies or headers. */
   const giveToReporters = (error: unknown, failed: Request, phase?: 'deferred' | 'after-response' | 'terminate'): void => {
-    if (error instanceof HttpError && error.status < 500) return;
+    if (error instanceof HttpError && isResponseStatus(error.status) && error.status < 500) return;
     // The same error object reaches us twice when a controller awaits a promise that its deferred work returns too.
     if (typeof error === 'object' && error !== null && reported.get(failed)?.has(error)) return;
     const route = matched.get(failed);
@@ -557,7 +558,7 @@ export function createHttpKernel(
 
   const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
     if (exceptions.hasSubscribers) {
-      const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
+      const status = error instanceof HttpError && isResponseStatus(error.status) ? error.status : error instanceof ValidationError ? 422 : 500;
       const routePath = matched.get(failed)?.path;
       exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, host: failed.headers.get('host') ?? new URL(failed.url).host, ...(routePath === undefined ? {} : { routePath }), ...fetchSite(failed) });
     }
@@ -622,7 +623,7 @@ export function createHttpKernel(
       return await errorPageResponse(
         {
           error,
-          status: result.status,
+          status: isResponseStatus(result.status) ? result.status : 500,
           request: failed,
           requestId: info?.requestId,
           refererRoutePath: failed.headers.has('referer') ? routePatternOf(failed.headers.get('referer')!, failed) : undefined,
@@ -663,11 +664,11 @@ export function createHttpKernel(
       // Never back to a form with the errors flashed (that would write the session): the island has no form.
       const result = error instanceof ValidationError ? Response.json({ message: error.message }, { status: 422 }) : handler.render(error, request, { debug: showsDebug(request), translator });
       if (isResponse(result)) return result;
-      if (isViewResult(result)) return Response.json(result.props, { status: result.status, headers: result.headers });
+      if (isViewResult(result)) return Response.json(result.props, { status: isResponseStatus(result.status) ? result.status : 500, headers: result.headers });
     } catch (failure) {
       logger.error('Rendering the error of an island failed', { exception: redactor.text(String(failure)) });
     }
-    return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError ? error.status : 500 });
+    return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError && isResponseStatus(error.status) ? error.status : 500 });
   };
 
   /**

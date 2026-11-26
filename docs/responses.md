@@ -48,7 +48,7 @@ is `undefined` not at all. Send only what the page shows. Every prop reaches the
 never be in it.
 
 The status defaults to 200. A last argument of options sets another, and headers:
-`this.view('notes/Gone', { id }, { status: 410 })`. The [pages](pages.md) page covers views, layouts and the head.
+`this.view('notes/Gone', { id }, { status: 410 })`. A status that is not a whole number from 200 to 599 throws a `TypeError`, and a view always has a body, so 204, 205 and 304 throw too. The [pages](pages.md) page covers views, layouts and the head.
 
 ### Props that load later
 
@@ -277,7 +277,7 @@ export class PinNoteController extends Controller {
 }
 ```
 
-The status defaults to 200; `this.json(data, { status: 201 })` sends another. `this.json(undefined)` answers 204 with no body.
+The status defaults to 200; `this.json(data, { status: 201 })` sends another. `this.json(undefined)` answers 204 with no body. A status that is not a whole number from 200 to 599 throws a `TypeError`, and so does 204, 205 or 304 with data.
 An API client gets the same JSON, and the [actions](actions.md) page shows how a page calls such a route without leaving.
 
 ## Conflict
