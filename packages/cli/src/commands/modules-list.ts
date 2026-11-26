@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { fileURLToPath } from 'node:url';
 import { Application, EventRegistry, type ConfigDefinition, type EventClass, type ListenerBinding, type ModuleDefinition } from '@marmeon/core';
 import { configDefinitions, isQueuedListener, loadEnv } from '@marmeon/core/internal';
+import { providerJobsOf } from '../app-providers.ts';
 import type { CommandInput } from '../command.ts';
 
 /** The longest string taken from app code into the document. */
@@ -21,12 +22,13 @@ function nameOf(value: unknown): string {
 /** The class-like items of the list a module keeps under `key`. Only a list is read, nothing else of the module. */
 function listOf(module: ModuleDefinition, key: string): readonly unknown[] {
   const value = (module as unknown as Record<string, unknown>)[key];
-  return Array.isArray(value) ? value : [];
+  // `Array.from` fills the holes of a sparse list, which `map` would skip: each becomes an item like any other.
+  return Array.isArray(value) ? Array.from(value) : [];
 }
 
 /** The `static <key>` of each class in `classes`: `{ class, <key> }`. */
 function named<K extends string>(classes: readonly unknown[], key: K): ({ class: string } & Record<K, string | null>)[] {
-  return classes.map((item) => ({ class: nameOf(item), [key]: text((item as Record<string, unknown> | null)?.[key]) }) as { class: string } & Record<K, string | null>);
+  return Array.from(classes, (item) => ({ class: nameOf(item), [key]: text((item as Record<string, unknown> | null)?.[key]) }) as { class: string } & Record<K, string | null>);
 }
 
 interface ListenerEntry {
@@ -58,13 +60,13 @@ interface EventEntry {
 
 /**
  * Lists what the app defines: the packages, the modules with their providers, commands, jobs, notifications and seeders,
- * and the listeners of each event, and the names of the environment variables the configuration reads with their state
- * (set, required, has a default). Registers the providers and boots none, and reads only the fields it prints — never a
+ * the jobs of providers, the listeners of each event, and the names of the environment variables the configuration reads
+ * with their state (set, required, has a default). Registers the providers and boots none, and reads only the fields it prints — never a
  * configuration value, a default or a value of `.env`. With `--json` it prints format 1. See docs/modules.md#listing-the-modules.
  */
 export class ModulesListCommand {
   static command = 'modules:list';
-  static description = 'List the modules with their providers, commands, jobs and the listeners of each event';
+  static description = 'List the modules with their providers, commands and jobs, the jobs of providers, and the listeners of each event';
   static usage = '[--json]';
   static options = { json: { type: 'boolean' } } as const;
   /** Registers the providers and boots nothing, like `route:types`: no secrets, no connection, no `boot()` of the app runs. */
@@ -80,14 +82,14 @@ export class ModulesListCommand {
 
   handle({ options, output, root }: CommandInput): void {
     const packages = this.#app.packages.map((name) => text(name) ?? '');
-    const app = { providers: (this.#app.definition.providers ?? []).map(nameOf) };
+    const app = { providers: Array.from(this.#app.definition.providers ?? [], nameOf) };
     const warnings: string[] = [];
     const modules = this.#app.modules.map((module) => {
       const migrations = migrationsFolder(root, (module as { migrations?: unknown }).migrations);
       if (migrations.problem !== undefined) warnings.push(`${text(module.name) ?? ''}: ${migrations.problem}`);
       return {
       name: text(module.name) ?? '',
-      providers: (module.providers ?? []).map(nameOf),
+      providers: Array.from(module.providers ?? [], nameOf),
       commands: listOf(module, 'commands')
         .map((command) => text((command as { command?: unknown } | null)?.command))
         .filter((name): name is string => name !== null),
@@ -97,12 +99,22 @@ export class ModulesListCommand {
       migrations: migrations.folder,
       };
     });
+    // Every provider of the app, the ones it lists and the ones discovery adds; only those that list jobs. `modules` names the
+    // modules that list the provider (by class, not by name) and only filters, as it does for `environment`.
+    // A provider the app and a module both list stays in `app.providers` twice; it is listed once, at its first place.
+    const providerJobs = [...new Set(this.#app.providers)]
+      .map((provider) => ({
+        provider: nameOf(provider),
+        modules: this.#app.modules.filter((module) => (module.providers ?? []).includes(provider)).map((module) => text(module.name) ?? ''),
+        jobs: named(providerJobsOf(provider), 'job'),
+      }))
+      .filter((entry) => entry.jobs.length > 0);
     const events = this.#eventList();
 
     if (options.json === true) {
       // Only the document names the variables: the text output neither reads `.env` nor warns about a schema.
       const environment = this.#environment(root, warnings);
-      output.json({ format: 1, packages, app, modules, events, environment, warnings });
+      output.json({ format: 1, packages, app, modules, providerJobs, events, environment, warnings });
       return;
     }
     for (const warning of warnings) output.warn(warning);
@@ -123,6 +135,11 @@ export class ModulesListCommand {
         ['migrations', module.migrations === null ? [] : [module.migrations]],
       ];
       for (const [label, values] of rows) if (values.length > 0) output.line(`  ${label}: ${values.join(', ')}`);
+    }
+    if (providerJobs.length > 0) {
+      output.line();
+      output.line('Provider jobs');
+      for (const entry of providerJobs) output.line(`  ${entry.provider}: ${entry.jobs.map((job) => (job.job === null ? job.class : `${job.class} (${job.job})`)).join(', ')}`);
     }
     if (events.length > 0) {
       output.line();

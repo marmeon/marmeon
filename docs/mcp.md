@@ -212,7 +212,7 @@ The tool copies the fields it knows and leaves out the rest; a `default` is a st
 
 ### `app_overview`
 
-What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs (the module's own, not the `static [providerJobs]` of a provider), notifications, seeders and migration folder, each event with its listeners
+What the app defines, in one call: the packages, the providers of the app and of each module, per module its commands, jobs (the module's own), notifications, seeders and migration folder, then the jobs each provider lists (`static [providerJobs]`), each event with its listeners
 (and whether a listener is queued and where it is defined), the scheduled tasks, the runtime, and the names of the environment variables the app reads, each with its state. It is for finding what exists before placing code. The tool starts [`marmeon modules:list --json`](modules.md#listing-the-modules), which registers the providers but boots
 none, and, when `@marmeon/scheduler` is installed, `marmeon schedule:list --json`, one after the other.
 
@@ -223,8 +223,8 @@ none, and, when `@marmeon/scheduler` is installed, `marmeon schedule:list --json
 The commands and their arguments are fixed; the filter applies to their documents, so no input ever reaches a command line. The tool copies the fields it knows into its answer and nothing else, so
 a configuration value, a `.env` value, a default or a key a module carries for its own use is not in it. Of an environment variable it says the name and the state, never the value: whether it is set, whether it is required and whether it has a default, and nothing derived from a value, not even its length.
 
-The document: `{ "format": 1, "runtime": {…}, "packages": […], "app": { "providers": […] }, "modules": […], "events": […], "environment": […], "schedules": […], "warnings": [] }`. A module has `name`, `providers`, `commands`, `jobs`
-(`class` and `job`), `notifications`, `seeders` and `migrations` (a folder relative to the app, or `null`); an event has `event`, `name` and `listeners`; a schedule has `name`, `expression`, `timeZone` and
+The document: `{ "format": 1, "runtime": {…}, "packages": […], "app": { "providers": […] }, "modules": […], "providerJobs": […], "events": […], "environment": […], "schedules": […], "warnings": [] }`. A module has `name`, `providers`, `commands`, `jobs`
+(`class` and `job`), `notifications`, `seeders` and `migrations` (a folder relative to the app, or `null`); `providerJobs` has an entry per provider that lists jobs, with `provider` and `jobs` (`class` and `job`), and with `module` only those of the providers that module lists, by class and not by name; an event has `event`, `name` and `listeners`; a schedule has `name`, `expression`, `timeZone` and
 `description`. `runtime` has `node` (the version), `platform`, `arch`, `marmeon` (the version of the package) and `nodeEnv`, always `development`; it is read in the server's process, and the commands the tool starts run with the same Node. `environment` has an entry per variable, sorted by `name`, with `config` (the name of the configuration that reads it), `set` (the variable is in the environment or the app's `.env` and not empty), `required` and `hasDefault`; a variable that is neither is optional. A configuration that validates its environment with a schema of its own lists no variables and adds a warning. Listeners that a provider adds in `boot()` are missing, as the page of the command says. Without `@marmeon/scheduler`, `schedules` is `[]`. An unknown `module` is an error that lists the module names.
 
 If `schedule:list` cannot answer (the scheduler does not start, the command cannot be started, it runs out of time, its document is of another format), the overview still comes: `schedules` is `null` and `warnings` says why, with the first line of

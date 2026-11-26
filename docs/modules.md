@@ -177,8 +177,8 @@ module runner) the container reports K16 instead. Break the cycle by letting one
 ## Listing the modules
 
 `marmeon modules:list` shows what the app defines: the packages it found, the providers of the app, and for each module its
-providers, commands, jobs, notifications, seeders and migrations folder. The jobs are the module's own: the `static [providerJobs]` of a provider are not listed. Below the modules come the events with the listeners of each
-one. A part a module does not have is left out. The document of `--json` also names the environment variables the configuration reads.
+providers, commands, jobs, notifications, seeders and migrations folder. The jobs are the module's own; below the modules come the jobs of providers (`static [providerJobs]`), each with its provider, and then the events with the listeners of each
+one. A part a module does not have is left out. The document of `--json` also names the environment variables the configuration reads and has the jobs of providers as `providerJobs`, empty when no provider lists any.
 
 ```sh
 pnpm marmeon modules:list
@@ -195,6 +195,9 @@ notes
   notifications: NoteShared (notes.shared)
   seeders: NoteSeeder
   migrations: modules/notes/migrations
+
+Provider jobs
+  MediaProvider: ProcessMediaJob (media.process)
 
 Events
   NoteCreated → IndexNote (queued)
@@ -221,6 +224,13 @@ yours. It reads only the fields it prints. A configuration value, a default, a v
       "migrations": "modules/notes/migrations"
     }
   ],
+  "providerJobs": [
+    {
+      "provider": "MediaProvider",
+      "modules": [],
+      "jobs": [{ "class": "ProcessMediaJob", "job": "media.process" }]
+    }
+  ],
   "events": [
     {
       "event": "NoteCreated",
@@ -241,6 +251,7 @@ yours. It reads only the fields it prints. A configuration value, a default, a v
   folder relative to the app root, or `null`. With a warning in `warnings`, the folder is elsewhere, in a monorepo for one, and `null` stands for it: `<module>: its migrations
   folder lies outside the app root` (also when a link inside the app leads out of it), or `<module>: its migrations folder is not a
   path on this machine` (a URL that is no `file:` URL). Without a warning, the module has no folder.
+- `providerJobs` has one entry per provider class that lists jobs in its `static [providerJobs]`, the ones discovery adds included, in registration order. `jobs` are its classes; a `job` is `null` without a string `static job`. `modules` names the modules that list the provider in their `providers`, empty for one only the app or discovery lists. The array is empty when no provider lists jobs.
 - `events` are sorted by `event`, the class name; `name` is its `static event` when that is a string, else `null`. The listeners
   keep the order they were registered in. `defined` says where a listener comes from: `app` (the `listeners` of
   `defineApplication`), `module` (the `listeners` of a module, `module` names it) or `provider` (a provider registered it in
