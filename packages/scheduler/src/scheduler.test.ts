@@ -9,12 +9,13 @@ import { channels, type ScheduleTaskMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, type Migration } from '@marmeon/database';
 import { runMigration } from '@marmeon/database/internal';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
-import { Queue, QueueConnections, QueueServiceProvider, type JobClass, type JobPayload } from '@marmeon/queue';
+import { Queue, QueueConnections, QueueServiceProvider, withoutOverlapping, type JobClass, type JobPayload } from '@marmeon/queue';
 import { QUEUE_MIGRATION } from '@marmeon/queue/internal';
 import * as v from 'valibot';
 import { readdirSync, readFileSync } from 'node:fs';
 import { Output } from 'marmeon';
 import { afterEach, assert, describe, expect, it, vi } from 'vitest';
+import { ScheduleError } from './cron.ts';
 import { collectTasks } from './schedule.ts';
 import { defineSchedule, ScheduledTaskEvent, ScheduledTaskFailed, ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting, Scheduler, SchedulerServiceProvider, type TaskResult } from './index.ts';
 import { ScheduleTester } from './testing.ts';
@@ -1374,6 +1375,156 @@ describe('schedule:list masks secrets', () => {
       expect(stdout.join(''), JSON.stringify(options)).not.toContain('geheim');
       expect(stdout.join('')).toContain('fixture.stats');
     }
+    await app.shutdown();
+  });
+});
+
+describe('s.job() next to a job named <job>:schedule', () => {
+  class ReportsJob {
+    static readonly job = 'reports';
+    static readonly schema = v.object({});
+    handle() {}
+  }
+  class ReportsScheduleJob {
+    static readonly job = 'reports:schedule';
+    static readonly schema = v.object({});
+    handle() {}
+  }
+
+  class PickyJob {
+    static readonly job = 'picky';
+    static readonly schema = v.object({ n: v.number() });
+    handle() {}
+  }
+
+  async function withJobs(jobs: JobClass[], schedule: ModuleDefinition['schedule'] = defineSchedule((s) => void s.job(ReportsJob).everyMinute().name('reports-task')), driver = 'database') {
+    const dir = tempDir('marmeon-schedule-queue-');
+    const booted = await boot(
+      schedule,
+      {
+        providers: [EncryptionServiceProvider, DatabaseServiceProvider, QueueServiceProvider],
+        env: { APP_KEY: generateKey(), DB_MANAGED: 'false', DB_DATABASE: join(dir, 'app.sqlite'), QUEUE_DRIVER: driver, CACHE_DRIVER: 'database' },
+        modules: [defineModule({ name: 'jobs', jobs })],
+      },
+    );
+    for (const file of [QUEUE_MIGRATION, CACHE_MIGRATION]) await runMigration(booted.app.container.make(Connections), ((await import(file.href)) as { default: Migration }).default);
+    return booted;
+  }
+
+  it('fails the tick with a ScheduleError that names the task and the job, and not the key', async () => {
+    const { scheduler, clock, app } = await withJobs([ReportsJob, ReportsScheduleJob]);
+    const [run] = await scheduler.tick(clock.now());
+    const result = await run!.done;
+    expect(result).toMatchObject({ task: 'reports-task', outcome: 'failed' });
+    expect(result.error).toBeInstanceOf(ScheduleError);
+    expect((result.error as Error).message).toBe(
+      '[marmeon:Q5] The task "reports-task" queues the job "reports", but the app registers a job named "reports:schedule", and the unique key of a scheduled job starts with "schedule:", so both name one lock. Rename "reports:schedule" so it does not begin with "reports:". See docs/queues.md#unique-jobs.',
+    );
+    expect((result.error as Error).message).not.toContain('schedule:reports-task');
+    expect(await app.container.make(Queue).size()).toBe(0);
+    await app.shutdown();
+  });
+
+  describe('on the sync connection, where the dispatch also runs the job', () => {
+    class ReportsDailyJob {
+      static readonly job = 'reports:daily';
+      static readonly schema = v.object({});
+      handle() {}
+    }
+    class OverlapJob {
+      static readonly job = 'reports';
+      static readonly schema = v.object({});
+      static readonly middleware = [withoutOverlapping('daily:7')];
+      handle() {}
+    }
+    class NestingJob {
+      static readonly job = 'nesting';
+      static readonly schema = v.object({});
+      static readonly inject = [Queue];
+      readonly #queue: Queue;
+      constructor(queue: Queue) {
+        this.#queue = queue;
+      }
+      async handle() {
+        await this.#queue.dispatch(ReportsJob, {}, { unique: 'daily:7' });
+      }
+    }
+
+    // Dispatches `target` with the unique key it is given, from inside the scheduled job.
+    const dispatching = (name: string, target: JobClass, unique: string) =>
+      class {
+        static readonly job = name;
+        static readonly schema = v.object({});
+        static readonly inject = [Queue];
+        readonly #queue: Queue;
+        constructor(queue: Queue) {
+          this.#queue = queue;
+        }
+        async handle() {
+          await this.#queue.dispatch(target, {}, { unique });
+        }
+      };
+
+    async function withSync(jobs: JobClass[], target: JobClass, name: string) {
+      const booted = await withJobs(jobs, defineSchedule((s) => void s.job(target).everyMinute().name(name)), 'sync');
+      const [run] = await booted.scheduler.tick(booted.clock.now());
+      return { ...booted, result: await run!.done };
+    }
+
+    it('keeps the JobKeyLockError of a withoutOverlapping() key instead of blaming the unique key of the schedule', async () => {
+      const { result, app } = await withSync([OverlapJob, ReportsDailyJob], OverlapJob, 'reports-task');
+      expect(result.outcome).toBe('failed');
+      expect(result.error).not.toBeInstanceOf(ScheduleError);
+      expect(result.error).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:7', kind: 'overlap' });
+      await app.shutdown();
+    });
+
+    // The conversion needs all of: the key is the schedule's, the job is the scheduled one, and the kind is `unique`. The kind clause
+    // has no test of its own: a key that starts with `schedule:` and meets a lock is refused by the outer dispatch before the job runs,
+    // so no `overlap` refusal of the scheduled job reaches the catch; the clause stays as a guard.
+    it('keeps the error when the scheduled job dispatches a job of its own name with another unique key (the key clause)', async () => {
+      const Self = dispatching('reports', ReportsJob, 'daily:7');
+      const { result, app } = await withSync([Self, ReportsDailyJob], Self, 'reports-task');
+      expect(result.outcome).toBe('failed');
+      expect(result.error).not.toBeInstanceOf(ScheduleError);
+      expect(result.error).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:7', kind: 'unique' });
+      await app.shutdown();
+    });
+
+    it('keeps the error when another job is refused with the schedule key of the task (the job clause)', async () => {
+      const Outer = dispatching('nesting', ReportsJob, 'schedule:nesting-task');
+      const { result, app } = await withSync([Outer, ReportsJob, ReportsScheduleJob], Outer, 'nesting-task');
+      expect(result.outcome).toBe('failed');
+      expect(result.error).not.toBeInstanceOf(ScheduleError);
+      expect(result.error).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:schedule', key: 'schedule:nesting-task', kind: 'unique' });
+      await app.shutdown();
+    });
+
+    it('keeps the JobKeyLockError of a job dispatched from inside the scheduled job', async () => {
+      const { result, app } = await withSync([NestingJob, ReportsJob, ReportsDailyJob], NestingJob, 'nesting-task');
+      expect(result.outcome).toBe('failed');
+      expect(result.error).not.toBeInstanceOf(ScheduleError);
+      expect(result.error).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:7', kind: 'unique' });
+      await app.shutdown();
+    });
+  });
+
+  it('keeps the own error of a dispatch that fails for another reason: a QueueError, not a ScheduleError', async () => {
+    const { scheduler, clock, app } = await withJobs([ReportsJob, ReportsScheduleJob, PickyJob], defineSchedule((s) => void s.job(PickyJob, {} as never).everyMinute().name('picky-task')));
+    const [run] = await scheduler.tick(clock.now());
+    const result = await run!.done;
+    expect(result.outcome).toBe('failed');
+    expect(result.error).not.toBeInstanceOf(ScheduleError);
+    expect(result.error).toBeInstanceOf((await import('@marmeon/queue')).QueueError);
+    expect(result.error).toMatchObject({ name: 'JobPayloadError' });
+    await app.shutdown();
+  });
+
+  it('still queues the job when no job is named <job>:schedule', async () => {
+    const { scheduler, clock, app } = await withJobs([ReportsJob]);
+    const [run] = await scheduler.tick(clock.now());
+    expect((await run!.done).outcome).toBe('ran');
+    expect(await app.container.make(Queue).size()).toBe(1);
     await app.shutdown();
   });
 });

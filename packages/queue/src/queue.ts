@@ -143,7 +143,7 @@ export class QueueManager implements Queue {
   }
 
   async #dispatch(job: JobClass, payload: unknown, options: DispatchOptions | UniqueDispatchOptions, traceparent?: string): Promise<string | undefined> {
-    const unique = options.unique === undefined ? undefined : uniqueRecord(job, options as UniqueDispatchOptions);
+    const unique = options.unique === undefined ? undefined : uniqueRecord(job, options as UniqueDispatchOptions, this.#deps.registry);
     const prepared = await prepareRecord(this.#deps, job, payload, { ...recordOptionsOf(options), ...(unique ? { unique } : {}), ...(traceparent ? { traceparent } : {}) });
     if (!unique) return (await this.#push([prepared], options))[0]!;
     return this.#pushUnique(prepared as Prepared & { record: { unique: UniqueRecord } }, options);

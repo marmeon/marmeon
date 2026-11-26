@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { Clock, createApplication, currentLogContext, ErrorReports, EventDispatcher, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
-import { runWithJob } from '@marmeon/core/internal';
+import { describeError, runWithJob } from '@marmeon/core/internal';
 import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
@@ -18,11 +18,11 @@ import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { parseMember } from './drivers/redis.ts';
 import { QueueFake } from './fake.ts';
 import type { JobEvent } from './events.ts';
-import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobMiddlewareContext, type JobPayload } from './index.ts';
 import { QueueManager, RECORD_OPTIONS } from './queue.ts';
-import { JobRegistry, QueueSetupError } from './registry.ts';
+import { JobKeyLockError, JobRegistry, QueueError, QueueSetupError } from './registry.ts';
+import { JOB_REGISTRY, JobOnceBusyError, withoutOverlapping } from './locks.ts';
 import { cipherContext, JobPayloadError, JobRunner, nextInChain, parseRecord, RECORD_READERS } from './runner.ts';
-import { JobOnceBusyError } from './locks.ts';
 import { JobStuckError, Worker } from './worker.ts';
 
 const KEY = 'base64:J1THMmM0weaSNoc1xHnSWExHWTxE/5A9NwgE4YJajvY=';
@@ -2056,5 +2056,206 @@ describe('a queue log line about a job that is not the running one', () => {
     expect(line!.fields).not.toHaveProperty('job');
     expect(line!.fields).not.toHaveProperty('jobId');
     expect(line!.fields).not.toHaveProperty('attempt');
+  });
+});
+
+describe('job names that can share a lock', () => {
+  const named = (name: string) => class { static readonly job = name; static readonly schema = v.object({}); handle() {} };
+  class Reports extends named('reports') {}
+  class ReportsDaily extends named('reports:daily') {}
+
+  it('names the unique lock of `reports:daily` with the key `7` like `reports` with the key `daily:7`', async () => {
+    await using application = await app({ cache: true, env: { CACHE_DRIVER: 'memory' }, modules: [{ name: 'test', jobs: [Reports, ReportsDaily] }] });
+    expect(await application.container.make(Queue).dispatch(ReportsDaily, {}, { unique: '7' })).toEqual(expect.any(String));
+    expect(await application.container.make(Cache).lock('queue:unique:reports:daily:7', 60).get(), 'the lock of reports + daily:7 is held').toBe(false);
+  });
+
+  // Runs `handle` of one withoutOverlapping() inside the held lock of another: the inner attempt is released when they name one lock.
+  const blocked = async (application: Application, outer: { job: string; key: string; shared?: boolean }, inner: { job: string; key: string; shared?: boolean }) => {
+    const cache = application.container.make(Cache);
+    const context = (job: string): { context: JobMiddlewareContext; released: unknown[] } => {
+      const released: unknown[] = [];
+      return {
+        released,
+        context: { payload: {}, job: { name: job, release: (delay: unknown) => released.push(delay) }, timeoutSeconds: 60, retryAfterSeconds: 90, cache: async () => cache } as unknown as JobMiddlewareContext,
+      };
+    };
+    const second = context(inner.job);
+    let ran = false;
+    await withoutOverlapping(outer.key, { shared: outer.shared }).handle(context(outer.job).context, async () => {
+      await withoutOverlapping(inner.key, { shared: inner.shared }).handle(second.context, async () => {
+        ran = true;
+      });
+    });
+    return { ran, released: second.released.length };
+  };
+
+  it('names one overlap lock for `reports` with the key `daily:7` and `reports:daily` with the key `7`', async () => {
+    await using application = await app({ cache: true, env: { CACHE_DRIVER: 'memory' } });
+    expect(await blocked(application, { job: 'reports', key: 'daily:7' }, { job: 'reports:daily', key: '7' })).toEqual({ ran: false, released: 1 });
+    expect(await blocked(application, { job: 'reports', key: 'daily:7' }, { job: 'reports:daily', key: '8' }), 'another key is another lock').toEqual({ ran: true, released: 0 });
+  });
+
+  it('names one lock for the shared key `stats:1` and the key `1` of the job `stats`', async () => {
+    await using application = await app({ cache: true, env: { CACHE_DRIVER: 'memory' } });
+    expect(await blocked(application, { job: 'other', key: 'stats:1', shared: true }, { job: 'stats', key: '1' })).toEqual({ ran: false, released: 1 });
+    expect(await blocked(application, { job: 'other', key: 'stats:1', shared: true }, { job: 'stats', key: '2' }), 'another key is another lock').toEqual({ ran: true, released: 0 });
+  });
+});
+
+describe('a key that names the lock of another job', () => {
+  const named = (name: string) => class { static readonly job = name; static readonly schema = v.object({}); handle() {} };
+  class Reports extends named('reports') {}
+  class ReportsDaily extends named('reports:daily') {}
+  class Alone extends named('alone') {}
+  const refusal = (job = 'reports', other = 'reports:daily', rest = 'daily') =>
+    `A key of the job "${job}" that continues past "${rest}:" names the same lock as a key of the job "${other}". Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with "${rest}:". See docs/queues.md#unique-jobs.`;
+  // `toEqual` and `toThrow` do not see `key` (not enumerable), so the tests assert it with `toHaveProperty`.
+  const lockError = (job = 'reports', other = 'reports:daily', rest = 'daily', kind: 'unique' | 'overlap' = 'unique') => new JobKeyLockError(refusal(job, other, rest), job, other, '', kind);
+  const modules = [{ name: 'test', jobs: [Reports, ReportsDaily, Alone] }];
+  const env = { CACHE_DRIVER: 'memory' };
+
+  it('is refused at dispatch with a QueueError, on a queued and on the sync connection', async () => {
+    for (const driver of ['database', 'sync']) {
+      await using application = await app({ cache: true, env: { ...env, QUEUE_DRIVER: driver }, modules });
+      const queue = application.container.make(Queue);
+      await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toThrow(lockError());
+      await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toHaveProperty('key', 'daily:7');
+      await expect(queue.dispatch(Reports, {}, { unique: 'daily:7' }), driver).rejects.toBeInstanceOf(QueueError);
+    }
+  });
+
+  // A middleware context as the runner builds it: the job context carries the registry; `fail` and `release` are recorded.
+  const middlewareContext = (application: Application, job = 'reports') => {
+    const failed: unknown[] = [];
+    const released: unknown[] = [];
+    const jobContext = { name: job, release: (delay: unknown) => released.push(delay), fail: (reason: unknown) => failed.push(reason), [JOB_REGISTRY]: application.container.make(JobRegistry) };
+    const context = { payload: {}, job: jobContext, timeoutSeconds: 60, retryAfterSeconds: 90, cache: async () => application.container.make(Cache) } as unknown as JobMiddlewareContext;
+    return { context, failed, released };
+  };
+
+  it('fails the job of withoutOverlapping() without shared — also through a copy of the context — and is refused by the QueueFake like a real dispatch', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const { context, failed } = middlewareContext(application);
+    let ran = false;
+    await withoutOverlapping('daily:7').handle(context, async () => {
+      ran = true;
+    });
+    await withoutOverlapping('daily:7').handle({ ...context }, async () => {
+      ran = true;
+    });
+    expect([ran, failed]).toEqual([false, [lockError('reports', 'reports:daily', 'daily', 'overlap'), lockError('reports', 'reports:daily', 'daily', 'overlap')]]);
+    expect(failed.map((error) => (error as JobKeyLockError).key)).toEqual(['daily:7', 'daily:7']);
+    await expect(new QueueFake(application.container).dispatch(Reports, {}, { unique: 'daily:7' })).rejects.toThrow(lockError());
+  });
+
+  it('is a JobKeyLockError that names both jobs, and still a QueueError', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const error = await application.container.make(Queue).dispatch(Reports, {}, { unique: 'daily:7' }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(JobKeyLockError);
+    expect(error).toBeInstanceOf(QueueError);
+    expect(error).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily' });
+  });
+
+  it('records the key and where it came from: `unique` for the dispatch key, `overlap` for the key of withoutOverlapping()', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const dispatched = await application.container.make(Queue).dispatch(Reports, {}, { unique: 'daily:7' }).catch((caught: unknown) => caught);
+    expect(dispatched).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:7', kind: 'unique' });
+    const { context, failed } = middlewareContext(application);
+    await withoutOverlapping('daily:8').handle(context, async () => {});
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ name: 'JobKeyLockError', job: 'reports', other: 'reports:daily', key: 'daily:8', kind: 'overlap' });
+  });
+
+  it('refuses a key through a copy of the context whose job context is copied too, and never prints the key', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const { context, failed } = middlewareContext(application);
+    const copy = { ...context, job: { ...context.job, release: () => {} } } as JobMiddlewareContext;
+    let ran = false;
+    await withoutOverlapping('daily:alice@example.com').handle(copy, async () => {
+      ran = true;
+    });
+    expect(ran, 'the attempt did not run').toBe(false);
+    expect(failed).toEqual([lockError('reports', 'reports:daily', 'daily', 'overlap')]);
+    const queue = application.container.make(Queue);
+    const error = await queue.dispatch(Reports, {}, { unique: 'daily:alice@example.com' }).catch((caught: unknown) => caught);
+    expect(error).toEqual(lockError());
+    expect((error as Error).message).not.toContain('alice@example.com');
+    // The key stays readable on the error but is not an own enumerable property, so a record or a log line never serializes it.
+    for (const [place, caught] of [['dispatch', error], ['failed job', failed[0]]] as const) {
+      expect(caught, place).toHaveProperty('key', 'daily:alice@example.com');
+      expect(Object.keys(caught as object), place).not.toContain('key');
+      expect(JSON.stringify({ ...(caught as object) }), place).not.toContain('alice@example.com');
+      expect(describeError(caught, application.container.make(Redactor)), place).not.toContain('alice@example.com');
+    }
+  });
+
+  it('still refuses `daily::`, but passes `daily:`, `daily`, `dailyx`, `daily-7` and `dailyxy` as a unique key and as a per-job key', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const queue = application.container.make(Queue);
+    await expect(queue.dispatch(Reports, {}, { unique: 'daily::' })).rejects.toThrow(lockError());
+    await expect(queue.dispatch(Reports, {}, { unique: 'daily::' })).rejects.toHaveProperty('key', 'daily::');
+    for (const key of ['daily:', 'daily', 'dailyx', 'daily-7', 'dailyxy']) {
+      expect(await queue.dispatch(Reports, {}, { unique: key }), `unique ${key}`).toEqual(expect.any(String));
+      const { context, failed } = middlewareContext(application);
+      let ran = false;
+      await withoutOverlapping(key).handle(context, async () => {
+        ran = true;
+      });
+      expect([ran, failed], `per-job ${key}`).toEqual([true, []]);
+    }
+    const refused = middlewareContext(application);
+    await withoutOverlapping('daily::').handle(refused.context, async () => {});
+    expect(refused.failed).toEqual([lockError('reports', 'reports:daily', 'daily', 'overlap')]);
+    expect(refused.failed[0]).toHaveProperty('key', 'daily::');
+  });
+
+  it('fails a job of a running worker whose middleware key names the lock of another job', async () => {
+    class Guarded {
+      static readonly job = 'guarded';
+      static readonly schema = v.object({});
+      static readonly tries = 3;
+      static readonly middleware = [withoutOverlapping(() => 'inner:alice@example.com')];
+      handle() {}
+    }
+    class GuardedInner extends named('guarded:inner') {}
+    await using application = await app({ cache: true, env, modules: [{ name: 'test', jobs: [Guarded, GuardedInner] }] });
+    const fake = new QueueFake(application.container);
+    await fake.dispatch(Guarded, {});
+    expect(await fake.work(), 'the job fails after one attempt, not three').toMatchObject({ failed: 1, released: 0 });
+    const failures = JSON.stringify(await fake.failed());
+    expect(failures).toContain('names the same lock as a key of the job');
+    expect(failures, 'the key is not in the failed job').not.toContain('alice@example.com');
+  });
+
+  it('rejects the dispatch on the sync connection when a per-job withoutOverlapping() key names the lock of another job', async () => {
+    class Guarded {
+      static readonly job = 'guarded';
+      static readonly schema = v.object({});
+      static readonly middleware = [withoutOverlapping('inner:1')];
+      handle() {}
+    }
+    class GuardedInner extends named('guarded:inner') {}
+    await using application = await app({ cache: true, env: { ...env, QUEUE_DRIVER: 'sync' }, modules: [{ name: 'test', jobs: [Guarded, GuardedInner] }] });
+    await expect(application.container.make(Queue).dispatch(Guarded, {})).rejects.toThrow(lockError('guarded', 'guarded:inner', 'inner', 'overlap'));
+    await expect(application.container.make(Queue).dispatch(Guarded, {})).rejects.toHaveProperty('key', 'inner:1');
+  });
+
+  it('passes a key that names no lock of another job', async () => {
+    await using application = await app({ cache: true, env, modules });
+    const queue = application.container.make(Queue);
+    expect(await queue.dispatch(Reports, {}, { unique: '7' })).toEqual(expect.any(String));
+    expect(await queue.dispatch(ReportsDaily, {}, { unique: '7' }), 'the longer name has no longer sibling').toEqual(expect.any(String));
+    const shared = middlewareContext(application).context;
+    let ran = false;
+    await withoutOverlapping('daily:7', { shared: true }).handle(shared, async () => {
+      ran = true;
+    });
+    expect(ran, 'a shared key is no per-job key').toBe(true);
+  });
+
+  it('passes a job with no longer sibling and a key that starts like a longer name', async () => {
+    await using application = await app({ cache: true, env, modules: [{ name: 'test', jobs: [Reports, Alone] }] });
+    expect(await application.container.make(Queue).dispatch(Reports, {}, { unique: 'daily:7' })).toEqual(expect.any(String));
   });
 });

@@ -2,7 +2,9 @@ import { CommandArgumentsError, environment, Application, Logger } from '@marmeo
 import { environmentChecks, exitAfterShutdown } from '@marmeon/core/internal';
 import type { CommandInput } from 'marmeon';
 import { QueueConnections } from '../connections.ts';
-import { QueueSetupError } from '../registry.ts';
+import { lockNamePairs } from '../job-lock-names.ts';
+import type { JobClass } from '../job.ts';
+import { JobRegistry, nameOf, QueueSetupError } from '../registry.ts';
 
 /** Exit code of a worker that had to give up on a job that ignored its timeout (the supervisor restarts it). */
 export const EXIT_STUCK = 70;
@@ -73,6 +75,7 @@ export class QueueWorkCommand {
     if (fromDotEnv) this.#logger.warn(fromDotEnv);
     // The environment it assumed: `in production (APP_ENV=staging)`, `in production (APP_ENV=production, NODE_ENV unset)`.
     output.line(`Processing jobs of the ${connection} connection: ${describeQueues(queues, this.#connections.options(connection).driver)} — in ${environment.describe()}`);
+    this.#warnLockNames(output);
     try {
       const result = await worker.run({
         ...(queues ? { queues } : {}),
@@ -93,6 +96,25 @@ export class QueueWorkCommand {
     }
   }
 
+  /** One warning per pair of job names that can share a lock. A warning never stops the worker. */
+  #warnLockNames(output: CommandInput['output']): void {
+    try {
+      const classes = new Map<string, string>();
+      for (const job of this.#app.container.make(JobRegistry).all()) classes.set(job.job, safeName(job));
+      for (const [short, long] of lockNamePairs([...classes.keys()])) {
+        try {
+          output.warn(
+            `The jobs "${short}" (${classes.get(short)}) and "${long}" (${classes.get(long)}) can share a lock: "${short}" with the key "${long.slice(short.length + 1)}:<key>" and "${long}" with the key "<key>" name one lock, for a unique key as for a withoutOverlapping() key without shared. The queue refuses such a unique key of "${short}" with a QueueError at dispatch, and fails the job at once, without retrying, when its withoutOverlapping() key does: it goes to the failed jobs (on sync, the dispatch call throws). Rename one of the jobs so it does not begin with the other's name and a colon (keep the old name registered until its waiting jobs are gone), or build the keys of "${short}" so they do not start with "${long.slice(short.length + 1)}:". See docs/queues.md#unique-jobs.`,
+          );
+        } catch {
+          // This pair's line cannot be made or printed: the next pair is still checked.
+        }
+      }
+    } catch {
+      // A warning that cannot be made never stops the worker.
+    }
+  }
+
   #setup(input: CommandInput) {
     const { options } = input;
     const connection = typeof options.connection === 'string' ? options.connection : this.#connections.default;
@@ -107,6 +129,15 @@ export class QueueWorkCommand {
     }
     const worker = this.#connections.worker(connection, stopTimeout);
     return { connection, stopTimeout, queues, worker, sleep: number(input, 'sleep', 1)!, maxJobs: number(input, 'max-jobs'), maxTime: number(input, 'max-time') };
+  }
+}
+
+/** A class's name for a message: `nameOf`, and a stand-in when the class's `name` is a getter that throws. */
+function safeName(job: JobClass): string {
+  try {
+    return nameOf(job);
+  } catch {
+    return '(unnamed class)';
   }
 }
 
