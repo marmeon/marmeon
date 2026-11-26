@@ -1456,6 +1456,247 @@ describe('a hostile package.json and its declarations', () => {
       }
     });
 
+    it('are followed for an import that the entry exports again, and only inside the package', () => {
+      const files = {
+        'index.js': 'export class Mailer {}\nexport class Clock {}\n',
+        'index.d.ts': "import { Mailer } from './mailer.js';\nimport { Clock } from './clock.js';\nexport { Mailer, Clock };\n",
+        'mailer.d.ts': "import { Clock } from './clock.js';\nexport declare class Mailer {\n    constructor(clock: Clock);\n}\n",
+        'clock.d.ts': 'export declare class Clock {}\n',
+      };
+      const { manifest } = generateManifest({ root: appWith(entry, files).app, conditions: PROD });
+      const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+      expect(mailer && 'inject' in mailer ? mailer.inject.map(([, name]) => name) : mailer).toEqual(['Clock']);
+
+      // The same class, imported with `import type` next to a class of the package that is exported at run time: Mailer gets no injection list.
+      const typeOnly = { ...files, 'index.d.ts': "import type { Mailer } from './mailer.js';\nimport { Clock } from './clock.js';\nexport { Mailer, Clock };\n" };
+      const hidden = generateManifest({ root: appWith(entry, typeOnly).app, conditions: PROD }).manifest;
+      expect(hidden.injections.map((item) => item.class[1])).not.toContain('Mailer');
+
+      const outside = { ...files, 'index.d.ts': "import { Outside } from '../../../outside.js';\nexport { Outside };\n" };
+      expect(() => generateManifest({ root: appWith(entry, outside).app, conditions: PROD })).toThrow(outsideRefusal);
+    });
+
+    it('keep a provider that an import from another package, or a shim that re-exports it, makes the entry export', () => {
+      const entryFiles = {
+        'index.js': 'export class Prov {\n  register() {}\n}\n',
+        'anonymous.js': 'export default class {\n  register() {}\n}\n',
+      };
+      const forms: Record<string, string> = {
+        'a named re-export': "import { Prov } from './shim.js';\nexport { Prov };\n",
+        'an export *': "import { Prov } from './star.js';\nexport { Prov };\n",
+        'a default that has no name': "import Prov from './anonymous.js';\nexport { Prov };\n",
+        'a default re-exported by name': "export { default as Prov } from './anonymous.js';\n",
+      };
+      for (const [name, types] of Object.entries(forms)) {
+        const { app } = appWith({ ...entry, marmeon: { providers: ['Prov'] } }, {
+          ...entryFiles,
+          'index.d.ts': types,
+          'shim.d.ts': "export { Prov } from 'other';\n",
+          'star.d.ts': "export * from 'other';\n",
+          'anonymous.d.ts': 'export default class {\n    register(): void;\n}\n',
+        });
+        expect(generateManifest({ root: app, conditions: PROD }).manifest.providers.map(([, provider]) => provider), name).toEqual(['Prov']);
+      }
+    });
+
+    it('inject the class a string-literal import names, for the entry and for a parameter type', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Clock {}\nexport class Mailer {}\nexport default class Other {}\n',
+          'index.d.ts': "import { \"Clock\" as C } from './clock.js';\nimport { \"Real\" as Mailer } from './mailer.js';\nexport { Mailer, C as Clock };\n",
+          'mailer.d.ts': "import { \"Clock\" as C } from './clock.js';\nexport declare class Real {\n    constructor(c: C);\n}\n",
+          'clock.d.ts': 'export declare class Clock {}\nexport default class Other {}\n',
+        }).app,
+        conditions: PROD,
+      });
+      const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+      expect(mailer && 'inject' in mailer ? mailer.inject.map(([, name]) => name) : mailer).toEqual(['Clock']);
+    });
+
+    const providersOf = (json: object, files: Record<string, string>, provider: string) =>
+      generateManifest({ root: appWith({ ...entry, marmeon: { providers: [provider] }, ...json }, { 'index.js': 'export class P {}\n', ...files }).app, conditions: PROD }).manifest.providers.map(
+        ([, name]) => name,
+      );
+    const cycle = {
+      'y.d.ts': "export * from './p.js';\nexport * from './x.js';\nexport declare class Q {}\n",
+      'x.d.ts': "export * from './y.js';\n",
+      'p.d.ts': 'export declare class P {}\n',
+      'y.js': 'export class Q {}\n',
+    };
+
+    it('find a provider through an "export *" cycle, from the entry or from a subpath read before it', () => {
+      expect(providersOf({}, { ...cycle, 'index.d.ts': "export { Q } from './y.js';\nexport * from './x.js';\n" }, 'P')).toEqual(['P']);
+      expect(
+        providersOf({ exports: { './y': './y.js', '.': './index.js' } }, { ...cycle, 'index.d.ts': "export * from './x.js';\n" }, 'P'),
+      ).toEqual(['P']);
+      const swapped = { ...cycle, 'y.d.ts': "export * from './x.js';\nexport * from './p.js';\nexport declare class Q {}\n" };
+      expect(providersOf({}, { ...swapped, 'index.d.ts': "export { Q } from './y.js';\nexport * from './x.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({ exports: { './y': './y.js', '.': './index.js' } }, { ...swapped, 'index.d.ts': "export * from './x.js';\n" }, 'P')).toEqual(['P']);
+    });
+
+    it('find a provider that a file declares after the "export *" and the import that lead back to the file being read', () => {
+      const files = {
+        'index.d.ts': "export { helper } from './a.js';\nexport * from './b.js';\n",
+        'a.d.ts': "import { B } from './b.js';\nexport { B };\nexport declare function helper(): void;\nexport declare class P {\n    register(): void;\n}\n",
+        'b.d.ts': "export * from './a.js';\nexport declare class B {}\n",
+      };
+      expect(providersOf({}, files, 'P')).toEqual(['P']);
+    });
+
+    it('find a provider of a file that imports and exports a class of the file a subpath reads before it', () => {
+      const files = {
+        'token.js': 'export class Token {}\n',
+        'index.js': 'export class Prov {\n  register() {}\n}\n',
+        'index.d.ts': "import { Token } from './token.js';\nexport { Token };\nexport declare class Prov {\n    register(): void;\n}\n",
+        'token.d.ts': "import { Prov } from './index.js';\nexport { Prov };\nexport declare class Token {}\n",
+      };
+      expect(providersOf({ main: './token.js', types: './token.d.ts', exports: { './index': './index.js', '.': './token.js' } }, files, 'Prov')).toEqual(['Prov']);
+    });
+
+    it('take no location from a file still being read: a later export of its own may shadow the one it shows now', () => {
+      const { manifest } = generateManifest({
+        root: appWith(
+          { exports: { './q': './q.js', './p': './p.js', '.': './index.js' } },
+          {
+            'index.js': 'export class Clock {}\nexport class Key {}\nexport class Mailer {}\n',
+            'q.js': 'export class Clock {}\n',
+            'p.js': 'export class Mailer {}\n',
+            'index.d.ts':
+              "export * from './s.js';\nexport { helper } from './h.js';\nexport declare class Clock {}\nexport declare class Key {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n",
+            's.d.ts': "import { Key } from './index.js';\nexport declare class Mailer {\n    constructor(k: Key);\n}\n",
+            'h.d.ts': "export declare function helper(): void;\nexport * from './p.js';\n",
+            'p.d.ts': "export { Mailer } from './index.js';\n",
+            'q.d.ts': "import { Clock } from './index.js';\nexport { Clock };\n",
+          },
+        ).app,
+        conditions: PROD,
+      });
+      const lists = manifest.injections.filter((item) => item.class[1] === 'Mailer' && 'inject' in item).map((item) => ('inject' in item ? item.inject.map(([, name]) => name) : []));
+      expect(lists.length).toBeGreaterThan(0);
+      for (const list of lists) expect(list).toEqual(['Clock']);
+    });
+
+    describe('an injected class that the entry and a subpath both export', () => {
+      const files = {
+        'index.js': 'export class Clock {}\nexport class Mailer {}\n',
+        'extra.js': 'export class Clock {}\nexport class Mailer {}\n',
+        'index.d.ts': 'export declare class Clock {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n',
+        'extra.d.ts': "export { Clock, Mailer } from './index.js';\n",
+      };
+      const found = (exports: Record<string, string>, more: Record<string, string> = {}) => {
+        const { manifest } = generateManifest({ root: appWith({ exports }, { ...files, ...more }).app, conditions: PROD });
+        const file = (index: number) => manifest.modules[index]!.replace(/^.*\//, '');
+        const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+        return {
+          modules: manifest.modules.map((url) => url.replace(/^.*\//, '')),
+          class: mailer && [file(mailer.class[0]), mailer.class[1]],
+          inject: mailer && 'inject' in mailer ? mailer.inject.map(([index, name]) => [file(index), name]) : undefined,
+        };
+      };
+
+      it('comes from the first of them in the order of "exports"', () => {
+        expect(found({ './extra': './extra.js', '.': './index.js' })).toEqual({
+          modules: ['extra.js'],
+          class: ['extra.js', 'Mailer'],
+          inject: [['extra.js', 'Clock']],
+        });
+        expect(found({ '.': './index.js', './extra': './extra.js' })).toEqual({
+          modules: ['index.js'],
+          class: ['index.js', 'Mailer'],
+          inject: [['index.js', 'Clock']],
+        });
+      });
+
+      it('comes from a subpath when the entry does not export it', () => {
+        const entry = { 'entry.js': 'export const v = 1;\n', 'entry.d.ts': 'export declare const v: number;\n' };
+        expect(found({ './extra': './extra.js', '.': './entry.js' }, entry)).toEqual({
+          modules: ['extra.js'],
+          class: ['extra.js', 'Mailer'],
+          inject: [['extra.js', 'Clock']],
+        });
+      });
+    });
+
+    it('leave a package whose root has no declaration file alone when its types import ".."', () => {
+      const { app } = appWith(
+        { main: './dist/index.js', types: './dist/index.d.ts' },
+        { 'dist/index.js': 'export const v = 1;\n', 'dist/index.d.ts': "import { v } from '..';\nexport { v };\n" },
+      );
+      expect(generateManifest({ root: app, conditions: PROD }).summary.packages).toEqual(['hostile']);
+    });
+
+    it('keep the list of a local class when the default export of another file takes its public name', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Internal {}\nexport class Mailer {}\nexport class Clock {}\nexport class Key {}\n',
+          'index.d.ts':
+            "export declare class Key {}\ndeclare class Mailer {\n    constructor(k: Key);\n}\nexport { Mailer as Internal };\nexport { default as Mailer, Clock } from './anon.js';\n",
+          'anon.d.ts': 'export default class {\n    constructor(c: Clock);\n}\n',
+        }).app,
+        conditions: PROD,
+      });
+      const listOf = (name: string) => manifest.injections.find((item) => item.class[1] === name);
+      expect(listOf('Mailer')).toBeUndefined();
+      const internal = listOf('Internal');
+      expect(internal && 'inject' in internal ? internal.inject.map(([, name]) => name) : internal).toEqual(['Key']);
+    });
+
+    it('refuse a provider that the entry exports as a type only, with the message that names the package', () => {
+      expect(() =>
+        providersOf({}, { 'index.d.ts': "export { T } from './t.js';\n", 't.d.ts': 'export interface T {}\n' }, 'T'),
+      ).toThrow(/^\[marmeon:K7\] hostile lists provider "T" in package\.json, but its entry does not export it\.$/);
+    });
+
+    it('accept a provider that the entry exports from another package, directly or through "export *" of a file it reaches', () => {
+      expect(providersOf({}, { 'index.d.ts': "export { P } from '@x/other';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "export * from './star.js';\n", 'star.d.ts': "export * from '@x/other';\n" }, 'P')).toEqual(['P']);
+    });
+
+    it('keep a provider that the entry exports from a file without declarations, or from a JSON file', () => {
+      expect(providersOf({}, { 'index.d.ts': "import { P } from './p.js';\nexport { P };\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "export { P } from './p.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "export * from './p.js';\n" }, 'P')).toEqual(['P']);
+      expect(providersOf({}, { 'index.d.ts': "import P from './data.json';\nexport { P };\n", 'data.json': '{}' }, 'P')).toEqual(['P']);
+    });
+
+    it('still refuse a JSON file that is a symlink out of the package', () => {
+      const { app, dir } = appWith({ ...entry, marmeon: { providers: ['P'] } }, { 'index.js': 'export class P {}\n', 'index.d.ts': "import P from './data.json';\nexport { P };\n" });
+      symlinkSync(join(app, '../outside.d.ts'), join(dir, 'data.json'));
+      expect(() => generateManifest({ root: app, conditions: PROD })).toThrow(outsideRefusal);
+    });
+
+    it('follow a ".cjs" import to its ".d.cts" and give the class its list', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Mailer {}\nexport class Clock {}\n',
+          'index.d.ts': "import { Mailer, Clock } from './m.cjs';\nexport { Mailer, Clock };\n",
+          'm.d.cts': 'export declare class Clock {}\nexport declare class Mailer {\n    constructor(c: Clock);\n}\n',
+        }).app,
+        conditions: PROD,
+      });
+      const mailer = manifest.injections.find((item) => item.class[1] === 'Mailer');
+      expect(mailer && 'inject' in mailer ? mailer.inject.map(([, name]) => name) : mailer).toEqual(['Clock']);
+    });
+
+    it('treat "export type *" as no value: no injection entry for a class there, and no provider from another package', () => {
+      const { manifest } = generateManifest({
+        root: appWith(entry, {
+          'index.js': 'export class Mailer {}\n',
+          'index.d.ts': "export type * from './mailer.js';\n",
+          'mailer.d.ts': 'export declare class Mailer {\n    constructor(x: number);\n}\n',
+        }).app,
+        conditions: PROD,
+      });
+      expect(manifest.injections).toEqual([]);
+      expect(() => providersOf({}, { 'index.d.ts': "export type * from 'other';\n" }, 'P')).toThrow(
+        /^\[marmeon:K7\] hostile lists provider "P" in package\.json, but its entry does not export it\.$/,
+      );
+    });
+
+    it('do not read the file of "export * as ns", so one that leads out of the package refuses nothing', () => {
+      expect(providersOf({}, { 'index.d.ts': "export * as ns from './x.js';\nexport * from './p.js';\n", 'x.d.ts': "export * from '../../../outside.js';\n", 'p.d.ts': 'export declare class P {}\n' }, 'P')).toEqual(['P']);
+    });
+
     it('are not followed through a symlink out of the package', () => {
       const directory = appWith(entry, { 'index.js': empty, 'index.d.ts': "export * from './link/outside.js';\n" });
       symlinkSync(directory.root, join(directory.dir, 'link'));

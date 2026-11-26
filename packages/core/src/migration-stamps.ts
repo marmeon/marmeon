@@ -61,8 +61,9 @@ export function stampsBehind(
   }
   const dates = Array.from({ length: count }, (_, index) => new Date(start + index * 1000));
   for (const date of dates) {
+    // Start is now (newer than newest) or newest + 1 s, so every stamp is behind newest; only a year past 9999 leaves no room.
     const stamp = migrationTimestamp(date);
-    if (!/^\d{4}_/.test(stamp) || (newest !== undefined && stamp <= newest.stamp)) {
+    if (!/^\d{4}_/.test(stamp)) {
       return { error: `${relative(root, newest!.path)} has a timestamp that leaves no room behind it — rename it with an earlier one.` };
     }
   }
