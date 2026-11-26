@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import type { Driver } from './schema/blueprint.ts';
 import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 import { Connections } from './connections.ts';
+import { shielded, unshielded } from './driver.ts';
 import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
@@ -189,11 +190,12 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     if (!db.isTransaction) {
       if (this.#connections) return this.#connections.transaction(() => callback(this), this.#statics().connection ? { connection: this.#statics().connection! } : {});
       try {
-        return await db.transaction().execute(async (trx) => rollBackOnErr(await callback(this.using(trx))));
+        return await db.transaction().execute(async (trx) => rollBackOnErr(await shielded(async () => callback(this.using(trx)))));
       } catch (error) {
-        const result = errOfRollback(error);
+        const original = unshielded(error);
+        const result = errOfRollback(original);
         if (result) return result as R;
-        throw error;
+        throw original;
       }
     }
     const name = sql.raw(`repository_savepoint_${++savepoints}`);

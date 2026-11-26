@@ -69,8 +69,13 @@ export interface Queue {
    *
    * ```ts
    * const trx = await db.startTransaction().execute();
-   * await this.#queue.using(trx).dispatch(SendWelcomeMailJob, { userId: user.id });
-   * await trx.commit().execute();
+   * try {
+   *   await this.#queue.using(trx).dispatch(SendWelcomeMailJob, { userId: user.id });
+   *   await trx.commit().execute();
+   * } catch (error) {
+   *   await trx.rollback().execute();
+   *   throw error;
+   * }
    * ```
    */
   using(transaction: Transaction<any>): Queue;

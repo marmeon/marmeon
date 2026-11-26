@@ -9,7 +9,7 @@ import type { ExposedTables, ModuleDatabase, Modules, TableOwners, Tables } from
 import { DEFAULT_INFRASTRUCTURE_POOL_MAX, describeConnection, type ConnectionOptions } from './config.ts';
 // Puts the relation methods on Kysely's select builder when it loads — every connection made here offers them.
 import './chain.ts';
-import { MarmeonDriver, DatabaseConnectionError, multipleConnections, UncheckedDriver, withMarmeonDriver } from './driver.ts';
+import { MarmeonDriver, DatabaseConnectionError, shielded, unshielded, multipleConnections, UncheckedDriver, withMarmeonDriver } from './driver.ts';
 import { InfrastructureDriver, type InfrastructureUsage } from './infrastructure.ts';
 import { onlyMigratorTables, registerInspection, registerMigrator } from './migrator-connection.ts';
 import { SchemaMetadata, type SchemaSource } from './metadata.ts';
@@ -136,10 +136,21 @@ export class Connections {
       name,
       (frame) => {
         const builder = options.isolationLevel ? db.transaction().setIsolationLevel(options.isolationLevel) : db.transaction();
-        return builder.execute(async (trx) => {
-          bindTransaction(trx, frame);
-          return rollBackOnErr(await callback(trx as Transaction<Tables>));
-        });
+        return builder
+          .execute(async (trx) => {
+            bindTransaction(trx, frame);
+            return rollBackOnErr(await shielded(async () => callback(trx as Transaction<Tables>)));
+          })
+          .then(
+            async (result) => {
+              await driver.closed(frame, true);
+              return result;
+            },
+            async (error: unknown) => {
+              await driver.closed(frame, false);
+              throw unshielded(error);
+            },
+          );
       },
       (run) => driver.exclusive(run),
     );
