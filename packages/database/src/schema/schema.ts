@@ -3,6 +3,7 @@ import type { RawBuilder, RawNode } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { isMigratorTable } from '../migration-state.ts';
 import { lastSegment, rawText, statementWords } from '../migrator-connection.ts';
+import { tableParts } from './table-name.ts';
 import { Blueprint, blueprintParts, closedPlan } from './blueprint.ts';
 import { hasExecutableComment } from './mysql-words.ts';
 import type { Driver } from './blueprint.ts';
@@ -60,8 +61,8 @@ export class Schema {
 
   /** Refuses a name the migrator keeps its tables under: `migrations` and `migration_lock`. */
   #allowed(table: string, action: string): void {
-    // The last segment: `public.migrations` and `main.migrations` are the same table.
-    if (!isMigratorTable(lastSegment(table))) return;
+    // The last segment: `public.migrations` and `main.migrations` are the same table. And the table Kysely sends: `public. migrations` and `public.migrations.x` are the table `migrations` of `public`.
+    if (!isMigratorTable(lastSegment(table)) && !isMigratorTable(tableParts(table).at(-1)!.name)) return;
     throw new SchemaError(
       withCode(
         'D4',

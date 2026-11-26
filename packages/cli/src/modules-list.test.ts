@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, readdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Application, createApplication, defineConfig, defineModule, env as e, EventRegistry, listen, type ModuleDefinition } from '@marmeon/core';
+import { Application, createApplication, defineConfig, defineModule, env as e, EventRegistry, listen, providerJobs, type ModuleDefinition } from '@marmeon/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { marmeon, repo } from './__fixtures__/cli.js';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
@@ -90,13 +90,15 @@ describe('modules:list --json', () => {
       listeners: [listen(NoteDeleted, TouchStats as never)],
       modules: [notes, defineModule({ name: 'quiet', providers: [Quiet] })],
     });
-    expect(readdirSync(directory)).toEqual(['v1-environment.json', 'v1.json']);
+    expect(readdirSync(directory)).toEqual(['v1-environment.json', 'v1-provider-jobs.json', 'v1.json']);
     const out = run(command, { json: true });
     const document = JSON.parse(out) as Record<string, unknown>;
     expect(Object.keys(document)[0]).toBe('format');
     expect(out.endsWith('\n')).toBe(true);
     // The first stored file predates `environment`; the second has it. Whether a variable is set depends on the machine.
-    const { environment, ...rest } = document;
+    // The older stored files have no `providerJobs`; it is compared in the test below.
+    const { environment, providerJobs: jobsOfProviders, ...rest } = document;
+    expect(jobsOfProviders).toEqual([]);
     expect(rest).toEqual(JSON.parse(readFileSync(new URL('v1.json', directory), 'utf8')));
     const withoutSet = (entries: Record<string, unknown>[]) => entries.map(({ set: _set, ...entry }) => entry);
     const stored = JSON.parse(readFileSync(new URL('v1-environment.json', directory), 'utf8')) as typeof document & { environment: Record<string, unknown>[] };
@@ -169,6 +171,147 @@ describe('modules:list --json', () => {
     expect(Object.keys(document.modules[0]!)).toEqual(['name', 'providers', 'commands', 'jobs', 'notifications', 'seeders', 'migrations']);
     expect(out).not.toContain('plain-value-1');
     expect(out).not.toContain('/hook');
+  });
+});
+
+/** A list of `length` items with only the given indexes set: the rest are holes, which an array literal cannot say without a lint error. */
+function sparse(length: number, items: Record<number, unknown>): unknown[] {
+  const list: unknown[] = [];
+  list.length = length;
+  return Object.assign(list, items);
+}
+
+describe('modules:list provider jobs', () => {
+  const directory = new URL('./__fixtures__/formats/cli-modules-list/', import.meta.url);
+
+  class ProcessMediaJob {
+    static job = 'media.process';
+  }
+  class Unnamed {}
+  class MediaProvider {
+    static [providerJobs] = [ProcessMediaJob, Unnamed];
+  }
+  class ThumbnailProvider extends MediaProvider {}
+  class Listless {
+    static [providerJobs] = 'not a list';
+    boot(): void {}
+  }
+
+  const text = (command: ModulesListCommand) => run(command);
+  type Entry = { provider: string; modules: string[]; jobs: { class: string; job: string | null }[] };
+  const entriesOf = (command: ModulesListCommand) => (JSON.parse(run(command, { json: true })) as { providerJobs: Entry[] }).providerJobs;
+
+  it('names the jobs of a provider with the provider, in text and in the document equal to the stored file', async () => {
+    const { command } = await build({ providers: [MediaProvider], modules: [defineModule({ name: 'quiet', providers: [Quiet] })] });
+    const out = text(command);
+    expect(out).toContain('Provider jobs\n  MediaProvider: ProcessMediaJob (media.process), Unnamed\n');
+    expect(out.indexOf('quiet')).toBeLessThan(out.indexOf('Provider jobs'));
+    const document = JSON.parse(run(command, { json: true })) as Record<string, unknown>;
+    expect(Object.keys(document)).toEqual(['format', 'packages', 'app', 'modules', 'providerJobs', 'events', 'environment', 'warnings']);
+    const { environment: _environment, ...rest } = document;
+    // The stored file leaves out `environment`, as the first one does: what is set depends on the machine.
+    expect(rest).toEqual(JSON.parse(readFileSync(new URL('v1-provider-jobs.json', directory), 'utf8')));
+  });
+
+  it('prints the jobs of providers after the modules and before the events', async () => {
+    const { command } = await build({ providers: [MediaProvider], listeners: [listen(NoteDeleted, TouchStats as never)], modules: [defineModule({ name: 'quiet', providers: [Quiet] })] });
+    const out = text(command);
+    expect(out.indexOf('quiet')).toBeLessThan(out.indexOf('Provider jobs'));
+    expect(out.indexOf('Provider jobs')).toBeLessThan(out.indexOf('Events'));
+  });
+
+  it('lists a provider that inherits the static as well, and names the modules that list each provider by class', async () => {
+    const { command } = await build({ providers: [MediaProvider], modules: [defineModule({ name: 'thumbs', providers: [ThumbnailProvider] })] });
+    expect(entriesOf(command).map((entry) => [entry.provider, entry.modules])).toEqual([['MediaProvider', []], ['ThumbnailProvider', ['thumbs']]]);
+  });
+
+  it('lists a provider that only reached app.providers, as discovery does, in registration order', async () => {
+    class Discovered {
+      static [providerJobs] = [ProcessMediaJob];
+      boot(): void {}
+    }
+    const { app } = await build({ providers: [MediaProvider] });
+    const discovered = Object.create(app, { providers: { value: [Discovered, ...app.providers] } }) as Application;
+    expect(discovered.definition.providers).not.toContain(Discovered);
+    const command = new ModulesListCommand(discovered, app.container.make(EventRegistry));
+    expect(entriesOf(command).map((entry) => [entry.provider, entry.modules])).toEqual([['Discovered', []], ['MediaProvider', []]]);
+  });
+
+  it('skips a list that is no array, and names a non-class, a hole and an odd name safely without throwing', async () => {
+    class Odd {
+      static job = 'odd.job';
+    }
+    Object.defineProperty(Odd, 'name', { value: 'Od\u0007d\u202ee' });
+    class Strange {
+      static [providerJobs] = sparse(6, { 0: 'text', 1: null, 2: 42, 3: {}, 5: Odd });
+    }
+    const { command } = await build({ providers: [Listless, Strange] });
+    expect(entriesOf(command)).toEqual([
+      {
+        provider: 'Strange',
+        modules: [],
+        jobs: [
+          { class: '(anonymous)', job: null },
+          { class: '(anonymous)', job: null },
+          { class: '(anonymous)', job: null },
+          { class: '(anonymous)', job: null },
+          { class: '(anonymous)', job: null },
+          { class: 'Od\u0007d\u202ee', job: 'odd.job' },
+        ],
+      },
+    ]);
+    expect(text(command)).toContain('Provider jobs\n  Strange: (anonymous), (anonymous), (anonymous), (anonymous), (anonymous), Od\\u0007d\\u202ee (odd.job)\n');
+  });
+
+  it('names the modules by class: two providers of one name in two modules each get their own', async () => {
+    const make = () => {
+      class Media {
+        static [providerJobs] = [ProcessMediaJob];
+      }
+      return Media;
+    };
+    const { command } = await build({ modules: [defineModule({ name: 'a', providers: [make()] }), defineModule({ name: 'b', providers: [make()] })] });
+    expect(entriesOf(command).map((entry) => [entry.provider, entry.modules])).toEqual([['Media', ['a']], ['Media', ['b']]]);
+  });
+
+  it('lists a provider that the app and a module both list once, at its first place, with the module', async () => {
+    const { command } = await build({ providers: [MediaProvider], modules: [defineModule({ name: 'media', providers: [MediaProvider] })] });
+    expect(entriesOf(command).map((entry) => [entry.provider, entry.modules])).toEqual([['MediaProvider', ['media']]]);
+    expect(Object.keys(entriesOf(command)[0]!)).toEqual(['provider', 'modules', 'jobs']);
+  });
+
+  it('writes a hole of a sparse providers list as an anonymous entry, never null', async () => {
+    const { command } = await build({ modules: [defineModule({ name: 'holey', providers: sparse(2, { 1: Quiet }) as never })] });
+    const document = JSON.parse(run(command, { json: true })) as { modules: { providers: unknown[] }[] };
+    expect(document.modules[0]!.providers).toEqual(['(anonymous)', 'Quiet']);
+  });
+
+  it('does not fail for a provider whose list is a getter that throws', async () => {
+    class Bomb {
+      static get [providerJobs](): never {
+        throw new Error('no list for you');
+      }
+      boot(): void {}
+    }
+    const { command } = await build({ providers: [Bomb, MediaProvider] });
+    expect(entriesOf(command).map((entry) => entry.provider)).toEqual(['MediaProvider']);
+  });
+
+  it('fills the holes of a sparse list of jobs, notifications and seeders of a module with an anonymous entry', async () => {
+    const holey = defineModule({ name: 'sparse', ...({ jobs: sparse(2, { 1: ExportNotes }), notifications: sparse(2, { 0: NoteShared }), seeders: sparse(2, { 1: NoteSeeder }) } as object) });
+    const { command } = await build({ modules: [holey] });
+    const [module] = (JSON.parse(run(command, { json: true })) as { modules: Record<string, unknown>[] }).modules;
+    expect(module).toMatchObject({
+      jobs: [{ class: '(anonymous)', job: null }, { class: 'ExportNotes', job: 'notes.export' }],
+      notifications: [{ class: 'NoteShared', notification: 'notes.shared' }, { class: '(anonymous)', notification: null }],
+      seeders: ['(anonymous)', 'NoteSeeder'],
+    });
+  });
+
+  it('has an empty list and no text block when no provider lists jobs', async () => {
+    const { command } = await build({ providers: [AppProvider, Listless] });
+    expect(entriesOf(command)).toEqual([]);
+    expect(text(command)).not.toContain('Provider jobs');
   });
 });
 

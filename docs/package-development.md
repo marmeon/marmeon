@@ -86,9 +86,15 @@ dependencies. A name in `providers` that the entry does not export stops the app
 `@acme/marmeon-request-log lists provider "RequestLogServiceProvider" in package.json, but its entry does not export it.`
 
 The app writes what it found to `.marmeon/manifest.json` and writes it again by itself when `package.json`, the lockfile or the
-resolution conditions change. It also does so when the `package.json` of a package in your workspace changes. Your workspace is the
-folder with `pnpm-workspace.yaml` (or a `package.json` with `workspaces`), else the folder of your lockfile; a package linked from
-outside it is not watched. If a folder above your app is writable by everyone or owned by someone other than you or root (such as a checkout owned by another user while the app runs as root in a container), the app looks no further up: it ignores a lockfile or workspace above that folder, so there you run `marmeon discover` after an install and after you change the `package.json` of a workspace package. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
+resolution conditions change. It also does so when the `package.json` of a package in your workspace changes. The app also writes it again when a folder from your app up to your workspace gains or loses a workspace marker or a lockfile, or starts or stops being trusted. An app without a workspace counts the folders above it up to the first untrusted one. Your workspace is the first folder, from your app upwards, that has a `pnpm-workspace.yaml` (or a `package.json` with `workspaces`) or a
+lockfile, else your app's folder. An app with a lockfile of its own is therefore its own workspace: a pnpm workspace with one lockfile per
+project does not watch the packages beside the app. The search for your workspace stops below the first folder above your app that everyone can
+write to or that a user other than you, root or the owner of your app owns; on a mount where every folder is writable by everyone (WSL
+`/mnt/c`, some bind mounts), discovery then sees only what your app's `node_modules` and the install trees of the packages linked there hold. There, run `marmeon discover` after an install. That check does not run on Windows, and it lets
+a folder pass that only a group can write to. Discovery looks for a package in the `node_modules` of the package that needs it and of each
+folder above it, up to your workspace. A package linked from outside your workspace is looked up only in its own install tree and is not
+watched; a name that is not installed there stays absent. A package in a `dependencies` list that is installed but out of that reach is named in a warning when the app starts, once per
+process. The [modules](modules.md#discovery) page explains discovery from the app's side, and how an app turns it off.
 
 ### Provider statics
 
@@ -202,7 +208,12 @@ needs one there throws. The [configuration](configuration.md#configuration-and-t
 
 The app builds a package's classes through the container like its own. Their constructors list what they need, and the lists of
 what to inject come from the build: `marmeon package:build` writes them into the compiled files. Without it, the app derives them
-at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export. Every parameter
+at start from the `.d.ts` files, for the classes that the package's entry and its other `exports` subpaths export.
+The app imports, when it starts, the module that each injected class comes from. A class that several subpaths of `exports`, `"."` included, export comes
+from the first of them in the order of `exports`, so list `"."` first when a subpath needs an optional or browser-only dependency.
+An import that the entry or a subpath exports again is followed when it is relative and inside the package. An import from another package, or
+from a file without a declaration file, is not followed, so that class gets no injection list (`K3` when the class is first built). A
+relative import that leads out of the package stops the start with `K7`. Every parameter
 must be a class or a token, as the [service container](container.md#constructor-injection) page explains. A class in a `browser`
 glob gets no list, so no injection code reaches a client bundle. `marmeon package:build` also marks a controller that answers with an
 [island](deferred-props.md#the-islands-route); a package built before that mark existed answers an island's request with a 404 until
@@ -362,25 +373,25 @@ export class MediaServiceProvider implements ServiceProvider {
 
 The job class is the one [queues](queues.md#the-job-class) describes. The app checks a provider's jobs when it starts, as it checks a module's. Each class needs a name, a schema and `handle()`. No name may belong to two classes. An encrypted job needs the `EncryptionServiceProvider` of `@marmeon/encryption`.
 
-A `static [providerJobs]` that is no list stops the start with `Q4`. On a provider with nothing else, `K9` refuses an empty list, a string, `null` or a `Set` before that. A plain `static jobs` or `static providerJobs` is never read. `marmeon` reads the list as well, to count the jobs as listed and to name them in tinker. Listing a class twice, in a module and a provider or in two providers, is no error.
+A `static [providerJobs]` that is no list stops the start with `Q4`. On a provider with nothing else, `K9` refuses an empty list, a string, `null` or a `Set` before that. A plain `static jobs` or `static providerJobs` is never read. `marmeon` reads the list as well, to count the jobs as listed, to name them in tinker and to list them in `modules:list`. Listing a class twice, in a module and a provider or in two providers, is no error.
 
 A build with `isolatedDeclarations` refuses the computed key (TS9038). Set the list in a static block there, with `import type { JobClass } from '@marmeon/queue'`: `static { Object.assign(this, { [providerJobs]: [ProcessMediaJob] satisfies readonly JobClass[] }); }`. Keep the `satisfies`, because nothing else checks the list's type. The list is then not in the `.d.ts`: a subclass that sets the key replaces it without a type error, so it sets its list in a static block too and spreads `(Parent as ServiceProviderClass)[providerJobs] ?? []`, with `import type { ServiceProviderClass } from '@marmeon/core'`. Such a build also needs a type on the job's `schema`, such as `StandardSchemaV1<{ mediaId: number }>`.
 
 - **Name:** Start the job's name with the package's name and a dot (`media.process`), not a colon, because the locks of a job join a name and a key with a colon. The name is the stored format of every record. A name that another package or the app uses stops the app at the start. Names under `marmeon.` belong to the framework and are refused. The whole app shares the keys of `job.once` and of `withoutOverlapping(…, { shared: true })`, so start them with the package's name too.
 - **Peer dependency:** List `@marmeon/core` and `@marmeon/queue` as peer dependencies, each with the range of the release that adds `static [providerJobs]`: an older core has no `providerJobs` export, and an older queue ignores the static, so the dispatch throws. Where the queue is optional, import it with `import type { … }`, not `import { type … }`, so the file has no import of it at run time. An app without the queue package then starts as usual, and nothing registers the jobs. Write the static as a plain list of classes: `marmeon` reads it without the queue and in the build phase, where the app's environment may be missing.
 - **Timeout:** A worker checks every job's `static timeout` when it starts, as it does for a module's job. With the default `retryAfterSeconds` of 90 and `--stop-timeout` of 10, a timeout of 80 seconds or more refuses the worker. The message names your provider, unless a module lists the job too. Keep the timeout well below that, or tell your users to raise `retryAfterSeconds`.
-- **Constructor injection:** Export the job class from the package's entry in this form, or build the package with `marmeon package:build`:
+- **Constructor injection:** Export the job class from the package's entry, or build the package with `marmeon package:build`.
 
   ```ts title="src/index.ts"
   export { ProcessMediaJob } from './ProcessMediaJob.ts';
   export { MediaServiceProvider } from './MediaServiceProvider.ts';
   ```
 
-  Without `marmeon package:build`, an import followed by `export { ProcessMediaJob }` gets no injection list. The missing list shows when the job first runs (`K3`).
+  The rules for the injection lists of a package's classes, the re-exports included, are those of [injected classes](#injected-classes); they apply to a job class as well.
 - **Subclasses:** A provider meant to be extended annotates `static [providerJobs]: readonly JobClass[] = [ProcessMediaJob]`, with `import type { JobClass } from '@marmeon/queue'`. The annotation lets a subclass add a class with another payload. A subclass that adds jobs spreads the parent's: `static override [providerJobs] = [...super[providerJobs], ResizeMediaJob]`. A subclass of a job can give itself another name only where the parent declares `static job: string`. Otherwise, write a job class of its own.
 - **Consent:** Installing a package is consent to run its jobs. Discovery also takes the dependencies of installed packages and the app's `devDependencies` where they are installed. With `discover: false` the app registers none of the installed packages, so you list the providers you want by hand ([without discovery](modules.md#without-discovery)). A waiting or failed record with the job's name runs in the class that has that name now, encrypted records included. The schema check and `static encrypted` still apply.
 
-`marmeon modules:list` and the MCP server list a module's jobs only, not the `static [providerJobs]` of a provider.
+`marmeon modules:list` and the MCP server list the jobs of providers apart from the modules' own, see [listing the modules](modules.md#listing-the-modules).
 
 ## Tables
 

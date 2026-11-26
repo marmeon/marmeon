@@ -118,7 +118,7 @@ An app in the build phase never booted, so no provider's `shutdown()` runs there
 
 ## What a provider brings besides code
 
-A provider class can carry these statics. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers, `@marmeon/queue` registers `static [providerJobs]` when the app boots (the CLI reads it as well, for its warning about unlisted jobs and for tinker), and `marmeon publish` reads `static migrations`:
+A provider class can carry these statics. The app reads the first three before any provider registers; the CLI reads `static commands` while it registers, `@marmeon/queue` registers `static [providerJobs]` when the app boots (the CLI reads it as well, for its warning about unlisted jobs, for tinker and to list them in `modules:list`), and `marmeon publish` reads `static migrations`:
 
 | Static | What it is |
 | --- | --- |

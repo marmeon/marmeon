@@ -2,6 +2,7 @@ import { ConsoleLogger, createApplication, type Application } from '@marmeon/cor
 import { Connections, DatabaseServiceProvider, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
+import { HttpError } from '@marmeon/router';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { freshDirectory, removeDirectories } from './__fixtures__/disks.ts';
 import { StorageServiceProvider, UPLOADS_TABLE } from './index.ts';
@@ -72,6 +73,20 @@ describe.skipIf(!PGSQL_URL)('temporary uploads on Postgres, beside the app’s t
       }),
     ).rejects.toThrow(Rollback);
     expect(await uploads.consume(id)).toBe(false);
+  });
+
+  it('a name with a NUL character is a 400, not a database error', async () => {
+    const uploads = app.container.make(TemporaryUploads);
+    const error = await uploads.target({ route: 'avatar.update', field: 'avatar', rule: { maxBytes: 100, mime: undefined }, session: 'nul', name: 'a\0.png', size: 10 }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(HttpError);
+    expect((error as HttpError).status).toBe(400);
+  });
+
+  it('a name with half of a surrogate pair is stored with U+FFFD in its place, as on SQLite', async () => {
+    const uploads = app.container.make(TemporaryUploads);
+    await uploads.target({ route: 'avatar.update', field: 'avatar', rule: { maxBytes: 100, mime: undefined }, session: 'half', name: '\ud83d.png', size: 10 });
+    const rows = await app.container.make(Connections).get().selectFrom(UPLOADS_TABLE as never).select('name' as never).where('session' as never, '=', 'half' as never).execute();
+    expect(rows).toEqual([{ name: '\ufffd.png' }]);
   });
 
   it('40 targets at once on the real pool leave at most 20 open uploads for the session', async () => {

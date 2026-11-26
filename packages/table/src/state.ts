@@ -83,6 +83,7 @@ function parseKey(definition: TableDefinition, key: string, raw: unknown): strin
     return value;
   }
   if (key === keys.search && searchable(definition)) {
+    if (!isText(value)) throw new TableQueryError(`${key}: no NUL character or half of a surrogate pair.`);
     const trimmed = value.trim();
     if (trimmed.length > MAX_SEARCH) throw new TableQueryError(`${key}: at most ${MAX_SEARCH} characters.`);
     return trimmed;
@@ -94,6 +95,7 @@ function parseKey(definition: TableDefinition, key: string, raw: unknown): strin
     if (found.type === 'select' || found.type === 'has') {
       // Options computed for each request are checked against that request's list (`checkState`); here only their shape.
       const allowed = found.source ? undefined : found.options;
+      if (!isText(value)) throw new TableQueryError(`${key}: no NUL character or half of a surrogate pair.`);
       if (allowed ? !allowed.includes(value) : value.length === 0 || value.length > 100) throw new TableQueryError(`${key}: one of its options.`);
       return value;
     }
@@ -104,6 +106,11 @@ function parseKey(definition: TableDefinition, key: string, raw: unknown): strin
     return value;
   }
   throw new TableQueryError(`${key}: the table "${definition.name}" has no such field.`);
+}
+
+/** Text a database takes (internal — row keys use it too): no NUL character (Postgres refuses it) and no half of a surrogate pair (it would be stored as U+FFFD). */
+export function isText(value: string): boolean {
+  return !value.includes('\0') && value.isWellFormed();
 }
 
 function isDay(value: string): boolean {

@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "packages": [],
+  "app": { "providers": ["MediaProvider"] },
+  "modules": [{ "name": "quiet", "providers": ["Quiet"], "commands": [], "jobs": [], "notifications": [], "seeders": [], "migrations": null }],
+  "providerJobs": [{ "provider": "MediaProvider", "modules": [], "jobs": [{ "class": "ProcessMediaJob", "job": "media.process" }, { "class": "Unnamed", "job": null }] }],
+  "events": [],
+  "warnings": []
+}

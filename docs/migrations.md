@@ -518,10 +518,18 @@ ends in error D3, and the message names a name over 63 bytes of UTF-8 as the pos
 name. Creating a table, or a column in the same table, or renaming one, to a name that is cut to one already taken ends in Postgres's own
 error instead. The comparison before a run does not name this cause.
 
-The check compares only the names a migration leaves. A longer name that is gone by the end of the migration is not reported, and Postgres
-still cuts it in every statement: `drop()`, `dropIfExists()` and `dropColumn()` with such a name act on the table or column that has those
-first 63 bytes, and so does a query of a `data()` step. Use names of at most 63 bytes for temporary tables and columns too. Names in
-`schema.raw()` and in `data()` steps are not checked, so test your migrations on Postgres.
+The check compares only the names a migration leaves. A longer name that is gone by the end of the migration is not reported when a
+step of the same plan made it: the plan holds it under the long name, so a later step of that plan finds it by that name.
+
+A step that names a table, column, index or check constraint by a name Postgres would cut acts on the one that has the first 63 bytes of
+the name, which is not the one you named. `drop()`, `dropIfExists()`, `dropColumn()`, `dropIndex()` and `dropUnique()` with such a name end
+in error D5 before the first statement of the run, and of the rollback for a `down()`. `rename()`, `renameColumn()`, `dropCheck()`,
+`schema.alter()` of such a table, and `notNull()`, `nullable()` and `oneOf()` of such a column end in error D19 in an `up()`, where the
+migrations know which tables exist; in a `down()` all of them but `oneOf()` end in error D5. The table and column a foreign key points at (`constrained()`, `foreign()`), and the columns an index covers or filters on with `where`, are asked the same way, in an `up()` and in a `down()`, and end in D5. The exemption is one plan: a step may use a
+name when an earlier step of the same migration created it, renamed a table or column to it, or added it. A step on a name that Postgres cuts to the same name as one the plan made withdraws that exemption, because Postgres reads the two as one. Marmeon asks the server where it cuts, in the encoding of the database. For a qualified table the table part and the schema are compared by their cuts, and a name without a schema counts as every schema. A name an earlier migration
+gave is not exempt, so use the name as Postgres stored it. For a qualified table name such as `analytics.events`, Marmeon asks the schema
+and the table as Postgres reads them, each on its own. Names in `schema.raw()` and in `data()` steps are not checked, and Postgres cuts
+them in every statement, so use names of at most 63 bytes for temporary tables and columns too, and test your migrations on Postgres.
 
 The names a migration gives to an index, a check constraint or a foreign key (error D5) are not measured by Marmeon: it asks the server
 whether it would cut each one, so the answer is that of the database's own encoding. A name of 40 `é` is 80 bytes in UTF8 and refused,

@@ -1,0 +1,5 @@
+{
+  "format": 1,
+  "modules": [{ "name": "a", "providers": ["P"] }, { "name": "b", "providers": [] }],
+  "providerJobs": [{ "provider": "P", "jobs": [{ "class": "ProcessMediaJob", "job": "media.process" }, { "class": "Unnamed", "job": null }] }]
+}

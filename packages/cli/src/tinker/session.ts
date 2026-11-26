@@ -3,10 +3,10 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { glob } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { EventDispatcher, EventRegistry, providerJobs, Translator, type Application, type Container, type Key } from '@marmeon/core';
+import { EventDispatcher, EventRegistry, Translator, type Application, type Container, type Key } from '@marmeon/core';
 import { belongsTo, findPackage, importPackage, isInside, resolveExports, runtimeConditions, withCode } from '@marmeon/core/internal';
 import { Router } from '@marmeon/router';
-import { appListedProviders } from '../app-providers.ts';
+import { appListedProviders, providerJobsOf } from '../app-providers.ts';
 import { secondCopies, UnreadableTree } from '../check/packages.ts';
 
 /** A helper of the session — what `.ls` lists. */
@@ -476,9 +476,7 @@ export class TinkerSession {
     // The jobs of every provider, the ones the app lists first: read through the prototype chain, the first of a name wins.
     const listedByApp = appListedProviders(this.app);
     for (const provider of [...listedByApp, ...this.app.providers.filter((candidate) => !listedByApp.includes(candidate))]) {
-      const jobs: unknown = (provider as { [providerJobs]?: unknown })[providerJobs];
-      if (!Array.isArray(jobs)) continue;
-      for (const job of jobs) {
+      for (const job of providerJobsOf(provider)) {
         const name = typeof job === 'function' ? (job as { name?: unknown }).name : undefined;
         if (typeof name === 'string' && NAME.test(name) && !this.#fallback.has(name)) this.#fallback.set(name, job as Key);
       }
