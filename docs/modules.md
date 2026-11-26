@@ -298,6 +298,7 @@ folder above it, up to your workspace. A package linked from outside your worksp
 watched; a name that is not installed there stays absent. A package in a `dependencies` list that is installed but out of that reach is named in a warning when the app starts, once per
 process. The app also writes the file again when a listed package is gone,
 such as after a production install without the dev dependencies.
+It also writes it once more when a listed provider is no longer a class, which can mean the list is out of date; only if the fresh list still names it does the app stop with `K7`.
 `marmeon build` writes the production list.
 
 The file is data and is never imported, so rewriting it restarts no development server. Git ignores `.marmeon/`.
