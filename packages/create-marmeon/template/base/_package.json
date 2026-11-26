@@ -51,12 +51,12 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "oxc-transform": "^0.157.0",
-    "oxlint": "^1.90.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "oxc-transform": "^0.159.0",
+    "oxlint": "^1.94.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   },
   "description": "An app without modules — what create-marmeon --minimal writes (pnpm template:sync), and the target of the make:auth fixture test (packages/auth/src/make-auth.test.ts)."
 }

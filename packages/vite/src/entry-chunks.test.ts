@@ -1,4 +1,7 @@
-import type { Rolldown } from 'vite';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { build, type Rolldown } from 'vite';
+import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { describe, expect, it } from 'vitest';
 import { entryChunks } from './entry-chunks.ts';
 
@@ -101,5 +104,28 @@ describe('entryChunks', () => {
     expect(chunking(edges, entries)('/m.ts')).toBe('index');
     edges['/pkg/client.js'] = { imports: ['/m.ts'] };
     expect(chunking(edges, entries)('/m.ts')).toMatch(/^shared-/);
+  });
+
+  it('labels every group whose name is a function, so a real build prints no code-splitting warning', async () => {
+    const logs: string[] = [];
+    const root = tempDir('marmeon-entry-chunks-');
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src/a.js'), "export const a = 'a';\nconsole.log(a);\n");
+    writeFileSync(join(root, 'src/b.js'), "export const b = 'b';\nconsole.log(b);\n");
+    const input = { index: join(root, 'src/a.js'), 'pkg-x': join(root, 'src/b.js') };
+    await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      build: {
+        write: false,
+        rolldownOptions: {
+          input,
+          output: { codeSplitting: entryChunks(new Map([[input.index, 'index'], [input['pkg-x'], 'pkg-x']])) },
+          onLog: (_level, log) => void logs.push(log.message),
+        },
+      },
+    });
+    expect(logs.filter((message) => message.includes('debugName'))).toEqual([]);
   });
 });
