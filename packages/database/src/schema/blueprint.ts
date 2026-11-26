@@ -348,6 +348,8 @@ interface BlueprintParts {
   readonly indexes: IndexSpec[];
   readonly drops: string[];
   readonly dropIndexes: string[];
+  /** The names `dropUnique()` gave, which are in `dropIndexes` too: only the message of a name Postgres would cut tells the two calls apart. */
+  readonly dropUniques: string[];
   readonly renames: { from: string; to: string }[];
   /** Existing columns that become NOT NULL (`nullable: false`) or nullable (`nullable: true`). */
   readonly nullability: { column: string; nullable: boolean }[];
@@ -388,6 +390,7 @@ export class Blueprint {
     indexes: [],
     drops: [],
     dropIndexes: [],
+    dropUniques: [],
     renames: [],
     nullability: [],
     retirements: [],
@@ -569,6 +572,7 @@ export class Blueprint {
   dropUnique(name: string): void {
     this.#open();
     this.#parts.dropIndexes.push(name);
+    this.#parts.dropUniques.push(name);
   }
 
   /**
@@ -631,8 +635,8 @@ export class Blueprint {
       if (spec.default) Object.freeze(spec.default);
       Object.freeze(spec);
     }
-    const { columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, oneOfChanges, checks, dropChecks } = this.#parts;
-    for (const list of [columns, indexes, drops, dropIndexes, renames, nullability, retirements, foreignKeys, oneOfChanges, checks, dropChecks]) Object.freeze(list);
+    const { columns, indexes, drops, dropIndexes, dropUniques, renames, nullability, retirements, foreignKeys, oneOfChanges, checks, dropChecks } = this.#parts;
+    for (const list of [columns, indexes, drops, dropIndexes, dropUniques, renames, nullability, retirements, foreignKeys, oneOfChanges, checks, dropChecks]) Object.freeze(list);
   }
 
   /** @internal — every index to create: table-level ones and `.unique()` on columns — all named, so all droppable. */

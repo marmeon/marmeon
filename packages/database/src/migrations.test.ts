@@ -804,6 +804,19 @@ describe.each(drivers)('names Postgres cuts (%s)', (driver) => {
   );
 
   migrates(
+    'drops and renames a table and a column of 70 bytes by their names on SQLite, which cuts nothing',
+    {
+      [`${stamp}_create_long`]: source(`    schema.create(${JSON.stringify(letters(70, 't'))}, (table: any) => { table.string(${JSON.stringify(letters(70))}); table.string('other'); });`),
+      '2026_02_02_000000_drop_long': source(`    schema.alter(${JSON.stringify(letters(70, 't'))}, (table: any) => { table.renameColumn(${JSON.stringify(letters(70))}, 'short'); });\n    schema.rename(${JSON.stringify(letters(70, 't'))}, 'moved');\n    schema.dropIfExists('moved');`),
+    },
+    async ({ connections }, run) => {
+      expect((await run.migrate()).map((ran) => ran.name)).toEqual([`${stamp}_create_long`, '2026_02_02_000000_drop_long']);
+      expect(await tablesOf(connections)).toEqual(['migrations']);
+    },
+    'sqlite',
+  );
+
+  migrates(
     'runs, queries and rolls back a table and a column of 70 bytes on SQLite',
     { [`${stamp}_create_long`]: source(create(letters(70, 't'), letters(70)), `    schema.drop('${letters(70, 't')}');`) },
     async ({ connections }, run) => {
@@ -926,6 +939,13 @@ describe.runIf(drivers.includes('pgsql' as never))('names Postgres measures in t
         expect(await indexesOf(own.connections)).toContain(`${to}_a_index`);
       });
 
+      it('drops a table of 40 letters of two bytes in UTF-8 by its name, which LATIN1 keeps whole', async () => {
+        const name = 'é'.repeat(40);
+        await migrate({ [`${stamp(5)}_create_wide`]: source(plain(name)) });
+        expect((await migrate({ [`${stamp(6)}_drop_wide`]: source(`    schema.drop(${JSON.stringify(name)});`) })).map((run) => run.name)).toEqual([`${stamp(6)}_drop_wide`]);
+        expect(await tablesOf(own.connections)).toEqual(['migrations']);
+      });
+
       it('refuses a name the encoding cannot hold, names it, and runs nothing', async () => {
         const name = '日本語_index';
         const error = await failure(migrate({ [`${stamp(4)}_cjk`]: source(withIndex('cjk_items', name)) }));
@@ -950,6 +970,17 @@ describe.runIf(drivers.includes('pgsql' as never))('names Postgres measures in t
         const accents = 'é'.repeat(31);
         await migrate({ [`${stamp(1)}_limit`]: source(withIndex('limit_a', exact) + '\n' + withIndex('limit_b', accents)) });
         expect(await indexesOf(own.connections)).toEqual(expect.arrayContaining([exact, accents]));
+      });
+
+      it('refuses a drop by 32 two-byte letters, 64 bytes, which Postgres cuts to the 31 letters of a table that exists', async () => {
+        const kept = 'é'.repeat(31);
+        const name = 'é'.repeat(32);
+        const module = moduleOf({ [`${stamp(9)}_create_kept`]: source(plain(kept)) });
+        await migrator(own.connections, module).migrate();
+        addFiles(module.migrations as string, { [`2026_03_09_000001_drop_cut`]: source(`    schema.drop(${JSON.stringify(name)});`) });
+        const error = await failure(migrator(own.connections, module).migrate());
+        expect(error.message).toBe(`[marmeon:D5] The table "${name}" is longer than Postgres's 63 bytes in this database's encoding, so drop() would act on the table its first 63 bytes name. Name the table as Postgres stored it.`);
+        expect(await tablesOf(own.connections)).toContain(kept);
       });
 
       it('refuses an index of 32 two-byte letters, 64 bytes', async () => {
@@ -1006,6 +1037,274 @@ describe.runIf(drivers.includes('pgsql' as never))('names Postgres measures in t
         expect(error.message).toMatch(/^\[marmeon:D5\] The check constraint name "o+_c+_check" is longer than Postgres's 63 bytes/);
         expect(await tablesOf(own.connections)).not.toContain('harmless_one');
         expect(await recordOf(own.connections)).toEqual([`${stamp(1)}_create_listless`]);
+      });
+
+      describe('a name Postgres would cut that a step only acts on', () => {
+        const table = 't'.repeat(63);
+        const column = 'c'.repeat(63);
+        const indexName = 'i'.repeat(63);
+        const uniqueName = 'u'.repeat(63);
+        const checkName = 'k'.repeat(63);
+        const tableFile = `${stamp(1)}_create_kept`;
+        const cutFile = `${stamp(4)}_cut`;
+        const acting = (kind: string, method: string, name: string) =>
+          `[marmeon:D5] The ${kind} "${name}" is longer than Postgres's 63 bytes in this database's encoding, so ${method} would act on the ${kind} its first 63 bytes name. Name the ${kind} as Postgres stored it.`;
+        const q = (name: string) => JSON.stringify(name);
+        const keeps = `    schema.create(${q(table)}, (table: any) => { table.string(${q(column)}); table.string('other'); table.index(['other'], ${q(indexName)}); table.unique([${q(column)}], ${q(uniqueName)}); table.check(${q(checkName)}, 'true'); });`;
+        const alters = (body: string, on = table) => `    schema.alter(${q(on)}, (table: any) => { ${body} });`;
+        const columnsOf = async (name: string) => (await own.connections.get<any>().introspection.getTables()).find((t) => t.name === name)!.columns.map((c) => c.name).sort();
+        // The indexes and check constraints of the table, as the database holds them.
+        const objectsOf = async () => {
+          const db = own.connections.get<any>();
+          const indexes = (await sql<{ name: string }>`select indexname as name from pg_indexes where tablename = ${table} order by indexname`.execute(db)).rows.map((row) => row.name);
+          const checks = (await sql<{ name: string }>`select conname as name from pg_constraint where conrelid = ${sql.lit(table)}::regclass and contype = 'c' order by conname`.execute(db)).rows.map((row) => row.name);
+          return { indexes, checks };
+        };
+        const unchanged = async (before: Awaited<ReturnType<typeof objectsOf>>, record: string[]) => {
+          expect(await tablesOf(own.connections)).toEqual(['migrations', table]);
+          expect(await columnsOf(table)).toEqual([column, 'other']);
+          expect(await objectsOf()).toEqual(before);
+          expect(await recordOf(own.connections)).toEqual(record);
+        };
+        const setup = async (down = '', up = keeps) => {
+          const module = moduleOf({ [tableFile]: source(up, down) });
+          await migrator(own.connections, module).migrate();
+          return module;
+        };
+        const forward = async (body: string, before?: string) => {
+          const module = await setup();
+          const objects = await objectsOf();
+          addFiles(module.migrations as string, { ...(before ? { [`${stamp(3)}_before`]: source(before) } : {}), [cutFile]: source(body) });
+          const error = await failure(migrator(own.connections, module).migrate());
+          return { error, objects };
+        };
+        let moduleFor: ModuleDefinition;
+        const rolled = async (down: string, up = keeps) => {
+          moduleFor = await setup(down, up);
+          const objects = await objectsOf();
+          const error = await failure(migrator(own.connections, moduleFor).rollback());
+          return { error, objects };
+        };
+        const d19 = (what: string) => `[marmeon:D19] Migration ${cutFile} (module "measured") changes ${what}, which no migration created with the blueprint. Create it with schema.create(): a change in raw SQL keeps no secret, soft-delete or timestamps mark. See docs/migrations.md#raw-sql.`;
+
+        it.each([
+          ['dropIfExists()', `    schema.dropIfExists(${q(`${table}x`)});`, acting('table', 'dropIfExists()', `${table}x`)],
+          ['drop()', `    schema.drop(${q(`${table}x`)});`, acting('table', 'drop()', `${table}x`)],
+          ['dropColumn()', alters(`table.dropColumn(${q(`${column}x`)});`), acting('column', 'dropColumn()', `${column}x`)],
+          ['dropIndex()', alters(`table.dropIndex(${q(`${indexName}x`)});`), acting('index', 'dropIndex()', `${indexName}x`)],
+          ['dropUnique()', alters(`table.dropUnique(${q(`${uniqueName}x`)});`), acting('index', 'dropUnique()', `${uniqueName}x`)],
+          ['dropIndex() of a name with a dot', alters(`table.dropIndex(${q(`x.${indexName}`)});`), acting('index', 'dropIndex()', `x.${indexName}`)],
+        ])('refuses %s by a name Postgres cuts, before the first statement, and changes nothing', async (_name, body, message) => {
+          const { error, objects } = await forward(body);
+          expect(error.message).toBe(message);
+          await unchanged(objects, [tableFile]);
+        });
+
+        it('refuses it before the first migration of a run, so an earlier one does not run either', async () => {
+          const { error, objects } = await forward(`    schema.dropIfExists(${q(`${table}x`)});`, plain('harmless_two'));
+          expect(error.message).toBe(acting('table', 'dropIfExists()', `${table}x`));
+          await unchanged(objects, [tableFile]);
+        });
+
+        it('runs a drop of the index, unique index and check constraint by the name Postgres stored, and of the column and table', async () => {
+          const module = await setup();
+          addFiles(module.migrations as string, { [cutFile]: source([alters(`table.dropIndex(${q(indexName)}); table.dropUnique(${q(uniqueName)}); table.dropCheck(${q(checkName)}); table.dropColumn('other');`), `    schema.dropIfExists(${q(table)});`].join('\n')) });
+          expect((await migrator(own.connections, module).migrate()).map((run) => run.name)).toEqual([cutFile]);
+          expect(await tablesOf(own.connections)).toEqual(['migrations']);
+        });
+
+        it.each([
+          ['rename()', `    schema.rename(${q(`${table}x`)}, 'moved');`, `table "${table}x"`],
+          ['renameColumn()', alters(`table.renameColumn(${q(`${column}x`)}, 'z');`), `column "${table}.${column}x"`],
+          ['dropCheck()', alters(`table.dropCheck(${q(`${checkName}x`)});`), `check constraint "${checkName}x" of table "${table}"`],
+          ['alter() of the table', alters("table.string('added');", `${table}x`), `table "${table}x"`],
+          ['notNull()', alters(`table.notNull(${q(`${column}x`)});`), `column "${table}.${column}x"`],
+          ['nullable()', alters(`table.nullable(${q(`${column}x`)});`), `column "${table}.${column}x"`],
+          ['oneOf() of an existing column', alters(`table.oneOf(${q(`${column}x`)}, ['a']);`), `column "${table}.${column}x"`],
+        ])('ends %s by a cut name in D19 in an up(), where the migrations know the tables, and changes nothing', async (_name, body, what) => {
+          const { error, objects } = await forward(body);
+          expect(error.message).toBe(d19(what));
+          await unchanged(objects, [tableFile]);
+        });
+
+        describe('in a down()', () => {
+          const rollbackRefused = async (down: string, message: string, up = keeps) => {
+            const { error, objects } = await rolled(down, up);
+            expect(error.message).toBe(message);
+            await unchanged(objects, [tableFile]);
+          };
+          it('refuses dropIfExists() by a cut name, and leaves the table and the record', () => rollbackRefused(`    schema.dropIfExists(${q(`${table}x`)});`, acting('table', 'dropIfExists()', `${table}x`)));
+          it('refuses rename() from a cut name', () => rollbackRefused(`    schema.rename(${q(`${table}x`)}, 'moved');`, acting('table', 'rename()', `${table}x`)));
+          it('refuses renameColumn() from a cut name', () => rollbackRefused(alters(`table.renameColumn(${q(`${column}x`)}, 'z');`), acting('column', 'renameColumn()', `${column}x`)));
+          it('refuses dropCheck() by a cut name', () => rollbackRefused(alters(`table.dropCheck(${q(`${checkName}x`)});`), acting('check constraint', 'dropCheck()', `${checkName}x`)));
+          it('refuses notNull() of a cut name', () => rollbackRefused(alters(`table.notNull(${q(`${column}x`)});`), acting('column', 'notNull()', `${column}x`)));
+          it('refuses nullable() of a cut name', () => rollbackRefused(alters(`table.nullable(${q(`${column}x`)});`), acting('column', 'nullable()', `${column}x`)));
+          it('refuses dropIndex() by a cut name', () => rollbackRefused(alters(`table.dropIndex(${q(`${indexName}x`)});`), acting('index', 'dropIndex()', `${indexName}x`)));
+
+          it('refuses alter() of a cut table name that an earlier up() made with raw SQL, and the column stays', async () => {
+            const rawTable = 'r'.repeat(63);
+            const up = `    schema.raw(sql.raw('create table ${rawTable} (c text)'));`;
+            moduleFor = moduleOf({ [tableFile]: source(up, alters("table.dropColumn('c');", `${rawTable}x`)) });
+            const withSql = readFileSync(join(moduleFor.migrations as string, `${tableFile}.ts`), 'utf8');
+            writeFileSync(join(moduleFor.migrations as string, `${tableFile}.ts`), `import { sql } from '${import.meta.resolve('kysely')}';\n${withSql}`);
+            await migrator(own.connections, moduleFor).migrate();
+            const error = await failure(migrator(own.connections, moduleFor).rollback());
+            expect(error.message).toBe(acting('table', 'alter()', `${rawTable}x`));
+            expect(await columnsOf(rawTable)).toEqual(['c']);
+            expect(await recordOf(own.connections)).toEqual([tableFile]);
+          });
+
+          it('runs a down() that renames and drops a table the same plan created, by the long name it gave', async () => {
+            const long = 'l'.repeat(70);
+            const down = [`    schema.create(${q(long)}, (table: any) => { table.string('a'); });`, `    schema.rename(${q(long)}, 'short_after');`, `    schema.drop('short_after');`, `    schema.drop(${q(table)});`].join('\n');
+            moduleFor = await setup(down);
+            expect((await migrator(own.connections, moduleFor).rollback()).map((run) => run.name)).toEqual([tableFile]);
+            expect(await tablesOf(own.connections)).toEqual(['migrations']);
+          });
+        });
+
+        describe('what a foreign key points at and the columns of an index', () => {
+          const rawSource = (up: string, down = '') => `import { sql } from '${import.meta.resolve('kysely')}';\n${source(up, down)}`;
+          const rawTable = 'r'.repeat(63);
+          const rawColumn = 'q'.repeat(63);
+
+          it('refuses a foreign key to a table name Postgres cuts, in an up(), and creates nothing', async () => {
+            const module = moduleOf({ [tableFile]: rawSource(`    schema.raw(sql.raw('create table ${rawTable} (id bigint primary key)'));`) });
+            await migrator(own.connections, module).migrate();
+            addFiles(module.migrations as string, { [cutFile]: source(`    schema.create('children', (table: any) => { table.id(); table.foreignId('owner_id').constrained(${q(`${rawTable}x`)}, 'id'); });`) });
+            const error = await failure(migrator(own.connections, module).migrate());
+            expect(error.message).toBe(acting('table', 'the foreign key', `${rawTable}x`));
+            expect(await tablesOf(own.connections)).toEqual(['migrations', rawTable]);
+            expect(await recordOf(own.connections)).toEqual([tableFile]);
+          });
+
+          it('refuses a foreign key to a column name Postgres cuts, in an up(), and creates nothing', async () => {
+            const module = moduleOf({ [tableFile]: rawSource(`    schema.raw(sql.raw('create table ${rawTable} (${rawColumn} bigint primary key)'));`) });
+            await migrator(own.connections, module).migrate();
+            addFiles(module.migrations as string, { [cutFile]: source(`    schema.create('children', (table: any) => { table.id(); table.foreignId('owner_id').constrained(${q(rawTable)}, ${q(`${rawColumn}x`)}); });`) });
+            const error = await failure(migrator(own.connections, module).migrate());
+            expect(error.message).toBe(acting('column', 'the foreign key', `${rawColumn}x`));
+            expect(await tablesOf(own.connections)).toEqual(['migrations', rawTable]);
+            expect(await recordOf(own.connections)).toEqual([tableFile]);
+          });
+
+          it('refuses an index on a column name Postgres cuts, in a down(), and makes no index', async () => {
+            const module = moduleOf({ [tableFile]: rawSource(`    schema.raw(sql.raw('create table ${rawTable} (${rawColumn} text)'));`, alters(`table.unique([${q(`${rawColumn}x`)}], 'short_uq');`, rawTable)) });
+            await migrator(own.connections, module).migrate();
+            const error = await failure(migrator(own.connections, module).rollback());
+            expect(error.message).toBe(acting('column', 'the index', `${rawColumn}x`));
+            const indexes = await sql<{ name: string }>`select indexname as name from pg_indexes where tablename = ${rawTable}`.execute(own.connections.get<any>());
+            expect(indexes.rows).toEqual([]);
+            expect(await recordOf(own.connections)).toEqual([tableFile]);
+          });
+
+          it('runs a foreign key to the table and column as Postgres stored them', async () => {
+            const module = moduleOf({ [tableFile]: rawSource(`    schema.raw(sql.raw('create table ${rawTable} (${rawColumn} bigint primary key)'));`) });
+            await migrator(own.connections, module).migrate();
+            addFiles(module.migrations as string, { [cutFile]: source(`    schema.create('children', (table: any) => { table.id(); table.foreignId('owner_id').constrained(${q(rawTable)}, ${q(rawColumn)}); });`) });
+            expect((await migrator(own.connections, module).migrate()).map((run) => run.name)).toEqual([cutFile]);
+          });
+        });
+
+        it('runs a plan that creates a table of 71 bytes and one that begins like it, and drops both', async () => {
+          const staging = `import_staging_${'x'.repeat(56)}`;
+          const body = [plain(staging), plain('import_staging'), `    schema.drop(${q(staging)});`, `    schema.drop('import_staging');`].join('\n');
+          expect((await migrate({ [`${stamp(2)}_staging`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(2)}_staging`]);
+          expect(await tablesOf(own.connections)).toEqual(['migrations']);
+        });
+
+        it('runs a plan that creates tables whose names begin alike and drops the shorter', async () => {
+          const body = [plain('orders'), plain('orders_archive'), `    schema.drop('orders');`].join('\n');
+          expect((await migrate({ [`${stamp(1)}_alike`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_alike`]);
+          expect(await tablesOf(own.connections)).toEqual(['migrations', 'orders_archive']);
+        });
+
+        it('runs a plan that creates and drops tables of 80 and 40 bytes that Postgres keeps apart (the first is cut to 62)', async () => {
+          const body = [plain('é'.repeat(40)), plain('é'.repeat(20)), `    schema.drop(${q('é'.repeat(40))});`, `    schema.drop(${q('é'.repeat(20))});`, plain('survivor')].join('\n');
+          expect((await migrate({ [`${stamp(1)}_wide`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_wide`]);
+          expect(await tablesOf(own.connections)).toEqual(['migrations', 'survivor']);
+        });
+
+        it('runs a plan that adds and drops columns of 80 and 40 bytes that Postgres keeps apart', async () => {
+          const body = [
+            `    schema.create('wide_columns', (table: any) => { table.string(${q('é'.repeat(40))}); table.string(${q('é'.repeat(20))}); table.string('other'); });`,
+            alters(`table.dropColumn(${q('é'.repeat(40))}); table.dropColumn(${q('é'.repeat(20))});`, 'wide_columns'),
+          ].join('\n');
+          expect((await migrate({ [`${stamp(1)}_wide_columns`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_wide_columns`]);
+          expect(await columnsOf('wide_columns')).toEqual(['other']);
+        });
+
+        it('runs an alter that adds a long column, indexes it under a short name, and drops it', async () => {
+          const long = 'c'.repeat(70);
+          const body = [plain('indexed'), alters(`table.string(${q(long)}); table.index([${q(long)}], 'indexed_short_ix'); table.dropColumn(${q(long)});`, 'indexed')].join('\n');
+          expect((await migrate({ [`${stamp(1)}_indexed`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_indexed`]);
+          expect(await columnsOf('indexed')).toEqual(['a']);
+          expect((await sql<{ name: string }>`select indexname as name from pg_indexes where tablename = 'indexed' and indexname = 'indexed_short_ix'`.execute(own.connections.get<any>())).rows).toEqual([]);
+        });
+
+        it.each([
+          ['ASCII', 'x'.repeat(70), 'x'.repeat(63)],
+          ['non-ASCII (the server measures the bytes)', 'é'.repeat(40), 'é'.repeat(31)],
+        ])('refuses a drop by a long name after the plan took its cut for another table, %s, and changes nothing', async (_kind, long, stored) => {
+          const body = [plain(long), plain(stored), `    schema.drop(${q(long)});`].join('\n');
+          const error = await failure(migrator(own.connections, moduleOf({ [`${stamp(1)}_withdrawn`]: source(body) })).migrate());
+          expect(error.message).toBe(acting('table', 'drop()', long));
+          expect(await tablesOf(own.connections)).toEqual(['migrations']);
+          expect(await recordOf(own.connections)).toEqual([]);
+        });
+
+        describe('a qualified table name', () => {
+          const schemaName = `marmeon_cutnames_${process.env.MARMEON_TEST_DATABASE_TAG ?? 'untagged'}`.toLowerCase();
+          const inSchema = (name: string) => `${schemaName}.${name}`;
+          const rawTable = 'e'.repeat(60);
+          const prepare = async () => {
+            await sql`create schema ${sql.id(schemaName)}`.execute(own.connections.get<any>());
+            await sql`create table ${sql.table(inSchema(rawTable))} (a text)`.execute(own.connections.get<any>());
+          };
+          const exists = async () => (await sql<{ n: string }>`select tablename as n from pg_tables where schemaname = ${schemaName}`.execute(own.connections.get<any>())).rows.map((row) => row.n);
+          afterEach(async () => void (await sql`drop schema if exists ${sql.id(schemaName)} cascade`.execute(own.connections.get<any>())));
+
+          it('drops a table of 60 bytes in a schema, whose joined name is 77 bytes but whose parts fit', async () => {
+            await prepare();
+            const module = moduleOf({ [`${stamp(1)}_drop_qualified`]: source(`    schema.dropIfExists(${q(inSchema(rawTable))});`) });
+            expect((await migrator(own.connections, module).migrate()).map((run) => run.name)).toEqual([`${stamp(1)}_drop_qualified`]);
+            expect(await exists()).toEqual([]);
+          });
+
+          it('refuses a table part of 64 bytes, and names the part', async () => {
+            await prepare();
+            const long = 'e'.repeat(64);
+            const module = moduleOf({ [`${stamp(2)}_drop_long_part`]: source(`    schema.drop(${q(inSchema(long))});`) });
+            const error = await failure(migrator(own.connections, module).migrate());
+            expect(error.message).toBe(acting('table', 'drop()', long));
+            expect(await exists()).toEqual([rawTable]);
+            expect(await recordOf(own.connections)).toEqual([]);
+          });
+
+          it('refuses a schema part of 64 bytes, and names the part', async () => {
+            await prepare();
+            const long = 's'.repeat(64);
+            const module = moduleOf({ [`${stamp(3)}_drop_long_schema`]: source(`    schema.drop(${q(`${long}.t`)});`) });
+            const error = await failure(migrator(own.connections, module).migrate());
+            expect(error.message).toBe(acting('schema', 'drop()', long));
+            expect(await exists()).toEqual([rawTable]);
+          });
+        });
+
+        it('runs a drop and a rename by the long name the same plan gave its table and column, which Postgres cuts the same way', async () => {
+          const long = 'l'.repeat(70);
+          const longColumn = 'k'.repeat(70);
+          const body = [
+            `    schema.create(${q(long)}, (table: any) => { table.string(${q(longColumn)}); table.string('other'); });`,
+            alters(`table.renameColumn(${q(longColumn)}, 'short'); table.string(${q(`${longColumn}2`)});`, long),
+            alters(`table.dropColumn(${q(`${longColumn}2`)});`, long),
+            `    schema.rename(${q(long)}, ${q('m'.repeat(70))});`,
+            `    schema.drop(${q('m'.repeat(70))});`,
+            plain('survivor'),
+          ].join('\n');
+          expect((await migrate({ [`${stamp(1)}_inside`]: source(body) })).map((run) => run.name)).toEqual([`${stamp(1)}_inside`]);
+          expect(await tablesOf(own.connections)).toEqual(['migrations', 'survivor']);
+        });
       });
 
       it('gives an existing column a list whose constraint name fits', async () => {
