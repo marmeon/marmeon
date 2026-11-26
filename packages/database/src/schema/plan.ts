@@ -1,4 +1,4 @@
-import { withCode } from '@marmeon/core/internal';
+import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { Connection } from '../builder.ts';
 import { noMigratorWrites, noSchemaChanges } from '../migrator-connection.ts';
@@ -76,6 +76,7 @@ export async function executePlan(
   tablesAt?: TablesAt,
 ): Promise<void> {
   check(driver, steps);
+  if (driver === 'pgsql') await assertNamesFitPgsql(db, pgsqlNames(steps));
   if (driver === 'mysql') {
     checkMysqlLists(steps, listCheck);
     const tables = mysqlStateTables(steps);
@@ -97,12 +98,70 @@ export type ListCheck = (index: number, table: string, column: string) => { read
  */
 export type TablesAt = (index: number) => ReadonlyMap<string, ProjectedTable> | undefined;
 
-/** Postgres cuts an identifier at 63 bytes without a word; MySQL refuses one over 64 characters. */
-function fits(driver: Driver, name: string, what: string, hint = "Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead)."): void {
-  if (driver === 'mysql') return fitsMysql(name, what, hint);
-  if (driver !== 'pgsql' || Buffer.byteLength(name) <= 63) return;
+const DEFAULT_NAME_HINT = "Give it a name of its own that fits (for an index: table.index(columns, 'name'); for the constraint of oneOf(): a shorter table or column name, or table.check(name, …) instead).";
+
+/** MySQL refuses an identifier over 64 characters. Postgres is asked, not guessed: {@link assertNamesFitPgsql}. */
+function fits(driver: Driver, name: string, what: string, hint = DEFAULT_NAME_HINT): void {
+  if (driver === 'mysql') fitsMysql(name, what, hint);
+}
+
+/** A name a migration gives, to be asked of Postgres: `what` says which kind it is, `hint` how to give it one that fits. */
+export interface PgsqlName {
+  readonly name: string;
+  readonly what: string;
+  readonly hint: string;
+}
+
+/**
+ * The names `check()` would measure on MySQL, collected for Postgres, which alone knows where it cuts one (63 bytes of the database's
+ * encoding). Nothing is measured here: pass them to {@link assertNamesFitPgsql}.
+ */
+export function pgsqlNames(steps: readonly PlanStep[], listCheck?: ListCheck): PgsqlName[] {
+  const names: PgsqlName[] = [];
+  const add = (name: string, what: string, hint = DEFAULT_NAME_HINT) => names.push({ name, what, hint });
+  for (const [index, step] of steps.entries()) {
+    if (step.kind !== 'create' && step.kind !== 'alter') continue;
+    for (const index of step.blueprint.allIndexes()) add(index.name, 'index name');
+    const parts = blueprintParts(step.blueprint);
+    for (const spec of parts.columns) if (spec.oneOf) add(oneOfName(step.table, spec.name), 'check constraint name');
+    for (const { name } of parts.checks) add(name, 'check constraint name');
+    for (const { column } of parts.foreignKeys) add(foreignKeyName(step.table, column), 'foreign key name', 'Use a shorter table or column name.');
+    // The constraint a oneOf() gives a column that has no list yet: the migrations know its name before the run.
+    for (const { column } of step.kind === 'alter' ? parts.oneOfChanges : []) {
+      const found = listCheck?.(index, step.table, column);
+      if (found && !hadList(found, parts, column)) add(found.name, 'check constraint name');
+    }
+  }
+  return names;
+}
+
+/** The SQLSTATEs of a name the encoding of the database cannot hold: a character the encoding does not have, or a byte sequence it does not allow. */
+const UNTRANSLATABLE = new Set(['22P05', '22021']);
+
+/**
+ * Refuses (D5) the first of `names` that Postgres would cut at 63 bytes without a word. The server measures: casting to `name` clips at
+ * the limit in the encoding of the database, which is the cut every statement makes, so no guess about the encoding is made here. Only
+ * the names that differ after the cast come back, so what a driver makes of a boolean is of no consequence. A name the encoding cannot hold
+ * is refused too (D5); any other error of the query is not caught: the plan then does not run.
+ */
+export async function assertNamesFitPgsql(db: Kysely<any>, names: readonly PgsqlName[]): Promise<void> {
+  if (names.length === 0) return;
+  let rows: { n: string }[];
+  try {
+    ({ rows } = await sql<{ n: string }>`select n from unnest(${names.map((entry) => entry.name)}::text[]) with ordinality as t(n, i) where n::name::text is distinct from n order by i limit 1`.execute(db));
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
+    if (typeof code !== 'string' || !UNTRANSLATABLE.has(code)) throw error;
+    const listed = names.filter((entry) => /\P{ASCII}|\0/u.test(entry.name)).map((entry) => `"${printable(entry.name)}"`);
+    throw new SchemaError(
+      withCode('D5', `One of these names cannot be held in this database's encoding: ${(listed.length ? listed : names.map((entry) => `"${printable(entry.name)}"`)).join(', ')}. Give it a name made of characters the database's encoding has.`),
+      { cause: error },
+    );
+  }
+  if (rows.length === 0) return;
+  const { name, what, hint } = names.find((entry) => entry.name === rows[0]!.n) ?? { name: rows[0]!.n, what: 'name', hint: DEFAULT_NAME_HINT };
   throw new SchemaError(
-    withCode('D5', `The ${what} "${name}" is ${Buffer.byteLength(name)} bytes long; Postgres would cut it at 63 and so change it silently. ${hint}`),
+    withCode('D5', `The ${what} "${printable(name)}" is longer than Postgres's 63 bytes in this database's encoding; Postgres would cut it and so change it silently. ${hint}`),
   );
 }
 
@@ -125,7 +184,7 @@ export function assertRawFitsMysql(steps: readonly PlanStep[], who: string): voi
 }
 
 /**
- * What each step of the plan shows by itself it cannot do on `driver` (not what depends on an earlier step of the same migration, such as an index on a column it adds), refused before its first statement; no database is asked. `executePlan` calls it; a
+ * What each step of the plan shows by itself it cannot do on `driver` (not what depends on an earlier step of the same migration, such as an index on a column it adds), refused before its first statement; no database is asked (so Postgres's cut of a name is not here: {@link assertNamesFitPgsql}). `executePlan` calls it; a
  * rollback calls it for every `down()` it is to run, and a run on MySQL for every migration it is to run. What depends on the tables on MySQL is
  * held in `executePlan`, against the database as it is when the migration starts.
  */
@@ -222,7 +281,7 @@ async function run(db: Kysely<any>, driver: Driver, step: PlanStep, listCheck?: 
             await renameIndexesSqlite(db, step.from, step.to);
             break;
           case 'pgsql':
-            await renameNamesPgsql(db, driver, step.from, step.to);
+            await renameNamesPgsql(db, step.from, step.to);
             break;
           default:
             return unknownDriver(driver);
@@ -292,7 +351,10 @@ async function alter(db: Kysely<any>, driver: Driver, blueprint: Blueprint, list
     const found = listCheck?.(table, column);
     if (!found) throw unknownList(table, column);
     const had = hadList(found, parts, column);
-    if (!had) fits(driver, found.name, 'check constraint name');
+    if (!had) {
+      if (driver === 'pgsql') await assertNamesFitPgsql(db, [{ name: found.name, what: 'check constraint name', hint: DEFAULT_NAME_HINT }]);
+      else fits(driver, found.name, 'check constraint name');
+    }
     // One statement: no row is unchecked between the old list and the new one.
     const drop = had ? sql`drop constraint ${sql.id(found.name)}, ` : sql``;
     await sql`alter table ${sql.table(table)} ${drop}add constraint ${sql.id(found.name)} ${oneOfCondition(column, values)}`.execute(db);
@@ -307,7 +369,7 @@ function unknownList(table: string, column: string): SchemaError {
 }
 
 /** Whether the column has a list to replace: one from before, or one that this very alter() gives it with its column. */
-function hadList(found: { readonly had: boolean }, parts: ReturnType<typeof blueprintParts>, column: string): boolean {
+export function hadList(found: { readonly had: boolean }, parts: ReturnType<typeof blueprintParts>, column: string): boolean {
   return found.had || parts.columns.some((spec) => spec.name === column && spec.oneOf);
 }
 
@@ -336,7 +398,7 @@ async function createIndexes(db: Kysely<any>, blueprint: Blueprint): Promise<voi
   }
 }
 
-async function renameNamesPgsql(db: Kysely<any>, driver: Driver, from: string, to: string): Promise<void> {
+async function renameNamesPgsql(db: Kysely<any>, from: string, to: string): Promise<void> {
   const prefix = `${from}_`;
   const renamed = (name: string) => `${to}_${name.slice(prefix.length)}`;
   const table = sql`t.oid = to_regclass(quote_ident(${to}::text))`;
@@ -350,7 +412,7 @@ async function renameNamesPgsql(db: Kysely<any>, driver: Driver, from: string, t
     join pg_class t on t.oid = d.refobjid
     where s.relkind = 'S' and ${table}
     order by s.relname`);
-  for (const name of [...constraints, ...indexes, ...sequences]) fits(driver, renamed(name), 'name after the rename');
+  await assertNamesFitPgsql(db, [...constraints, ...indexes, ...sequences].map((name) => ({ name: renamed(name), what: 'name after the rename', hint: DEFAULT_NAME_HINT })));
   for (const name of constraints) await sql`alter table ${sql.table(to)} rename constraint ${sql.id(name)} to ${sql.id(renamed(name))}`.execute(db);
   // Renaming a constraint renamed the index behind it (the primary key, a unique constraint) too.
   for (const name of indexes) {

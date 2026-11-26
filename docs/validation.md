@@ -135,8 +135,7 @@ const bio = r.string().trim().wellFormed().max(500);
 `email()`, `uuid()`, `date()`, `isoTimestamp()` and `timeZone()` refuse one by their own pattern.
 
 A half has no UTF-8 form, so what becomes of it depends on where it lands. A text column stores `\uFFFD` in its place without an error: another text than the one your checks saw.
-A `jsonb` column refuses it. JSON that you keep as text keeps the half. A route's path parameter and an unencrypted cookie built from one throw a `URIError`.
-An encrypted cookie and a query value take `\uFFFD` without an error. So a slug wants `wellFormed()`.
+A `jsonb` column refuses it. JSON that you keep as text keeps the half. A route's path parameter throws a `URIError`. A query value takes `\uFFFD` without an error. `cookies.set()` refuses a value with a half, encrypted or not, with a `TypeError` that names the cookie. So a slug wants `wellFormed()`.
 
 A half comes from a JSON escape (`"\ud83d"` in a request body) or from a `slice()` that cuts through an emoji, in client code or in yours.
 A query string and a form body never carry one: their bytes are decoded first, and `\uFFFD` takes the half's place. The client chooses the encoding, though: a route that takes a form takes JSON too (`useForm()` sends it), so a form's field needs `wellFormed()` as much as an API's.
