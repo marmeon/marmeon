@@ -3,6 +3,152 @@
 This page lists every change between one version and the next that an app has to act on: how likely it is to affect your app, what to do, and the way back where there is one. The
 [release policy](docs/releases.md#what-a-version-promises) says what a version promises.
 
+## Upgrading to 1.3.0 from 1.2.3
+
+### Security hardening
+
+#### Low: A table refuses a NUL character or half of a surrogate pair in its search, filters and row keys
+
+*Likelihood of impact: low — apps with data tables whose search, filter values or row keys can carry such text, and tests that send it.*
+
+A table now refuses text with a NUL character or half of a surrogate pair (a lone `\ud83d`) before it asks the database. A search or a select or has filter value in the URL, in the state of "all matching", in an export or in a form post answers 400, and the message names the key, never the value. A text row key in a row action answers 422, and one such key in a bulk action refuses the whole request with 422. In 1.2.3 Postgres answered 500, and SQLite answered 200 and searched with the value. Text with accents or emoji is unaffected. Nothing changes in code. There is no way back. See [the URL is strict](docs/tables.md#the-url-is-strict) and [bulk actions](docs/tables.md#bulk-actions).
+
+#### Low: An upload name with a NUL character is refused and a long one is cut by code points
+
+*Likelihood of impact: low — apps with uploads whose clients send a file name with a NUL character, or a long name of characters outside the Basic Multilingual Plane.*
+
+A request that announces an upload under a file name with a NUL character now answers 400 and leaves no row. Postgres answered 500, and SQLite stored the name. A name longer than 255 is cut at 255 code points, where 1.2.3 cut it at 255 UTF-16 units: a name of emoji keeps up to 255 of them instead of about 127, and a character is never split. A lone half of a surrogate pair is still accepted and stored as U+FFFD. The name is only shown, never used as a path or a key, and its column stays `varchar(255)`. There is no way back. See [uploads](docs/storage.md#uploads).
+
+#### Low: cookies.set() refuses a value with half of a surrogate pair and options a browser would ignore
+
+*Likelihood of impact: low — code that sets a cookie from text it does not check, or with a `path`, `domain`, `sameSite`, `maxAge` or `expires` built at run time.*
+
+`cookies.set()` now throws a `TypeError` that names the cookie when the value has half of a surrogate pair, encrypted or not, and when the value is not a string. It throws for a `path` or `domain` with `;`, a control character or a character above U+00FF, for a `sameSite` other than `lax`, `strict` or `none`, for a `maxAge` that is not a span of time and for an `expires` that is not a valid date. `delete()` refuses the same `path` and `domain`. Before, an unencrypted value failed with a `URIError` when the response was written, an encrypted one stored U+FFFD in place of the value, and an invalid `expires` was written as `Expires=Invalid Date`, so the cookie lasted only for the browser session. The error is now thrown inside the request, where the error page renders it, and `set()` keeps the options as they were when you called it. Check text with `wellFormed()` before you store it, and correct the option. There is no way back. See [cookies](docs/requests.md#cookies) and [lone surrogates](docs/validation.md#lone-surrogates).
+
+#### Low: password() refuses a NUL character and a password of more than 4096 characters as typed
+
+*Likelihood of impact: low — forms that use the `password()` rule on fields whose other rules let a NUL character through, and passwords of more than 4096 characters.*
+
+`password()` now refuses a value with a NUL character with the message "Enter a password." that a missing value gets. It also refuses a value of more than 4096 characters as typed, also one that fits 4096 bytes after NFKC. The starter's sign-in forms refuse both already, so an account could be given a password that it could never sign in with. Stored passwords keep verifying: the hasher itself still accepts a NUL character. There is no way back. See [the password rule](docs/hashing.md#the-password-rule).
+
+#### Low: json() and view() throw for a status outside 200 to 599
+
+*Likelihood of impact: low — routes that pass a status of their own that is not a whole number from 200 to 599, or 204, 205 or 304 with a body, and `abort()` with such a status.*
+
+`this.json(data, { status })` and `this.view(…, { status })` now throw a `TypeError` for a status that is not a whole number from 200 to 599, and for 204, 205 or 304 with data. The request fails inside the route, and the error page answers 500. Under `startServer()`, a status of 0 or a fraction answered 200, and 600 to 999 went out as sent. `abort()` with a status outside 200 to 599 is answered and reported as a 500, without its message or headers. `abort(204)`, `abort(205)` and `abort(304)` still answer that status, now without a body. Pass a status in the range. There is no way back. See [responses](docs/responses.md#json).
+
+### Database and migrations
+
+#### Low: A migration that drops a name Postgres would cut stops with D5, and names are judged by the database
+
+*Likelihood of impact: low — Postgres apps with a migration that gives, drops or indexes an index, constraint, table or column name of about 63 bytes or more, or a database whose encoding is not UTF-8.*
+
+On Postgres, a migration's index, check and foreign-key names are now judged by the database itself, in its own encoding: a LATIN1 database keeps names that a count of UTF-8 bytes refused, and an EUC_JP database refuses names it would cut. A run with such a name stops with D5 before its first migration, and a rollback before the first `down()`. A migration that drops a table, column or index by a name that Postgres would cut at 63 bytes (`drop()`, `dropIfExists()`, `dropColumn()`, `dropIndex()`, `dropUnique()`) stops with D5 too, as does a foreign key to such a table or column, and the columns an index covers or filters on with `where`, in an `up()` and a `down()`. Before, such a drop acted without a word on whatever the first 63 bytes name. `rename()`, `renameColumn()`, `dropCheck()`, `alter()`, `notNull()` and `nullable()` with such a name already ended in D19 in an `up()`; in a `down()` they now end in D5 (`oneOf()` of such a column still ends in D19). A step may use a long name that an earlier step of the same migration gave. A name an earlier migration gave is not exempt: use the name as Postgres stored it. On every driver, a schema step on the migrator's record table spelled `public.migrations.x` now ends in D4. A migration that already ran stays recorded. Nothing changes on SQLite and MySQL. There is no way back. See [D5](docs/errors.md#server-error-codes) and [indexes](docs/migrations.md#indexes).
+
+#### Low: schema.create() and schema.rename() refuse a table name with a dot in an up()
+
+*Likelihood of impact: low — migrations that create or rename a table to a name such as `audit.items`.*
+
+A table created or renamed with a dot in its name has always ended in D3 after its statement, because the migrations follow a table by its bare name, so no applied migration can contain one. It now stops in `up()` with the new code D31 before any statement runs. On MySQL this also stops a table that would have stayed in another database. `drop()` and `dropIfExists()` accept a dotted name as before, a `down()` still accepts one, and the name of a table can no longer be changed in a `create()` or `alter()` callback after it was checked. Use a name without a dot, or `schema.raw()` for a table of another database. There is no way back. See [D31](docs/errors.md#server-error-codes) and [what the migrations describe](docs/migrations.md#what-the-migrations-describe).
+
+#### Low: A new migration is stamped behind the migrations of every module
+
+*Likelihood of impact: low — apps that generate migrations with `make:migration`, `make:resource` or a package's generator, and have a migration of a module with a stamp ahead of today.*
+
+`make:migration`, `make:resource` and the generators of packages now stamp a new migration behind the newest migration of every module, not only its own: the later of now and that stamp plus one second. A migration that adds a column to the table of another module therefore runs after it. A migration of a module whose stamp lies in the future is no longer overtaken by the next file you generate. A newest stamp that is no date or leaves no room is printed as a warning, and the file is stamped behind its own module's migrations. Nothing you committed changes, and there is no workaround to remove. See [migrations](docs/migrations.md#generating-migrations).
+
+#### Low: A statement that reaches a transaction after its commit or rollback is refused
+
+*Likelihood of impact: low — code that starts a query in `connections.transaction()` without awaiting it and relies on it running after the transaction ended.*
+
+A statement that you start inside `connections.transaction()` and do not await could run after the rollback, in autocommit on the bare connection, and survive. It is now refused. A statement of the transaction that is sent after its commit or rollback started, work that begins while the end statement runs, and a nested `transaction()` that starts after its savepoint ended all throw `TransactionFinishedError` and are never sent. While the end statement runs, every other statement on that connection is refused too. A connection you reserve with `db.connection()` keeps working afterwards. Await every statement inside the callback, or wrap work that should run on its own in `outsideTransaction()`. A `trx` that you use outside the callback's call chain, and Kysely's own transactions, rely on Kysely's checks: await each statement there too. There is no way back. See [await everything](docs/transactions.md#await-everything).
+
+#### Low: An aborted commit and a transaction left open end in D24
+
+*Likelihood of impact: low — apps with a `db.transaction()` or `db.startTransaction()` that is not closed (any database), a Kysely `AbortedTransactionError` thrown out of a nested `db.transaction()` callback, or, on Postgres, a statement that fails after its callback returned.*
+
+Kysely 0.29.9 stops rolling back a transaction whose callback throws its `AbortedTransactionError`, and the database package now holds the line at every boundary. On Postgres, a commit that the server answers with a rollback becomes a `TransactionError` (D24), and so does the release of a savepoint that failed. A statement that you started inside a callback without `await` and that fails after the callback returned now surfaces as D24 instead of a silent commit. On every database, when a `transaction()` ends with a `db.transaction()` or `db.startTransaction()` that it did not close, it rolls that one back and rejects with D24. On every database, a connection released with its transaction still open is rolled back, a `MarmeonDatabaseWarning` with the code `MARMEON_TRANSACTION_LEFT_OPEN` names the connection, and the release rejects with D24. After a failed `commit()` of `startTransaction()`, call `rollback()` in `catch`. Wrap an `AbortedTransactionError` that leaves a nested `db.transaction()` callback (`new Error(message, { cause })`), or open the nested transaction with `connections.transaction()`. There is no way back. See [nested transactions](docs/transactions.md#nested-transactions) and [transactions you control yourself](docs/transactions.md#transactions-you-control-yourself).
+
+### Queues and the scheduler
+
+#### Low: A job key that names the lock of another job is refused, and queue:work warns at its start
+
+*Likelihood of impact: low — apps with job names such as `reports` and `reports:daily`, and a unique or `withoutOverlapping()` key of the shorter job that continues with the rest of the longer name and a colon (`daily:7`).*
+
+A unique lock and the lock of `withoutOverlapping()` are named by the job's name and the key, and job names may contain a colon: `reports` with the key `daily:7` and `reports:daily` with the key `7` took one lock. The queue now refuses such a key. A unique key throws a `QueueError` at dispatch on every driver. A `withoutOverlapping()` key without `shared` fails the job at once, without retrying; on the `sync` connection the dispatch throws. The message names the two jobs and never the key. A job named `<name>:schedule` makes `s.job()` of the job `<name>` fail with a `ScheduleError` that names the task, because the key of a scheduled job starts with `schedule:`. `queue:work` also warns once at its start for every pair of registered names where one is the other followed by a colon, and never stops. Build the key so it does not start with the rest of the longer name and a colon, or rename one of the jobs: keep the old name registered until its waiting jobs are gone. Lock names and stored records do not change. There is no way back. See [unique jobs](docs/queues.md#unique-jobs).
+
+#### Low: Queue log lines name a dispatched job apart from the running one
+
+*Likelihood of impact: low — log searches, alerts and tests that read `job` or `jobId` on the "Not queued" line or on the warning of a failing `JobQueued` listener.*
+
+A queue log line about a job that is dispatched but is not the one running now carries that job as `dispatched`, and `dispatchedId` where the line has an id, so `job`, `jobId` and `attempt` always describe the running job. This holds for the "Not queued" line of a unique duplicate and for the warning of a failing `JobQueued` listener, also when the worker hands on to the next job of a chain. A failing listener of `JobProcessing`, `JobProcessed` or `JobFailed` on the `sync` connection binds its own job, id and `attempt: 1`. A busy `job.once()` on `sync` rejects with a message that no longer promises a retry, because `sync` never retries. Change the searches and alerts that read the old fields. There is no way back. See [the log context](docs/logging.md#the-log-context).
+
+#### Low: schedule:work waits for a run that hangs at the stop, and --stop-timeout has an upper bound
+
+*Likelihood of impact: low — schedulers whose runs can hang when the process is stopped, and a `--stop-timeout` above 2073600.*
+
+Stopped while a run hangs and holds no handle, `schedule:work` ended the process with exit code 13 at once and skipped its warning, the release of `withoutOverlapping()` locks and the shutdown of the providers. It now waits up to `--stop-timeout`, warns, frees the locks and exits 0. A `--stop-timeout` above 2073600 seconds (24 days) is refused at start with exit code 2: Node fires a longer timer after a millisecond, so such a value cut the runs off at once. Lower the value. There is no way back. See [scheduling](docs/scheduling.md#several-servers-and-long-runs).
+
+### Pages, files and commands
+
+#### Low: claimedBy() in a command answers as in a request
+
+*Likelihood of impact: low — commands, such as a publish or a rebuild, that refuse data with `router.claimedBy()`.*
+
+`router.claimedBy()` answered differently outside a request: only the HTTP kernel told the router the app's locales and health paths, so in a command every first segment counted as a locale and `/up` as the health check, wherever `SERVER_HEALTH_PATH` had moved it. A localized home page then took every path of one segment, and a command refused `/about` that the same save over HTTP accepted. `@marmeon/i18n` and `@marmeon/server` now tell the router while the app boots, so a command gets the answer of a request: a command that refused a free path accepts it, and `/up` is free where `SERVER_HEALTH_PATH` moved it. Ask after the app started, not from another provider's `boot()`. Without those packages the answer stays cautious. See [asking whether a path is taken](docs/routing.md#asking-whether-a-path-is-taken).
+
+#### Low: A route pattern that can be empty matches the path /
+
+*Likelihood of impact: low — apps with a route such as `/:page?` or `/:path*`, whose commands ask `router.claimedBy('/')`, and sitemaps and alternates built from them.*
+
+The router's pattern matching now lets a pattern whose parameters are all optional or a rest (`/:page?`, `/:path*`) match `/`, as the server already answers it. `router.claimedBy('/')` now reports the route, so a command that checks `/` is stricter than before. A sitemap entry or a `PageAlternates` path that resolves to `/` for such a route is accepted instead of refused. A pattern with a required part (`/:page`, `/a/:b?`) still does not match `/`. Nothing changes in code. There is no way back. See [asking whether a path is taken](docs/routing.md#asking-whether-a-path-is-taken).
+
+#### Low: The storage routes answer Range requests with 206 and 416
+
+*Likelihood of impact: low — apps with a global middleware or a proxy that tests for status 200, counts downloads or throttles bytes on files under `/storage` or on temporary links, and signed links whose expiry is shorter than the playback.*
+
+The built-in storage routes, which serve the public local and memory disks under `/storage` and the signed temporary route, now answer a GET with one `bytes` range with `206 Partial Content` and a `Content-Range`. A range that starts at or after the end of the file, or `bytes=-0`, gets `416` with no body. Any other `Range` header gets the whole file. With `If-Match` or `If-Unmodified-Since` that fails, the answer is `412`. A file that supports ranges says `Accept-Ranges: bytes`, also on `200`, `304` and `HEAD`. A signed link is checked on every range request, so its expiry has to cover playback. Let your middleware and proxy accept 206 and 416, and count a download once. `serveFile()` changes nothing without `ranges: true`. See [ranges and video](docs/storage.md#ranges-and-video).
+
+#### Low: tinker finds its helpers by their package and refuses --sandbox beside a second copy of the database package
+
+*Likelihood of impact: low — apps that use `marmeon tinker` or `--sandbox` and have a class named like a framework class, list a package only through another one, or install `@marmeon/database` twice.*
+
+`marmeon tinker` used to take the classes behind `db`, `repos`, `jobs`, `mail` and the `--sandbox` transaction from a map that is also filled by class name, so a job class named `Connections` could stand in for the database. It now loads `@marmeon/database`, `@marmeon/queue` and `@marmeon/mail` only when your `package.json` lists them, finds each from your app, and offers a helper only when the container binds that exact class. A helper whose package only another package depends on is unavailable until you list the package yourself (`marmeon add database`), and `.ls` names the cause of each missing helper. `--sandbox` refuses before the session starts where a same-named class used to stand in, and where the dependency tree holds a second copy of `@marmeon/database`, because writes through that copy are not undone by the transaction. It prints one line per copy with the fix. A sandboxed session whose start was refused no longer evaluates input outside a transaction. Without `--sandbox`, nothing changes. See [tinker](docs/console.md#tinker).
+
+### Logs
+
+#### Low: A failed log write stops the logger instead of ending the process
+
+*Likelihood of impact: low — apps whose standard output or error can fail to write (a full disk, a closed descriptor), and runs that pipe the log to a reader that leaves early.*
+
+The `Logger` contract says that `debug`, `info`, `warn` and `error` never throw. `@marmeon/log` kept it only in part: a failed write threw out of `info()` under `--json` and `marmeon mcp`, and on the default output a write error other than EPIPE became an uncaught error, after which the process hung in its exit flush. After the first write error, the logger now stops writing until the process restarts and prints one notice on stderr that names the error code. No notice follows when stderr fails in `--json` or `mcp` mode, or when a reader left early (EPIPE). By default (JSON on stdout), a pipe that nobody reads is backpressure: `info()` returns at once, and past 4 MiB of waiting lines the newest are dropped. At exit, the logger waits a few seconds for the reader, then drops the rest and prints the notice. `--json`, `marmeon mcp` and `format: 'pretty'` wait for their reader and retry every 100 ms, so a reader that stops reading blocks the process; after a few minutes the write fails and the logger stops as after any write error. No notice is printed when stderr is a full pipe. A destination you pass to `createPinoLogger` is not wrapped, so its errors stay yours. Watch the notice, and restart a process whose log stopped. There is no way back. See [writing log entries](docs/logging.md#writing-log-entries).
+
+#### Low: Auth and the queue finish their work before they depend on the logger
+
+*Likelihood of impact: low — apps with a log sink that can throw or reject, and tests that check the order of a log line and an ended session.*
+
+A logger that throws, or returns a rejected promise, no longer changes how a request ends. When auth finds a copied remember-me cookie or a possibly copied passkey, it ends the sessions first and logs the warning after them, so a log sink that is down cannot keep the thief signed in. The log calls on the failure paths of passkeys, authenticator apps, the gate and password resets are guarded the same way: the original error or answer is kept, and a password reset still finishes. A job that fails for good still fires `JobFailed` when the logger's `error()` rejects, and a `sync` dispatch rejects with the job's own error. Nothing changes while your logger works, apart from the order of the theft warning and the endings. See [writing log entries](docs/logging.md#writing-log-entries).
+
+### The start and the packages
+
+#### Low: Discovery and the database look for packages and lockfiles only up to your workspace
+
+*Likelihood of impact: low — apps that depend on a package installed only outside their workspace (above a pnpm workspace, through an optional peer or a development dependency after a production install), on a lockfile planted in a folder everyone can write to, or on a `package.json` of a workspace package that changes while the app runs.*
+
+Discovery looked a dependency up in the `node_modules` of every folder up to the file system's root. It now looks in the `node_modules` of the package that needs it and of each folder above it, up to your workspace: the first folder from your app upwards with a workspace marker or a lockfile, else your app's folder. The search for the workspace stops below the first folder above the app that everyone can write to or that another user owns. A package in `dependencies` that is installed but out of reach is named in a warning at the start, once per process, and is not discovered: install it in the app. A missing dependency ends with K7, and the message now says where the lookup stopped. A provider that is no class makes the start end with K7 and names its package, where it ended in a `TypeError` that did not. `.marmeon/manifest.json` also records the `package.json` of the packages of your workspace, so a change in one of them makes the app discover again; it is written once more after the upgrade. `@marmeon/database` stops its search for a lockfile at the same bound, so a lockfile planted in a writable folder between the app and the workspace no longer narrows the migrations' workspace (D20) or moves the install root of `db:publish`. See [discovery](docs/modules.md#discovery) and [D20](docs/errors.md#server-error-codes).
+
+#### Low: The vite peer range starts at 8.3.6
+
+*Likelihood of impact: low — apps on vite 8.3.1 to 8.3.5.*
+
+`@marmeon/server` and `@marmeon/vite` now ask for `vite` `^8.3.6`. Vite 8.3.6 is the first release whose dev server refuses `.wasm` files outside `server.fs` and escapes HTML attributes, and `@marmeon/vite` relies on `server.fs.deny` holding for clients that reach the dev server over the network. An app on an older vite 8.3 gets a peer warning. Run `pnpm up vite`. There is no way back.
+
+#### Low: A sync delay, a scheduled job of another class and a second copy of a package are warned about
+
+*Likelihood of impact: low — apps that dispatch with a delay on the `sync` connection (the usual one in tests), schedule a subclass of a registered job, or install a framework package twice in one version.*
+
+Three new warnings; nothing refuses. A `delay` on the `sync` connection logs one `warn` line with `dispatched: <job>`: the job still runs at its dispatch, or at the commit inside a transaction, and ignores the delay. It is said once per app, connection and job name, in every environment, so it can show up in test output, and a test that refuses any warning sees it. Queue the job on `database` or `redis` to delay it. `schedule:work` prints one warning at its start for each task that queues a job class whose name the app registers for another class, such as a subclass that inherits `static job`; the runs of that task already failed at the queue. `marmeon check` and `doctor` warn when a package your app lists resolves its own copy of an `@marmeon/*` package in your app's version (pnpm installs a package once per set of resolved peers): align the peers and run `pnpm dedupe`. The exit code stays 0. `marmeon dev` prints the advice at its start, and a failed command prints it after K3. Manifest text can no longer add a line to a finding: names and versions that are no package name or version print escaped. See [queue connections](docs/queues.md#drivers), [scheduling](docs/scheduling.md) and [the packages check](docs/check.md#the-packages-check).
+
 ## Upgrading to 1.2.3 from 1.2.2
 
 ### Security hardening
