@@ -21,6 +21,7 @@ import {
 import { IntendedKey, ReadOnly } from '@marmeon/http/internal';
 import {
   ACTION_HEADER,
+  assertStatus,
   ACTION_REDIRECT_HEADER,
   CONFLICT_HEADER,
   FLASH_HEADER,
@@ -630,6 +631,9 @@ export function createResponseFactory(
       throw new HttpError(404, debug(ctx.request) ? `[${result.component}] is a page, not an island — its controller returns this.view(…); an island's returns this.island(…).` : undefined);
     }
 
+    // A result is data: its status may have changed since view() checked it. Checked before any prop is computed or a
+    // flash message is taken.
+    assertStatus('view', result.status, true);
     // Before any prop is computed: a view no document can show fails first, and a client of another document loads the page fully.
     const pageVersion = versionOf(result.component);
     if (crossesEntry(ctx.request, result.component)) {

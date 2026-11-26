@@ -1,6 +1,7 @@
 import { CommandArgumentsError, Logger, type Key } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import { GUARD_OPTION, OperatorGuards } from './operator-guard.ts';
+import { logQuietly } from './quiet-log.ts';
 import { assertSignInFinder, idOf } from './user.ts';
 
 /** Exact, trimmed lookup: an address typed in capitals finds nothing when the account stores it in lower case. */
@@ -65,7 +66,7 @@ export class EndSessionsCommand {
       output.error(noAccount(identifier));
       return 1;
     }
-    this.#logger.info('Ended every session of an account at the operator\'s request', target.value.name === undefined ? { userId: id } : { userId: id, guard: target.value.name });
+    logQuietly(this.#logger, 'info', 'Ended every session of an account at the operator\'s request', target.value.name === undefined ? { userId: id } : { userId: id, guard: target.value.name });
     const { removed, accessTokens } = ended.value;
     // A package guard has no API tokens: nothing is said of them.
     const tokens = target.value.name === undefined;

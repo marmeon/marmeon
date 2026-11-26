@@ -10,6 +10,10 @@ export type LogContext = Readonly<Record<string, unknown>>;
  * The logging contract. Packages depend on this, never on a logging library;
  * `@marmeon/log` binds a pino implementation, and without it the
  * {@link ConsoleLogger} fallback is used.
+ *
+ * `debug()`, `info()`, `warn()` and `error()` return nothing and must not throw for a failed write. A logger that writes
+ * asynchronously catches its own failures: a rejected promise that nobody waits for is an unhandled rejection, which by default
+ * ends the process (docs/logging.md#writing-log-entries).
  */
 export interface Logger {
   debug(message: string, context?: LogContext): void;

@@ -1,6 +1,8 @@
 import { defineConfig, env, environment, type Application, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
+import { Router } from '@marmeon/router';
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder, type RequestRecorder } from './error-page/recorder-token.ts';
+import { healthPathsOf } from './health.ts';
 import { isProxyEntry } from './proxies.ts';
 import { ServerTiming } from './server-timing.ts';
 
@@ -121,6 +123,8 @@ export class ServerServiceProvider implements ServiceProvider {
 
   async boot(app: Application): Promise<void> {
     const config = app.container.make(ServerConfig);
+    // So `claimedBy()` knows where the health check answers in a command too, where no kernel starts.
+    if (app.container.has(Router)) app.container.make(Router).bindHealthPaths(healthPathsOf(config.health));
     if (config.serverTiming) {
       this.#timing = new ServerTiming(app);
       app.container.instance(ServerTiming, this.#timing);

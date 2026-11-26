@@ -277,6 +277,8 @@ export interface Launched {
   readonly pid: number;
   output(): string;
   hasExited(): boolean;
+  /** The exit code once the command ended, `null` before that and when a signal ended it. */
+  exitCode(): number | null;
   /** SIGTERM to its process group, then waits up to 10 s for the command to exit, then SIGKILL to the group (also when the command exited and children are left). */
   stop(): Promise<void>;
 }
@@ -437,6 +439,7 @@ export class Smoke {
       pid: child.pid!,
       output: () => output,
       hasExited: () => child.exitCode !== null || child.signalCode !== null,
+      exitCode: () => child.exitCode,
       stop: async () => {
         this.#stop(child);
         await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 10_000))]);
@@ -546,17 +549,6 @@ export class Smoke {
       this.#stop(child, 'SIGKILL');
       this.#children.delete(child);
     }
-  }
-
-  /** A long-running child in the app, in a group of its own: `stop()` ends it, and so does `stopAll()` when the run is interrupted. */
-  background(command: string, args: string[], env: NodeJS.ProcessEnv = {}): { child: ChildProcess; stop(): void } {
-    const child = spawn(command, args, { cwd: this.app, env: { ...this.env, ...env }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    this.#children.add(child);
-    const stop = () => {
-      this.#stop(child, 'SIGKILL');
-      this.#children.delete(child);
-    };
-    return { child, stop };
   }
 
   #stop(child: ChildProcess, signal: NodeJS.Signals = 'SIGTERM'): void {
