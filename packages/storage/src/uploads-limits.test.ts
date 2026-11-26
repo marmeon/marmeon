@@ -82,6 +82,44 @@ describe('temporary uploads: what may wait unsent', () => {
     return error as HttpError;
   };
 
+  const storedNames = async () => ((await connections.get().selectFrom(UPLOADS_TABLE as never).select('name' as never).execute()) as unknown as { name: string }[]).map((row) => row.name);
+  const R = '\ufffd';
+
+  it('a name with a NUL character is a 400 with its message and leaves no row', async () => {
+    const error = await refusal(uploads().target({ ...request('a'), name: 'a\0.png' }));
+    expect(error.status).toBe(400);
+    expect(error.message).toBe('An upload’s name may not contain a NUL character.');
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it('a NUL beside half of a surrogate pair is still a 400', async () => {
+    expect((await refusal(uploads().target({ ...request('a'), name: '\0\ud83d' }))).status).toBe(400);
+    expect(await rows()).toHaveLength(0);
+  });
+
+  it('a name with half of a surrogate pair is accepted and stored with U+FFFD in its place', async () => {
+    await uploads().target({ ...request('a'), name: '\ud83d.png' });
+    expect(await storedNames()).toEqual([`${R}.png`]);
+  });
+
+  it.each([
+    ['a low half', '\ude00.png', `${R}.png`],
+    ['two halves the wrong way round', '\ude00\ud83d', `${R}${R}`],
+    ['a whole pair', '😀.png', '😀.png'],
+    ['a high half before a whole pair', '\ud83d😀', `${R}😀`],
+    ['a half and a cut after it', `${'a'.repeat(254)}\ud83db`, `${'a'.repeat(254)}${R}`],
+    ['a half after the cut', `${'a'.repeat(300)}\ud83d`, 'a'.repeat(255)],
+    ['a character of two UTF-16 units at the cut', `${'a'.repeat(254)}😀b`, `${'a'.repeat(254)}😀`],
+    ['300 such characters', '😀'.repeat(300), '😀'.repeat(255)],
+    ['255 such characters', '😀'.repeat(255), '😀'.repeat(255)],
+  ])('stores the name with %s as exactly what it should be', async (_label, name, stored) => {
+    await uploads().target({ ...request('a'), name });
+    const [found] = await storedNames();
+    expect(found).toBe(stored);
+    expect(found!.isWellFormed()).toBe(true);
+    expect(await rows()).toHaveLength(1);
+  });
+
   it('a session holds at most UPLOADS_MAX_OPEN open uploads: the next target is a 429 with Retry-After until the first expires', async () => {
     const service = uploads({ maxOpen: 20 });
     for (let index = 0; index < 20; index++) {

@@ -158,7 +158,7 @@ export interface QueueJobMessage extends MessageBase, Ended {
   readonly traceparent?: string;
   /** Its payload, as the job gets it — raw: shown only through the redactor, an encrypted one never. */
   readonly payload?: unknown;
-  /** The job is encrypted (`static encrypted`): its payload is never shown. */
+  /** The payload is encrypted (`static encrypted`, or queued encrypted): it is never shown. */
   readonly encrypted?: boolean;
   /** What the job asked for: `done`, or `discarded`/`released`/`failed` through its context; unset when it threw. */
   outcome?: 'done' | 'discarded' | 'released' | 'failed';

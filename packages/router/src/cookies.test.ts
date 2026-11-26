@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { CookieJar, parseCookies, serializeCookie, withQueuedCookies } from './cookies.ts';
 import { Router } from './router.ts';
@@ -172,5 +173,177 @@ describe('CookieJar — locked (a read-only request)', () => {
     expect(await jar.queued()).toEqual([]);
     expect(asked).toEqual(["cookies.set('b')", "cookies.set('a')"]);
     expect(jar.get('a')).toBe('1');
+  });
+});
+
+describe('cookie values and attributes that cannot be written', () => {
+  const half = String.fromCharCode(0xd83d);
+
+  it('refuses a value with half of a surrogate pair at set(), naming the cookie', () => {
+    expect(() => new CookieJar(null).set('a', half)).toThrow(TypeError);
+    expect(() => new CookieJar(null).set('a', half)).toThrow(/Cookie "a": the value has half of a surrogate pair/);
+  });
+
+  it('refuses it with a codec installed too', async () => {
+    const jar = new CookieJar(null);
+    await jar.useCodec({ decode: async (_n, v) => v, encode: async (_n, v) => `enc:${v}` });
+    expect(() => jar.set('a', half)).toThrow(/Cookie "a": the value has half of a surrogate pair/);
+  });
+
+  it('refuses it in serializeCookie', () => {
+    expect(() => serializeCookie('a', half)).toThrow(/Cookie "a": the value has half of a surrogate pair/);
+  });
+
+  it('refuses a path or domain with ";", a control character or a character above U+00FF', () => {
+    const jar = new CookieJar(null);
+    expect(() => jar.set('a', 'x', { path: '/; Domain=evil' })).toThrow(/Cookie "a": the path must not contain/);
+    expect(() => jar.set('a', 'x', { domain: 'a.test\r\nX: y' })).toThrow(/Cookie "a": the domain must not contain/);
+    for (const bad of ['/\u0000', '/\t', '/\u007f', '/\u0085', '/€', '/\u{1F600}']) {
+      expect(() => jar.set('a', 'x', { path: bad })).toThrow(/the path must not/);
+      expect(() => serializeCookie('a', 'x', { path: bad })).toThrow(TypeError);
+    }
+    expect(() => jar.set('a', 'x', { domain: '\ud83d.test' })).toThrow(/the domain must not/);
+  });
+
+  it('still allows Latin-1 characters in a path', () => {
+    expect(serializeCookie('a', 'x', { path: '/caf\u00e9\u00a0' })).toContain('Path=/caf\u00e9\u00a0');
+  });
+
+  it('refuses a value that is not a string', () => {
+    expect(() => new CookieJar(null).set('a', 5 as unknown as string)).toThrow(/Cookie "a": the value must be a string/);
+    expect(() => serializeCookie('a', 5 as unknown as string)).toThrow(/the value must be a string/);
+  });
+
+  it('refuses an unknown sameSite, also in another case, and accepts none given', () => {
+    const jar = new CookieJar(null);
+    const sameSite = (value: string) => ({ secure: true, sameSite: value as 'lax' });
+    expect(() => jar.set('a', 'x', sameSite('lax; Domain=evil.test'))).toThrow(/Cookie "a": sameSite must be/);
+    expect(() => jar.set('a', 'x', sameSite('None'))).toThrow(/sameSite must be/);
+    expect(() => jar.set('a', 'x', { sameSite: undefined })).not.toThrow();
+  });
+
+  it('queues nothing for a refused set() and keeps the earlier value', async () => {
+    const jar = new CookieJar(null);
+    jar.set('a', '1');
+    expect(() => jar.set('a', half)).toThrow(TypeError);
+    expect(await jar.queued()).toEqual([expect.stringContaining('a=1;')]);
+  });
+
+  it('does not ask a lock about a refused value', () => {
+    const jar = new CookieJar(null);
+    const asked: string[] = [];
+    jar.lock((what) => (asked.push(what), false));
+    expect(() => jar.set('a', half)).toThrow(TypeError);
+    expect(asked).toEqual([]);
+  });
+
+  it('judges the name before the value', () => {
+    expect(() => new CookieJar(null).set('a b', half)).toThrow(/Invalid cookie name/);
+    expect(() => serializeCookie('a b', half)).toThrow(/Invalid cookie name/);
+  });
+
+  it('writes the options as they were when set() was called', async () => {
+    const jar = new CookieJar(null);
+    const given = { path: '/a' };
+    jar.set('x', 'v', given);
+    given.path = '/; Domain=evil';
+    expect(await jar.queued()).toEqual([expect.stringContaining('Path=/a;')]);
+  });
+
+  it('refuses a maxAge that is not a span of time and an invalid expires, and accepts valid ones', () => {
+    const jar = new CookieJar(null);
+    expect(() => jar.set('a', 'x', { maxAge: Number.NaN })).toThrow(/Cookie "a": maxAge is not a span of time/);
+    expect(() => serializeCookie('a', 'x', { maxAge: Number.POSITIVE_INFINITY })).toThrow(/Cookie "a": maxAge is not a span of time — /);
+    expect(() => jar.set('a', 'x', { maxAge: null as unknown as number })).toThrow(/maxAge is not a span of time/);
+    expect(() => jar.set('a', 'x', { maxAge: { days: Number.NaN } })).toThrow(/maxAge is not a span of time/);
+    expect(() => jar.set('a', 'x', { expires: '2030-01-01' as unknown as Date })).toThrow(/Cookie "a": expires is not a valid date/);
+    expect(serializeCookie('a', 'x', { expires: runInNewContext('new Date(0)') as Date })).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    expect(() => jar.set('a', 'x', { expires: new Date(Number.NaN) })).toThrow(/Cookie "a": expires is not a valid date/);
+    expect(() => jar.set('a', 'x', { maxAge: { days: 1 }, expires: new Date(0) })).not.toThrow();
+    expect(() => jar.set('b', 'x', { maxAge: 0 })).not.toThrow();
+    expect(() => jar.delete('b')).not.toThrow();
+  });
+
+  it('writes the expires and maxAge as they were when set() was called', async () => {
+    const jar = new CookieJar(null);
+    const given = { expires: new Date(0), maxAge: { days: 1 } };
+    jar.set('a', 'x', given);
+    given.expires.setTime(Number.NaN);
+    given.maxAge.days = Number.NaN;
+    expect(await jar.queued()).toEqual([expect.stringMatching(/Max-Age=86400; Expires=Thu, 01 Jan 1970/)]);
+  });
+
+  it('writes the getters of a class that implements the options', async () => {
+    class Options {
+      get path() {
+        return '/app';
+      }
+      get domain() {
+        return 'example.test';
+      }
+      get maxAge() {
+        return { days: 30 };
+      }
+    }
+    const jar = new CookieJar(null);
+    jar.set('a', 'x', new Options());
+    expect(await jar.queued()).toEqual([expect.stringContaining('Path=/app; Domain=example.test; Max-Age=2592000')]);
+    const other = new CookieJar(null);
+    other.delete('a', new Options());
+    expect(await other.queued()).toEqual([expect.stringContaining('a=; Path=/app; Domain=example.test; Max-Age=0')]);
+  });
+
+  it('reads each option once, so a getter that changes cannot slip a value past the check', async () => {
+    let reads = 0;
+    const options = {
+      get path() {
+        return reads++ === 0 ? '/ok' : '/; Domain=evil.test';
+      },
+    };
+    const jar = new CookieJar(null);
+    jar.set('a', 'x', options);
+    expect(await jar.queued()).toEqual([expect.stringContaining('Path=/ok;')]);
+  });
+
+  it('delete() forwards the secure and sameSite options it was given', async () => {
+    const jar = new CookieJar(null);
+    const options = { path: '/', secure: true, sameSite: 'strict' as const };
+    jar.set('__Host-token', 'v', options);
+    jar.delete('__Host-token', options);
+    const prefixed = { path: '/app', secure: true };
+    jar.delete('__Secure-token', prefixed);
+    const embedded = { path: '/', secure: true, sameSite: 'none' as const };
+    jar.delete('embed', embedded);
+    const [host, secure, embed] = await jar.queued();
+    expect(host).toContain('Secure; SameSite=Strict');
+    expect(secure).toContain('Path=/app');
+    expect(embed).toContain('Secure; SameSite=None');
+  });
+
+  it('refuses a path that is not a string and treats null as omitted', () => {
+    const jar = new CookieJar(null);
+    const tricky = { toString: () => '/; Domain=evil.test' } as unknown as string;
+    expect(() => jar.set('a', 'x', { path: tricky })).toThrow(/the path must be a string/);
+    expect(serializeCookie('a', 'x', { path: null as unknown as string, secure: null as unknown as boolean })).toBe('a=x; Path=/; HttpOnly; SameSite=Lax');
+  });
+
+  it('refuses a maxAge that cannot be written as digits', async () => {
+    const jar = new CookieJar(null);
+    expect(() => jar.set('a', 'x', { maxAge: 1e21 })).toThrow(/maxAge is not a span of time/);
+    expect(() => jar.set('a', 'x', { maxAge: -1e21 })).toThrow(/maxAge is not a span of time/);
+    expect(() => jar.set('a', 'x', { maxAge: Number.MAX_SAFE_INTEGER })).not.toThrow();
+    jar.set('b', 'x', { maxAge: 2 ** 53 });
+    expect(await jar.queued()).toContainEqual(expect.stringContaining('b=x; Path=/; Max-Age=9007199254740992;'));
+  });
+
+  it('refuses delete() with a path that cannot be written', () => {
+    expect(() => new CookieJar(null).delete('a', { path: '/;x' })).toThrow(/the path must not/);
+    expect(() => new CookieJar(null).delete('a', { domain: 'a;b' })).toThrow(/the domain must not/);
+  });
+
+  it('still writes emoji values and ordinary attributes', async () => {
+    const jar = new CookieJar(null);
+    jar.set('a', '\u{1F600}', { path: '/app', domain: 'example.test' });
+    expect(await jar.queued()).toEqual([expect.stringContaining('a=%F0%9F%98%80; Path=/app; Domain=example.test')]);
   });
 });

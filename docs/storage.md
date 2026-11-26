@@ -305,7 +305,9 @@ then sends a token in the file's place:
 
 1. **A target for the field.** The browser asks the form's own route for a target, with the file's name, size and type. The
    route's middleware, bindings and `authorize` run, so whoever may send the form may upload its files, and the field's `upload()`
-   rule decides the limit. The controller does not run. A field without the rule is a 404, a file that is too large a 422.
+   rule decides the limit. The controller does not run. A field without the rule is a 404, a file that is too large a 422. A name with a NUL character is a 400. A lone half of a
+   surrogate pair in the name is replaced with U+FFFD, and a name longer than 255 characters is cut to 255, counted in Unicode code
+   points, so a character that takes two UTF-16 units is never cut in half.
 2. **The bytes** stream onto the private `uploads` disk, never into memory, and are cut off at the size the browser announced (never
    above the rule's `maxBytes`), whatever its `Content-Length` says. A file that is cut off leaves nothing behind.
 3. **The token in the form.** On submit, before the schema runs, the token is checked: its signature, the session it was made

@@ -2,7 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { durationToSeconds, outsideTransaction, Redactor, type Clock, type Duration, type ErrorReports, type Logger } from '@marmeon/core';
 import { describeError, guardedLog, withCode, withoutCode } from '@marmeon/core/internal';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
-import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvent, type JobEvents } from './events.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvents } from './events.ts';
 import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
 import { QueueError, timeoutOf } from './registry.ts';
 import { CLOCK_SKEW_MS, FOREIGN_LIMIT_SECONDS, nextInChain, parseRecord, schemaMismatch, type JobRunner, type Prepared, type RecordIdentity, type Requested } from './runner.ts';
@@ -247,8 +247,8 @@ export class Worker {
         // `job.once` on a key another attempt runs right now: this attempt never got to it — back to the queue, the attempt given back.
         if (settled.error instanceof JobOnceBusyError) {
           await this.#deps.driver.release(reserved, ONCE_BUSY_DELAY, { refund: true });
-          const { message } = settled.error;
-          guardedLog(() => logger.info(`Released ${record.job}: ${message}`, context));
+          const { error } = settled;
+          guardedLog(() => logger.info(`Released ${record.job}: ${this.#message(error)} It runs again in ${ONCE_BUSY_DELAY}s, without using up a try.`, context));
           await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: ONCE_BUSY_DELAY, reason: 'busy', ms }));
           return 'released';
         }
@@ -410,12 +410,14 @@ export class Worker {
   }
 
   /** A job event to the app's listeners — whose errors are logged, never the job's. */
-  async #emit(event: JobEvent): Promise<void> {
+  async #emit(event: JobQueued | JobProcessing | JobProcessed | JobFailed | JobReleased): Promise<void> {
     if (!this.#deps.events) return;
     try {
       await this.#deps.events(event);
     } catch (error) {
-      guardedLog(() => this.#deps.logger.child({ job: event.job, jobId: event.jobId }).warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`));
+      // A `JobQueued` names the job handed on, which is not the one running.
+      const bindings = event instanceof JobQueued ? { dispatched: event.job, dispatchedId: event.jobId } : { job: event.job, jobId: event.jobId, attempt: event.attempt };
+      guardedLog(() => this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`));
     }
   }
 

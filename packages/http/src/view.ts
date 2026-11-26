@@ -15,16 +15,41 @@ export type ViewProps = Record<string, unknown>;
  */
 export type ReservedProps = { readonly _conflict?: never };
 
-/** What `view()` and `json()` take besides the data: the response's `status` (default 200) and extra `headers`. */
+/**
+ * What `view()` and `json()` take besides the data: the response's `status` (default 200) and extra `headers`.
+ * A status is a whole number from 200 to 599, and not 204, 205 or 304 with a body — anything else throws a `TypeError`.
+ * See docs/responses.md#json.
+ */
 export interface ResultOptions {
   readonly status?: number;
   /** Extra response headers, e.g. `Retry-After` on an error page. */
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-/** A number where the options belong is the old positional status — refused with the way out. */
-export function assertResultOptions(name: string, options: unknown): void {
+/** Whether `status` is a whole number from 200 to 599 — one a response can carry. */
+export function isResponseStatus(status: unknown): status is number {
+  return Number.isInteger(status) && (status as number) >= 200 && (status as number) <= 599;
+}
+
+/** The status rule of a result, checked where a result is made and again where the server takes its status: a result is plain data and can be changed after. */
+export function assertStatus(name: string, status: unknown, hasBody: boolean): asserts status is number {
+  if (!isResponseStatus(status)) {
+    throw new TypeError(`${name}(): status is a whole number from 200 to 599, not ${typeof status === 'string' ? JSON.stringify(status) : typeof status === 'number' || typeof status === 'bigint' ? String(status) : typeof status}.`);
+  }
+  if (hasBody && (status === 204 || status === 205 || status === 304)) {
+    throw new TypeError(name === 'json' ? `${name}(): status ${status} has no body — pass undefined as the data.` : `${name}(): status ${status} has no body, and a page always has one.`);
+  }
+}
+
+/**
+ * The checked `{ status, headers }` of the options, each read once. A number where the options belong is the old positional
+ * status — refused with the way out; so is a status no response can carry.
+ */
+export function assertResultOptions(name: string, options: unknown, hasBody: boolean): { status: number; headers: Readonly<Record<string, string>> | undefined } {
   if (typeof options !== 'object' || options === null) throw new TypeError(`${name}(): pass the status as { status: 422 }`);
+  const { status = 200, headers } = options as ResultOptions;
+  assertStatus(name, status, hasBody);
+  return { status, headers };
 }
 
 /** What a controller returns to render a page. The server decides how (SSR HTML or JSON). */
@@ -68,15 +93,15 @@ export interface PageResult<TProps extends ViewProps = ViewProps, TComponent ext
 
 /**
  * A page: the component's name — checked against the app's views (`modules/<module>/views/<Page>.tsx`,
- * see `marmeon route:types`) — and its props.
+ * see `marmeon route:types`) — and its props. Throws a `TypeError` for a status that is not a whole number from 200 to 599,
+ * and for 204, 205 and 304, which carry no body. See docs/responses.md#pages.
  */
 export function view<const V extends string, const TProps extends ViewProps>(
   component: CheckViewName<V>,
   props: TProps & ReservedProps,
   options: ResultOptions = {},
 ): PageResult<TProps, V> {
-  assertResultOptions('view', options);
-  const { status = 200, headers } = options;
+  const { status, headers } = assertResultOptions('view', options, true);
   const result: PageResult<TProps, V> = {
     [VIEW_RESULT]: true,
     component: component as V,

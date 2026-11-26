@@ -191,6 +191,19 @@ export class DeactivateByEmail {
   }
 }
 
+/** A bulk action of a text-keyed table: records the keys it got. */
+export class DeactivateManyByEmail {
+  readonly #recorder: Recorder;
+
+  constructor(recorder: Recorder) {
+    this.#recorder = recorder;
+  }
+
+  handle(rows: readonly { readonly email: string }[]) {
+    this.#recorder.deactivated.push(...rows.map((row) => row.email));
+  }
+}
+
 /** The tenant scope, a service of the container: a base query gets it from its `resolve`, not from the request. */
 export class TeamScope {
   static inject = [Recorder, IncomingRequest] as const;
@@ -605,6 +618,15 @@ export const ByEmailTable = defineTable({
   actions: { deactivate: action(DeactivateByEmail).authorize(EmailPolicy, 'deactivate') },
 });
 
+/** Keyed by text, with a bulk action: the chosen keys are text. */
+export const ByEmailBulkTable = defineTable({
+  name: 'by-email-bulk',
+  query: (db, ctx: TeamContext) => db.selectFrom('members').where('members.team_id', '=', ctx.team),
+  key: { column: 'members.email', type: 'string' },
+  columns: { name: column('members.name').sortable() },
+  bulk: { deactivate: bulk(DeactivateManyByEmail).authorize(EmailPolicy, 'deactivate') },
+});
+
 /** A base query that loads a relation: the table pages it like any other query. */
 export const WithTeamTable = defineTable({
   name: 'with-team',
@@ -914,6 +936,7 @@ const PAGE_PATHS: Readonly<Record<string, string>> = {
   small: '/small',
   audited: '/audited',
   'by-email': '/by-email',
+  'by-email-bulk': '/by-email-bulk',
   localized: '/localized',
   'file-columns': '/file-columns',
   guarded: '/guarded',
@@ -956,6 +979,7 @@ const routes = openRoutes((Route) => {
   team.get('/small', StubPage).attach(SmallExportTable.endpoints());
   team.get('/audited', StubPage).attach(AuditedTable.endpoints());
   team.get('/by-email', StubPage).attach(ByEmailTable.endpoints());
+  team.get('/by-email-bulk', StubPage).attach(ByEmailBulkTable.endpoints());
   team.get('/localized', LocalizedPage).attach(LocalizedTable.endpoints());
   team.get('/file-columns', FileColumnsPage).attach(FileColumnsTable.endpoints());
   team.get('/hidden-sort', HiddenSortPage).attach(HiddenSortTable.endpoints());

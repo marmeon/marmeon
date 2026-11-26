@@ -1,4 +1,5 @@
 import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { logQuietly } from './quiet-log.ts';
 import { clientKey, type RateLimiter } from '@marmeon/cache';
 import type { Clock, Logger } from '@marmeon/core';
 import type { EncryptionConfig } from '@marmeon/encryption';
@@ -169,7 +170,7 @@ export class SignInThrottle {
     try {
       for (const key of keys) await this.#limiter.clear(key);
     } catch (error) {
-      this.#logger.error('The count of password sign-ins could not be cleared; it stays where it is.', { error });
+      logQuietly(this.#logger, 'error', 'The count of password sign-ins could not be cleared; it stays where it is.', { error });
     }
   }
 

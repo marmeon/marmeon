@@ -327,6 +327,34 @@ describe.skipIf(PGSQL_URL === undefined)('the Postgres lock', () => {
     await next.release();
   });
 
+  it('does not take the lock when the app parses booleans as strings: the answer \'f\' is not a lock', async () => {
+    const { default: pg } = await import('pg');
+    const BOOL = 16;
+    const holder = await acquire({ waitSeconds: 0 });
+    // The app's own parser for booleans, global to `pg`: it gives back the text of the answer.
+    const original = pg.types.getTypeParser(BOOL);
+    pg.types.setTypeParser(BOOL, (value: string) => value);
+    try {
+      await expect(acquire({ waitSeconds: 0 })).rejects.toBeInstanceOf(MigrationLockTimeoutError);
+    } finally {
+      pg.types.setTypeParser(BOOL, original);
+      await holder.release();
+    }
+  });
+
+  it('takes a free lock when the app parses booleans as strings: the answer \'t\' is no reason to wait', async () => {
+    const { default: pg } = await import('pg');
+    const BOOL = 16;
+    const original = pg.types.getTypeParser(BOOL);
+    pg.types.setTypeParser(BOOL, (value: string) => value);
+    try {
+      const lock = await acquire({ waitSeconds: 0 });
+      await lock.release();
+    } finally {
+      pg.types.setTypeParser(BOOL, original);
+    }
+  });
+
   it('does not take a connection of the app’s pool: migrates with a pool of one', async () => {
     const fresh = await freshDatabase('pgsql');
     const small = new Connections({ connections: { default: { ...fresh.options, poolMax: 1 } as never }, root: '/', logger: silent });

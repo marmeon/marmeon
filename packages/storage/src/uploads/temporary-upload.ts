@@ -60,7 +60,7 @@ export class TemporaryUpload {
   readonly id: string;
   /** The field it was uploaded for (`avatar`). */
   readonly field: string;
-  /** The file name the browser sent — for showing it; never a path, never where it is stored. */
+  /** The file name the browser sent (at most 255 characters, counted in code points) — for showing it; never a path, never where it is stored. */
   readonly name: string;
   readonly size: number;
   /** The type by its bytes (`image/png`) — `application/octet-stream` when it has no signature known here. */

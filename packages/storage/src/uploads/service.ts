@@ -55,6 +55,7 @@ export interface TargetRequest {
   readonly rule: UploadRule;
   /** The session's scope (a hash of its id) — the upload belongs to it. */
   readonly session: string;
+  /** The file's name; stored as at most 255 code points, a lone half of a surrogate pair replaced with U+FFFD, and refused (400) with a NUL character. */
   readonly name: string;
   readonly size: number;
 }
@@ -155,11 +156,14 @@ export class TemporaryUploads {
   }
 
   /**
-   * A target for one file: a row for its token, and where the bytes go. A file the browser says is too large: 422 at once. A
+   * A target for one file: a row for its token, and where the bytes go. A name with a NUL character: 400; a name longer than 255 code points is cut to 255. A file the browser says is too large: 422 at once. A
    * session over its open uploads, or all sessions over theirs: 429 with `Retry-After` — what keeps unsent files from filling the disk.
    */
   async target(request: TargetRequest): Promise<UploadTarget> {
     const { rule, field } = request;
+    // Postgres refuses a NUL in a text column (a 500) and SQLite keeps it. A lone half of a surrogate pair is replaced with U+FFFD here, as
+    // the UTF-8 encoding of both drivers would do anyway, so every driver stores the same name.
+    if (request.name.includes('\0')) throw new HttpError(400, 'An upload’s name may not contain a NUL character.');
     // A file no limit would ever take is a 422 with the real maximum, not a 429 that promises a later try.
     const { maxOpenBytes, maxOpenTotalBytes } = this.#options;
     const largest = Math.min(rule.maxBytes, maxOpenBytes, maxOpenTotalBytes === 0 ? Infinity : maxOpenTotalBytes);
@@ -180,7 +184,7 @@ export class TemporaryUploads {
         route: request.route,
         field,
         disk: disk.name,
-        name: request.name.slice(0, 255),
+        name: Array.from(request.name.toWellFormed().slice(0, 1020)).slice(0, 255).join(''),
         maxBytes: rule.maxBytes,
         size: request.size,
         charge,

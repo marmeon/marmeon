@@ -93,7 +93,7 @@ export class TinkerCommand {
   #banner(session: TinkerSession, output: CommandInput['output'], history: string | undefined): void {
     const env = process.env.NODE_ENV ?? '(not set)';
     const database = session.database();
-    const parts = [style('bold', 'Marmeon tinker'), session.appName(), `NODE_ENV=${env}`, `APP_ENV=${environment.app()}`, ...(database ? [`db ${database}`] : []), '.ls lists helpers'];
+    const parts = [style('bold', 'Marmeon tinker'), session.appName(), `NODE_ENV=${env}`, `APP_ENV=${environment.app()}`, ...(database ? [`db ${database}`] : session.databaseWarning() ? [session.databaseWarning()!] : []), '.ls lists helpers'];
     output.line(parts.join(' · '));
     if (session.sandbox) {
       output.line(style('cyan', 'Sandbox: every change to the default connection is rolled back when the session ends (mails, files and Redis are real).'));
@@ -108,7 +108,7 @@ export class TinkerCommand {
     const database = session.database();
     const name = environment.name();
     const label = name === undefined || name === 'production' ? 'PRODUCTION' : `PROTECTED (${name})`;
-    return `${label} — NODE_ENV=${name ?? '(not set)'}, APP_ENV=${environment.app()}${database ? `, db ${database}` : ''}: ${session.sandbox ? 'changes are rolled back at the end (--sandbox).' : 'every change is real.'}`;
+    return `${label} — NODE_ENV=${name ?? '(not set)'}, APP_ENV=${environment.app()}${database ? `, db ${database}` : session.databaseWarning() ? `, ${session.databaseWarning()}` : ''}: ${session.sandbox ? 'changes are rolled back at the end (--sandbox).' : 'every change is real.'}`;
   }
 }
 

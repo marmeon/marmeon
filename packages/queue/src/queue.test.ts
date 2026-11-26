@@ -1,8 +1,9 @@
 import { Writable } from 'node:stream';
 import { readdirSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { CacheServiceProvider } from '@marmeon/cache';
+import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { Clock, createApplication, currentLogContext, ErrorReports, EventDispatcher, listen, Logger, Redactor, type Application, type ModuleDefinition } from '@marmeon/core';
+import { runWithJob } from '@marmeon/core/internal';
 import { TestClock } from '@marmeon/core/testing';
 import { channels, type QueueJobMessage } from '@marmeon/core/diagnostics';
 import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
@@ -17,7 +18,7 @@ import { MemoryFailedJobStore, MemoryQueueDriver } from './drivers/memory.ts';
 import { parseMember } from './drivers/redis.ts';
 import { QueueFake } from './fake.ts';
 import type { JobEvent } from './events.ts';
-import { JobFailed, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, Queue, QueueServiceProvider, type JobContext, type JobPayload } from './index.ts';
 import { QueueManager, RECORD_OPTIONS } from './queue.ts';
 import { JobRegistry, QueueSetupError } from './registry.ts';
 import { cipherContext, JobPayloadError, JobRunner, nextInChain, parseRecord, RECORD_READERS } from './runner.ts';
@@ -1196,7 +1197,7 @@ describe('the worker', () => {
       expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 2, released: 1, failed: 1 });
       expect(ended.map(({ job, jobId, attempt, originRequestId, payload, error }) => ({ job, jobId, attempt, originRequestId, payload, error: (error as Error).message.split(' (')[0] }))).toEqual([
         { job: 'test.from-the-next-release', jobId: unknown, attempt: 1, originRequestId: 'req-9', payload: { token: 't0k3n' }, error: 'No job named "test.from-the-next-release" is registered in this app' },
-        { job: 'test.reset-link', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: { email: 'a@b.c', token: 't' }, error: expect.stringMatching(/^test\.reset-link takes an encrypted payload/) },
+        { job: 'test.reset-link', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: undefined, error: expect.stringMatching(/^test\.reset-link takes an encrypted payload/) },
       ]);
       // The worker's lines about it carry the job's context — what the recorder files them under.
       expect(lines.map(({ context }) => context.jobId)).toEqual([unknown, poisoned]);
@@ -2197,5 +2198,175 @@ describe('a delay on the sync connection', () => {
     await queue.dispatch(WelcomeJob, { userId: 2 }, { delay: 31, [RECORD_OPTIONS]: { label: { toString: () => 'x' } } } as never);
     expect(other.seen.entries).toHaveLength(2);
     expect(warnings(sync.lines).map((line) => line.message)).toEqual([said('test.welcome', 30)]);
+  });
+});
+
+describe('a queue log line about a job that is not the running one', () => {
+  /** What a line carries in the real logger: the running job's context, then the child's bindings over it. */
+  function recorded() {
+    const lines: { level: string; message: string; fields: Record<string, unknown> }[] = [];
+    const make = (bindings: Record<string, unknown>): Logger => {
+      const write = (level: string) => (message: string, context?: Record<string, unknown>) => void lines.push({ level, message, fields: { ...currentLogContext(), ...bindings, ...context } });
+      return { debug: write('debug'), info: write('info'), warn: write('warn'), error: write('error'), child: (more) => make({ ...bindings, ...more }) };
+    };
+    return { lines, logger: make({}) };
+  }
+  const running = { job: 'test.running', jobId: 'running-id', attempt: 3 };
+
+  class ThrowingListener {
+    handle(): void {
+      throw new Error('the listener refused');
+    }
+  }
+
+  const onceKey = `busy-${crypto.randomUUID()}`;
+  const onceKeys: string[] = [];
+
+  class OnceSyncJob {
+    static readonly job = 'test.once-sync';
+    static readonly schema = v.object({});
+
+    async handle(_payload: JobPayload<typeof OnceSyncJob>, job: JobContext): Promise<void> {
+      await job.once(onceKeys.at(-1) ?? onceKey, () => {});
+    }
+  }
+
+  it('names the job of a "Not queued" line as dispatched — job, jobId and attempt stay the running job\'s', async () => {
+    const { lines, logger } = recorded();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger, cache: true });
+    const key = `k-${crypto.randomUUID()}`;
+    const held = application.container.make(Cache).lock(`queue:unique:test.welcome:${key}`, 60);
+    expect(await held.get()).toBe(true);
+    try {
+      await runWithJob(running, () => application.container.make(Queue).dispatch(WelcomeJob, { userId: 1 }, { unique: key }));
+    } finally {
+      await held.release();
+    }
+    const line = lines.find((entry) => entry.message.startsWith('Not queued'));
+    expect(line?.fields, JSON.stringify(lines)).toMatchObject({ dispatched: 'test.welcome', ...running });
+    expect(application.seen.entries).toEqual([]);
+  });
+
+  it.each([
+    ['JobProcessing', JobProcessing, WelcomeJob, { userId: 1 }, 'test.welcome'],
+    ['JobProcessed', JobProcessed, WelcomeJob, { userId: 1 }, 'test.welcome'],
+    ['JobFailed', JobFailed, FinalJob, { how: 'fail' }, 'test.final'],
+  ] as const)('gives the warning of a failing %s listener of a sync run the dispatched job\'s id and attempt, not the running job\'s', async (name, event, job, payload, jobName) => {
+    const { lines, logger } = recorded();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(event, ThrowingListener)] }] });
+    await runWithJob(running, () => application.container.make(Queue).dispatch(job, payload as never)).catch(() => {});
+    const line = lines.find((entry) => entry.message.startsWith(`A listener of ${name} failed`));
+    expect(line, JSON.stringify(lines)).toBeDefined();
+    expect(line!.fields).toMatchObject({ job: jobName, attempt: 1 });
+    expect(line!.fields.jobId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('names the job of a failing JobQueued listener as dispatched, with its id', async () => {
+    const { lines, logger } = recorded();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobQueued, ThrowingListener)] }] });
+    await runWithJob(running, () => application.container.make(Queue).dispatch(WelcomeJob, { userId: 1 }));
+    const line = lines.find((entry) => entry.message.startsWith('A listener of JobQueued failed'));
+    expect(line?.fields, JSON.stringify(lines)).toMatchObject({ dispatched: 'test.welcome', dispatchedId: application.seen.entries[0]!.id, ...running });
+  });
+
+  it('rejects a sync job whose job.once() key is busy without promising a retry the sync connection never gives', async () => {
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, cache: true, modules: [{ name: 'test', jobs: [OnceSyncJob] }] });
+    const held = application.container.make(Cache).lock(`queue:once-lock:${onceKey}`, 60);
+    expect(await held.get()).toBe(true);
+    const error = await application.container.make(Queue).dispatch(OnceSyncJob, {}).catch((thrown: unknown) => thrown).finally(() => held.release());
+    expect(error).toBeInstanceOf(JobOnceBusyError);
+    expect((error as Error).message).toBe(`job.once('${onceKey}') is running in another attempt right now.`);
+    expect((error as Error).message).not.toContain('again');
+  });
+
+  /** A real worker on the memory driver with the recording logger; `events` stands for the app's listeners. */
+  const workerFor = (application: Application, logger: Logger, events: (event: JobEvent) => Promise<void> = async () => {}) => {
+    const clock = application.container.make(Clock);
+    const driver = new MemoryQueueDriver({ clock, retryAfterSeconds: 60 });
+    const container = application.container;
+    const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter), async () => container.make(Cache));
+    const w = new Worker({ driver, connection: 'memory', runner, failed: new MemoryFailedJobStore(), clock, logger, retryAfterSeconds: 60, events });
+    return { driver, run: () => w.run({ queues: ['default'], stopWhenEmpty: true, maxJobs: 1 }) };
+  };
+
+  it('tells the worker\'s busy job.once release in one line: the key is running elsewhere, and the retry comes from the worker', async () => {
+    const { lines, logger } = recorded();
+    await using application = await app({ cache: true, logger, modules: [{ name: 'test', jobs: [OnceSyncJob] }] });
+    const { driver, run } = workerFor(application, logger);
+    const held = application.container.make(Cache).lock(`queue:once-lock:${onceKey}`, 60);
+    expect(await held.get()).toBe(true);
+    try {
+      await push(application, driver, 'test.once-sync', {});
+      await run();
+    } finally {
+      await held.release();
+    }
+    const line = lines.find((entry) => entry.message.startsWith('Released'));
+    expect(line?.message, JSON.stringify(lines)).toBe(`Released test.once-sync: job.once('${onceKey}') is running in another attempt right now. It runs again in 5s, without using up a try.`);
+  });
+
+  it('masks a secret in the job.once key of that release line', async () => {
+    const { lines, logger } = recorded();
+    await using application = await app({ cache: true, logger, modules: [{ name: 'test', jobs: [OnceSyncJob] }] });
+    const token = ['s3', 'cr3t', crypto.randomUUID().replaceAll('-', '')].join('') + 'ab';
+    const key = `password-reset:${token}`;
+    onceKeys.push(key);
+    const { driver, run } = workerFor(application, logger);
+    const held = application.container.make(Cache).lock(`queue:once-lock:${key}`, 60);
+    expect(await held.get()).toBe(true);
+    try {
+      await push(application, driver, 'test.once-sync', {});
+      await run();
+    } finally {
+      await held.release();
+      onceKeys.pop();
+    }
+    const line = lines.find((entry) => entry.message.startsWith('Released'));
+    expect(line, JSON.stringify(lines)).toBeDefined();
+    expect(line!.message).not.toContain(token);
+    expect(line!.message).toContain('[redacted]');
+  });
+
+  it.each([
+    ['JobProcessing', JobProcessing],
+    ['JobProcessed', JobProcessed],
+  ] as const)('gives the warning of a failing %s listener of a worker the running record\'s job, jobId and attempt', async (name, event) => {
+    const { lines, logger } = recorded();
+    await using application = await app({ logger });
+    const { driver, run } = workerFor(application, logger, async (seen) => {
+      if (seen instanceof event) throw new Error('the listener refused');
+    });
+    const id = await push(application, driver, 'test.welcome', { userId: 1 });
+    await run();
+    const line = lines.find((entry) => entry.message.startsWith(`A listener of ${name} failed`));
+    expect(line?.fields, JSON.stringify(lines)).toMatchObject({ job: 'test.welcome', jobId: id, attempt: 1 });
+  });
+
+  it('gives the warning of a failing JobFailed listener of a worker the failed record\'s job, jobId and attempt', async () => {
+    const { lines, logger } = recorded();
+    await using application = await app({ logger });
+    const { driver, run } = workerFor(application, logger, async (seen) => {
+      if (seen instanceof JobFailed) throw new Error('the listener refused');
+    });
+    const id = await push(application, driver, 'test.final', { how: 'fail' });
+    await run();
+    const line = lines.find((entry) => entry.message.startsWith('A listener of JobFailed failed'));
+    expect(line?.fields, JSON.stringify(lines)).toMatchObject({ job: 'test.final', jobId: id, attempt: 1 });
+  });
+
+  it('names the next job of a chain as dispatched when the JobQueued listener of the worker fails — no job, jobId or attempt', async () => {
+    const { lines, logger } = recorded();
+    await using application = await app({ logger });
+    const { driver, run } = workerFor(application, logger, async (seen) => {
+      if (seen instanceof JobQueued) throw new Error('the listener refused');
+    });
+    const next = crypto.randomUUID();
+    await push(application, driver, 'test.welcome', { userId: 1 }, { chain: [{ v: 1, uuid: next, job: 'test.welcome', data: { userId: 2 }, dispatchedAt: 0 }] });
+    await run();
+    const line = lines.find((entry) => entry.message.startsWith('A listener of JobQueued failed'));
+    expect(line?.fields, JSON.stringify(lines)).toMatchObject({ dispatched: 'test.welcome', dispatchedId: next });
+    expect(line!.fields).not.toHaveProperty('job');
+    expect(line!.fields).not.toHaveProperty('jobId');
+    expect(line!.fields).not.toHaveProperty('attempt');
   });
 });
