@@ -1,6 +1,6 @@
 import { TransactionError } from '@marmeon/core';
 import { leftTransactionOf, transactionOf, withCode, type TransactionFrame } from '@marmeon/core/internal';
-import { CompiledQuery, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
+import { CompiledQuery, isAbortedTransactionError, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
 import { transactionControls } from './mysql-transaction-control.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
@@ -90,6 +90,13 @@ export class MarmeonDriver implements Driver {
    * code does with the error, so it cannot commit: see {@link MarmeonDriver.commitTransaction}.
    */
   readonly #tainted = new WeakMap<DatabaseConnection, Set<number>>();
+  /**
+   * Connections whose outermost transaction Postgres ended by answering the commit with a rollback. Kysely's rollback that follows
+   * finds nothing left to undo and sends nothing; the entry goes with the next begin or release.
+   */
+  readonly #ended = new WeakSet<DatabaseConnection>();
+  /** The depth of the connection when an ambient transaction began on it: what is open again once that transaction has ended. */
+  readonly #bases = new WeakMap<TransactionFrame, number>();
   #init: Promise<void> | undefined;
   /** While isolated: the one connection every query uses, inside a transaction that is rolled back later. */
   #pinned: DatabaseConnection | undefined;
@@ -111,6 +118,8 @@ export class MarmeonDriver implements Driver {
    * running inside it. The last release really releases (and unlocks) it.
    */
   readonly #holders = new Map<DatabaseConnection, number>();
+  /** The outermost frame that began on the connection {@link #holders} counts: where every frame shares one connection (SQLite), whose holders those are. */
+  readonly #holderOf = new Map<DatabaseConnection, TransactionFrame>();
 
   /** A pool that never joins an ambient transaction: an infrastructure connection's own pool. */
   readonly #detached: boolean;
@@ -170,6 +179,7 @@ export class MarmeonDriver implements Driver {
 
   async acquireConnection(options?: Parameters<Driver['acquireConnection']>[0]): Promise<DatabaseConnection> {
     if (this.#detached) return this.#acquire(options);
+
     // Throws when this call chain's transaction has finished: never a silent fallback to a fresh connection.
     const frame = transactionOf(this);
     if (frame) return frame.resource === undefined ? this.#begin(frame, options) : this.#join(frame.resource as DatabaseConnection);
@@ -193,11 +203,83 @@ export class MarmeonDriver implements Driver {
       }
       this.#holders.delete(connection);
     }
+    this.#holderOf.delete(connection);
+    this.#ended.delete(connection);
+    let leftOpen = false;
     try {
+      // A transaction still recorded at the final release was left open (an error that made Kysely skip its rollback, a path nobody
+      // thought of): undo it here, so the pool never hands it to the next request. A failed rollback leaves the discarding to the
+      // dialect: pg's driver marks the client for discard; on MySQL the guarded pool's release runs COM_RESET_CONNECTION and destroys
+      // the connection when that fails (mysql-session.ts); SQLite's rollback fails only on a closed handle. The connection is released either way.
+      if (this.#depth.has(connection) && connection !== this.#pinned && !this.#retired.has(connection)) {
+        this.#depth.delete(connection);
+        this.#tainted.delete(connection);
+        this.#context.metadata?.release(connection);
+        let failed = false;
+        leftOpen = true;
+        try {
+          await this.#driver.rollbackTransaction(this.#controls(connection));
+        } catch {
+          // Nothing to add to the error that left the transaction open; the warning below says the rollback failed.
+          failed = true;
+        }
+        this.#warnLeftOpen(failed);
+      }
       if (connection !== this.#pinned && !this.#retired.has(connection)) await this.#driver.releaseConnection(connection, options);
     } finally {
       if (this.#single) this.#lock.release();
     }
+    // Whoever committed (or thought they did) did not commit: the transaction is undone, and the caller learns it.
+    if (leftOpen) throw new TransactionError(withCode('D24', releasedOpen(this.#context.name)));
+  }
+
+  #warnLeftOpen(failed: boolean): void {
+    process.emitWarning(
+      `A transaction on "${this.#context.name}" was still open when its connection was released; Marmeon rolled it back` +
+        (failed ? ' — the rollback failed; the driver discards or resets the connection' : ''),
+      { type: 'MarmeonDatabaseWarning', code: 'MARMEON_TRANSACTION_LEFT_OPEN' },
+    );
+  }
+
+  /**
+   * @internal — called once an ambient transaction has ended (its commit or rollback ran, or failed). On a connection that is still inside
+   * a transaction around it (a savepoint, or a test's isolated connection), only the levels that were open when it began may be open now.
+   * More means a transaction inside it was never closed (Kysely skips the rollback of a transaction whose callback threw its own marker
+   * error): its commit or rollback was taken for the one of an inner level, and this transaction's own savepoint is still open. That is
+   * rolled back here, with everything above it, and a transaction that reported success throws D24 instead. The outermost transaction of
+   * a connection is held to the same when a statement of its own still holds the connection, and otherwise at the release of the connection.
+   */
+  async closed(frame: TransactionFrame, completed: boolean): Promise<void> {
+    const base = this.#bases.get(frame);
+    const connection = frame.resource as DatabaseConnection | undefined;
+    if (base === undefined || connection === undefined) return;
+    if (base === 0) {
+      // The outermost transaction of a connection is held to this when a statement of its own still holds the connection: the final release,
+      // which the guard in releaseConnection() watches, has not come. Once it has, the connection may belong to someone else already. Where
+      // frames share one connection (SQLite), only the frame whose holders these are may undo what is open on it.
+      if (this.#holderOf.get(connection) !== frame || !this.#holders.has(connection) || !this.#depth.has(connection) || connection === this.#pinned) return;
+      this.#depth.delete(connection);
+      this.#tainted.delete(connection);
+      this.#context.metadata?.release(connection);
+      let failed = false;
+      try {
+        await this.#driver.rollbackTransaction(this.#controls(connection));
+      } catch {
+        // As at the release: the error of the caller (or D24) is what is told; the dialect's driver discards or resets the connection.
+        failed = true;
+      }
+      if (failed) this.#warnLeftOpen(true);
+      if (completed) throw new TransactionError(withCode('D24', UNCLOSED_LEVEL));
+      return;
+    }
+    const open = this.#depth.get(connection);
+    if (open === undefined || open <= base) return;
+    this.#depth.set(connection, base);
+    this.#healed(connection, base + 1);
+    await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(base)}`));
+    await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(base)}`));
+    this.#undone(connection);
+    if (completed) throw new TransactionError(withCode('D24', UNCLOSED_LEVEL));
   }
 
   /**
@@ -263,12 +345,17 @@ export class MarmeonDriver implements Driver {
     while (outer && outer.owner !== this) outer = outer.parent;
     if (outer) {
       frame.resource = outer.resource;
+      this.#bases.set(frame, this.#depth.get(outer.resource as DatabaseConnection) ?? 0);
       return this.#join(outer.resource as DatabaseConnection);
     }
     const connection = await this.#acquire(options);
     frame.resource = connection;
+    this.#bases.set(frame, this.#depth.get(connection) ?? 0);
     // Isolated on a dialect with several connections, everyone shares the pinned one without a lock: nothing to count.
-    if (this.#single || connection !== this.#pinned) this.#holders.set(connection, 1);
+    if (this.#single || connection !== this.#pinned) {
+      this.#holders.set(connection, 1);
+      this.#holderOf.set(connection, frame);
+    }
     return connection;
   }
 
@@ -316,6 +403,7 @@ export class MarmeonDriver implements Driver {
 
   async beginTransaction(connection: DatabaseConnection, settings: TransactionSettings): Promise<void> {
     const depth = this.#depth.get(connection) ?? 0;
+    if (depth === 0) this.#ended.delete(connection);
     // Isolation level and access mode belong to the outermost transaction; a savepoint has neither.
     // SQLite upgrades a deferred transaction to a write lock at its first write — and fails at once with SQLITE_BUSY when another
     // connection (the worker, the scheduler) wrote in between. `begin immediate` takes the lock first and waits under the busy timeout.
@@ -330,6 +418,9 @@ export class MarmeonDriver implements Driver {
    * On Postgres a level in which a statement failed is aborted, whether or not the code caught the error: a `commit` would answer
    * with a rollback and `release savepoint` would fail or, worse, leave the transaction around it running in a state nobody
    * decided on. Such a level sends nothing and throws instead (D24); Kysely then rolls exactly this level back.
+   * A statement that failed after the callback returned is met at the `release` of a savepoint (D24, Kysely rolls that level back) or
+   * at the commit of the outermost transaction, which Postgres answers with a rollback: both throw D24. The outermost transaction's depth is
+   * cleared here, a savepoint's is left for Kysely's rollback.
    */
   async commitTransaction(connection: DatabaseConnection): Promise<void> {
     const level = this.#depth.get(connection);
@@ -339,6 +430,13 @@ export class MarmeonDriver implements Driver {
       try {
         await this.#driver.commitTransaction(this.#controls(connection));
       } catch (error) {
+        // Postgres answered the commit with a rollback: the transaction is over. Kysely's own error never leaves here: it makes Kysely skip the
+        // rollback of any transaction whose callback it escapes from, which would leave the transaction of the other connection open. D24 is an ordinary
+        // failure, and the rollback it brings is answered without sending anything.
+        if (isAbortedTransactionError(error)) {
+          this.#ended.add(connection);
+          throw new TransactionError(withCode('D24', LATE_FAILURE), { cause: error });
+        }
         // The commit itself failed (a deferred constraint, a serialization failure): Kysely rolls back next, with the original error kept.
         this.#depth.set(connection, 1);
         throw error;
@@ -355,11 +453,14 @@ export class MarmeonDriver implements Driver {
       // Kysely rolls this level back next.
       this.#depth.set(connection, depth + 1);
       if (!outerTainted) this.#tainted.get(connection)?.delete(depth);
+      // 25P02: a statement started inside this level failed after the check above, and the `release` met the aborted transaction.
+      if (isServerError(error) && (error as { code?: string }).code === '25P02') throw new TransactionError(withCode('D24', LATE_FAILURE), { cause: error });
       throw error;
     }
   }
 
   async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
+    if (this.#ended.delete(connection)) return;
     const level = this.#depth.get(connection);
     const depth = this.#leave(connection);
     if (depth === 0) {
@@ -628,6 +729,50 @@ export function isServerError(error: unknown): boolean {
 const ABORTED_TRANSACTION =
   'A statement failed inside this transaction and its error was caught inside it. Postgres aborted the transaction (or its savepoint), so nothing in it was ' +
   'committed. Catch the error outside the nested transaction(), or use tryInsert().';
+/** A level inside this transaction was left open: its rollback never ran. */
+export const UNCLOSED_LEVEL =
+  "A db.transaction() or db.startTransaction() opened inside this one was never closed, so Marmeon rolled this transaction back instead of committing it. " +
+  'The usual cause: Kysely does not roll back a db.transaction() whose callback throws an AbortedTransactionError, even when the error is caught outside the callback. ' +
+  'Wrap that error before it leaves the callback (new Error(message, { cause })), or open nested transactions with connections.transaction(), which does it for you.';
+
+/** What the release of a connection with a transaction still open says: the release itself is where it was found. */
+export const releasedOpen = (name: string): string =>
+  `A transaction on "${name}" was still open when its connection was released, so Marmeon rolled it back. ` +
+  'The usual cause: Kysely does not roll back a db.transaction() whose callback throws an AbortedTransactionError, even when the error is caught outside the callback. ' +
+  'Wrap that error before it leaves the callback (new Error(message, { cause })), or use connections.transaction(), which does it for you.';
+
+/**
+ * Kysely does not roll back a transaction whose callback throws an error that carries its own marker for a commit the database
+ * answered with a rollback. That error is carried past Kysely in a wrapper that does not carry the marker, and handed back to the caller
+ * once the rollback has run.
+ */
+class ShieldedError extends Error {
+  readonly original: unknown;
+
+  constructor(original: unknown) {
+    super('An error that Kysely would not roll back for.', { cause: original });
+    this.original = original;
+  }
+}
+
+/** @internal — runs a transaction callback so that an error with Kysely's marker still makes Kysely roll the transaction back; undo it with {@link unshielded}. */
+export async function shielded<T>(callback: () => Promise<T>): Promise<T> {
+  try {
+    return await callback();
+  } catch (error) {
+    throw isAbortedTransactionError(error) ? new ShieldedError(error) : error;
+  }
+}
+
+/** @internal — the error that {@link shielded} carried past Kysely, or the error itself. */
+export function unshielded(error: unknown): unknown {
+  return error instanceof ShieldedError ? error.original : error;
+}
+
+/** A statement started inside the callback and not awaited failed after the callback returned. Thrown for the outermost transaction and for a nested one. */
+export const LATE_FAILURE =
+  'A statement started inside this transaction failed after its callback returned, so Postgres rolled it back instead of committing it ' +
+  '(a nested transaction: its savepoint, while the transaction around it goes on). Await every statement inside transaction() before the callback returns.';
 
 /** The nodes of the builder that MySQL commits a transaction at: the ones that change the metadata, and views and schemas, which it does not reload for. */
 const MYSQL_COMMITS: ReadonlySet<string> = new Set([

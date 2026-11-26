@@ -119,6 +119,20 @@ a savepoint can go on. Use `tryInsert()` where a taken value is expected. A save
 of its own that starts with `rollback to`: a recovery behind a comment or after another statement in the same query is not
 recognized, and the commit still throws D24.
 
+A statement you started inside `transaction()` and did not await can also fail after the callback has returned. When the failure
+reaches Postgres before the commit does, Postgres aborts the transaction, so nothing in it is committed, and `transaction()` throws `TransactionError` (D24) instead of reporting a commit.
+Its `cause` is the database's answer to the commit, or to the release of the savepoint; the failed statement's own error reaches only
+the promise of that statement. In a nested `transaction()`, and in every `transaction()` of a test with `database: 'refresh'` (these
+run as savepoints), only that savepoint is undone: Marmeon rolls it back, and the transaction around it stays open and can go on.
+[Await every statement](#await-everything) before the callback returns.
+
+A `db.transaction()` or `db.startTransaction()` that you open inside `transaction()` and never close leaves a level open. The usual cause:
+Kysely does not roll back a `db.transaction()` whose callback throws an `AbortedTransactionError`, even when you catch the error outside
+the callback. Wrap that error before it leaves the callback, for example `new Error(message, { cause })`, or open nested transactions with
+`connections.transaction()`, which does it for you. The `transaction()` around the open level is rolled back instead of committed, and
+throws `TransactionError` (D24); its after-commit work does not run. In a nested `transaction()` that undoes the nested one, and the
+transaction around it can go on.
+
 Open nested transactions one after the other. Several at once, such as `transaction()` calls in a `Promise.all`, would share one
 connection, so the second one throws:
 
@@ -343,6 +357,8 @@ This work was started inside transaction() on "default" but ran after that trans
 
 The error is a `TransactionFinishedError`. Such work never runs on the bare connection by accident.
 
+A statement that is still running when the callback returns is no exception: if it fails while the transaction is still open, the transaction is rolled back and throws D24, as described under [Nested transactions](#nested-transactions).
+
 ## After the commit
 
 Some work must happen only for data that exists: a mail, a cache write, a call to another service. `afterCommit(fn)` runs `fn`
@@ -480,6 +496,14 @@ try {
 
 Such a transaction reports neither its commit nor its rollback, so the job above is a row that exists once `trx` commits, but
 `JobQueued` is not fired for it, and a `sync` job or a unique job dispatched through it throws a `QueueError`.
+
+`commit()` can throw: on Postgres it throws `TransactionError` (D24) when a statement inside the transaction failed.
+Call `rollback()` in the `catch` (as above): it ends the transaction if it is still open, and hands the connection back to the pool.
+
+A connection that is released while its transaction is still open is rolled back by Marmeon, with a `MarmeonDatabaseWarning` (code
+`MARMEON_TRANSACTION_LEFT_OPEN`) that names the connection only, and the release throws `TransactionError` (D24). The operation that
+released the connection rejects with D24 instead of its own error. Through `startTransaction()` Kysely swallows that rejection, so only the
+warning appears. Both are a sign that some code left a transaction open.
 
 Kysely's own `db.transaction().execute(callback)` is not ambient either. Outside `connections.transaction()` it is a plain
 transaction, and inside its callback only `trx`, or a repository bound with `using(trx)`, is in it. A query on the plain `db`
