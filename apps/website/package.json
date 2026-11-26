@@ -44,7 +44,7 @@
     "marmeon": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "shiki": "4.5.0"
+    "shiki": "4.6.0"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "5.3.0",
@@ -56,11 +56,11 @@
     "@marmeon/vite": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
+    "@vitejs/plugin-react": "^6.3.0",
     "happy-dom": "^21.0.4",
-    "oxlint": "^1.90.0",
+    "oxlint": "^1.94.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   }
 }

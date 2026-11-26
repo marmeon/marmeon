@@ -75,14 +75,15 @@ export function entryChunks(entries: ReadonlyMap<string, string>): Rolldown.Code
     return name === 'index' ? 'vendor' : `vendor-${name}`;
   };
 
+  // `debugName` only labels a group in the bundler's timing report; rolldown asks for it when `name` is a function.
   return {
     groups: [
       ...tiers(entries.size).flatMap(([size, loaded], rank) => [
-        { name: shared('vendor-shared', size, loaded), test: isThirdParty, tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 * rank + 4 },
-        { name: shared('shared', size, loaded), tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 * rank + 3 },
+        { debugName: `vendor-shared ${size}/${loaded}`, name: shared('vendor-shared', size, loaded), test: isThirdParty, tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 * rank + 4 },
+        { debugName: `shared ${size}/${loaded}`, name: shared('shared', size, loaded), tags: ['$initial'] as Rolldown.BuiltinModuleTag[], priority: 2 * rank + 3 },
       ]),
-      { name: alone(true), test: isThirdParty, tags: ['$initial'], priority: 2 },
-      { name: alone(false), tags: ['$initial'], priority: 1 },
+      { debugName: 'vendor-alone', name: alone(true), test: isThirdParty, tags: ['$initial'], priority: 2 },
+      { debugName: 'alone', name: alone(false), tags: ['$initial'], priority: 1 },
     ],
   };
 }
