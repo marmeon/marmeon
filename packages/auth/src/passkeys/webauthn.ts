@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { logQuietly } from '../quiet-log.ts';
 import { cbor } from '../cbor.ts';
 import { err, ok, type Logger, type Result } from '@marmeon/core';
 import {
@@ -232,7 +233,7 @@ export async function verifyRegistration(
       backedUp: credentialBackedUp,
     });
   } catch (error) {
-    logger?.debug('A passkey registration was refused', { reason: error });
+    logQuietly(logger, 'debug', 'A passkey registration was refused', { reason: error });
     return err({ kind: 'invalid' });
   }
 }
@@ -293,13 +294,13 @@ export async function verifyAuthentication(
       throw new Error('user handle missing or not the passkey owner\'s');
     }
   } catch (error) {
-    logger?.debug('A passkey sign-in was refused', { reason: error });
+    logQuietly(logger, 'debug', 'A passkey sign-in was refused', { reason: error });
     return err({ kind: 'invalid' });
   }
   const { newCounter, credentialBackedUp } = verified.authenticationInfo;
   // Synchronised passkeys report 0 every time and pass; any other counter must move forward, or the key may have been copied.
   if ((newCounter > 0 || stored.signCount > 0) && newCounter <= stored.signCount) {
-    logger?.debug('A passkey sign-in was refused', { reason: `counter ${newCounter} did not pass ${stored.signCount}` });
+    logQuietly(logger, 'debug', 'A passkey sign-in was refused', { reason: `counter ${newCounter} did not pass ${stored.signCount}` });
     return err({ kind: 'clone-suspected' });
   }
   return ok({ signCount: newCounter, backedUp: credentialBackedUp });

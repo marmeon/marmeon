@@ -1,5 +1,5 @@
 import { CacheServiceProvider, RateLimiter } from '@marmeon/cache';
-import { Clock, createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { Clock, createApplication, defineModule, err, listen, Logger, type Container, type LogContext } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, Migrator } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
@@ -38,6 +38,7 @@ import { RECOVERY_CODES_TABLE } from '../two-factor/store.ts';
 import { TwoFactor } from '../two-factor/two-factor.ts';
 import { Passkeys, type RegisterError } from './passkeys.ts';
 import { PasskeyServiceProvider } from './provider.ts';
+import { AccountSessions } from '../account-sessions.ts';
 import { PASSKEYS_TABLE, PasskeyStore } from './store.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
@@ -253,7 +254,7 @@ const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' };
 const ORIGIN = 'http://localhost:3000';
 
-async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean; users?: MemoryUsers; clock?: TestClock } = {}) {
+async function boot(env: Record<string, string> = {}, options: { passkeys?: boolean; unboundState?: boolean; users?: MemoryUsers; clock?: TestClock; logger?: Logger } = {}) {
   const users = options.users ?? new MemoryUsers();
   const passkeys = options.passkeys !== false;
   const application = await createApplication({
@@ -273,6 +274,7 @@ async function boot(env: Record<string, string> = {}, options: { passkeys?: bool
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       if (options.clock) container.instance(Clock, options.clock);
+      if (options.logger) container.instance(Logger, options.logger);
       container.instance(UserProvider, users as UserProvider);
       if (options.unboundState) container.singleton(TwoFactorState, NoTwoFactorState);
       else container.singleton(TwoFactorState, (c) => (passkeys ? combineFactors(c.make(TwoFactorStore), c.make(PasskeyStore)) : combineFactors(c.make(TwoFactorStore))));
@@ -922,6 +924,47 @@ describe('Passkeys: replay, clones and audit signals', () => {
     stranger.register({ challenge: 'AAAA' });
     await b.pk('sign-in', { response: stranger.authenticate(await b.pk('sign-in-options')) });
     expect(events.filter((event) => event instanceof PasskeySignInFailed)).toHaveLength(0);
+  });
+
+  describe('a refusal is answered whatever the debug entry does', () => {
+    /** A logger whose debug entry for one message throws, as a sink with a filter can. */
+    const refusing = (only: string): Logger => {
+      const logger: Logger = {
+        debug(message) {
+          if (message === only) throw new Error('log sink filter');
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child: () => logger,
+      };
+      return logger;
+    };
+
+    it.each([
+      ['a bad signature', (response: any) => void (response.response.signature = Buffer.alloc(64, 1).toString('base64url'))],
+      ['a foreign user handle', (response: any) => void (response.response.userHandle = Buffer.alloc(32, 9).toString('base64url'))],
+    ])('refuses %s as invalid and tells the owner once', async (_name, spoil) => {
+      const booted = await boot({}, { logger: refusing('A passkey sign-in was refused') });
+      const authenticator = device();
+      await enrolled(booted, authenticator);
+      events.length = 0;
+      const b = booted.browser();
+      const response = authenticator.authenticate(await b.pk('sign-in-options'));
+      spoil(response);
+      expect(await b.pk('sign-in', { response })).toEqual({ ok: false, kind: 'invalid' });
+      expect(events.filter((event) => event instanceof PasskeySignInFailed)).toHaveLength(1);
+      expect(await b.pk('who')).toEqual({ id: null });
+    });
+
+    it('refuses a registration that does not verify as invalid', async () => {
+      const booted = await boot({}, { logger: refusing('A passkey registration was refused') });
+      const b = booted.browser();
+      await b.login();
+      const options = await b.pk('options');
+      expect(await b.pk('register', { response: device().register(options, { origin: 'http://127.0.0.1:3000' }), name: 'a', password: 'secret' })).toEqual({ ok: false, kind: 'invalid' });
+      expect(await rows(booted, PASSKEYS_TABLE)).toHaveLength(0);
+    });
   });
 
   it('refuses a 21st passkey', async () => {
@@ -1867,6 +1910,136 @@ describe('Passkeys: ending sessions', () => {
     expect(await owner.pk('who')).toEqual({ id: null });
     expect(await other.pk('who')).toEqual({ id: null });
     expect(await signInRows(booted)).toHaveLength(0);
+  });
+
+  describe('a possible copy is answered whatever the logger does', () => {
+    /** A logger whose warn and error throw, as a sink that is down does. */
+    const throwingLogger = (): Logger => {
+      const logger: Logger = {
+        debug() {},
+        info() {},
+        warn() {
+          throw new Error('log sink down');
+        },
+        error() {
+          throw new Error('log sink down');
+        },
+        child: () => logger,
+      };
+      return logger;
+    };
+
+    /** An enrolled passkey, a remembered second session, and a stale assertion of the passkey that signs in with a count that went backwards. */
+    const copied = async (logger: Logger) => {
+      const booted = await boot({}, { logger });
+      const authenticator = device();
+      const { b: owner } = await enrolled(booted, authenticator);
+      const other = await remembered(booted, authenticator);
+      const stale = booted.browser();
+      const response = authenticator.authenticate(await stale.pk('sign-in-options'), { signCount: 1 });
+      events.length = 0;
+      return { booted, owner, other, stale, response, authenticator };
+    };
+    const suspended = async (booted: Awaited<ReturnType<typeof boot>>) => (await rows(booted, PASSKEYS_TABLE))[0]!.suspended_at !== null;
+
+    it('ends every session of the account before it logs, so a throwing logger keeps none alive', async () => {
+      const { booted, owner, other, stale, response } = await copied(throwingLogger());
+      expect(await stale.pk('sign-in', { response }), 'the refusal is the one a working logger gives').toEqual({ ok: false, kind: 'clone-suspected' });
+      expect(await owner.pk('who')).toEqual({ id: null });
+      expect(await other.pk('who')).toEqual({ id: null });
+      expect(await signInRows(booted), 'no sign-in row is left in the store').toHaveLength(0);
+      expect(await suspended(booted)).toBe(true);
+      expect(events.filter((event) => event instanceof PasskeyCloneSuspected), 'the owner is still told').toHaveLength(1);
+    });
+
+    it('refuses as a copy and ends the sessions when the debug entry of the refusal is the one that throws', async () => {
+      const logger: Logger = {
+        debug(message) {
+          if (message === 'A passkey sign-in was refused') throw new Error('log sink filter');
+        },
+        info() {},
+        warn() {},
+        error() {},
+        child: () => logger,
+      };
+      const { booted, owner, other, stale, response } = await copied(logger);
+      expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+      expect(await suspended(booted)).toBe(true);
+      expect(await owner.pk('who')).toEqual({ id: null });
+      expect(await other.pk('who')).toEqual({ id: null });
+      expect(events.filter((event) => event instanceof PasskeyCloneSuspected)).toHaveLength(1);
+    });
+
+    it('ends the sessions first and logs afterwards when the request is not inside a transaction', async () => {
+      const order: string[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: () => void order.push('warn'), error() {}, child: () => logger };
+      const real = AccountSessions.prototype.end;
+      const spy = vi.spyOn(AccountSessions.prototype, 'end').mockImplementation(function (this: AccountSessions, ...args) {
+        order.push('end');
+        return real.apply(this, args);
+      });
+      try {
+        const { stale, response } = await copied(logger);
+        order.length = 0;
+        expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(order).toEqual(['end', 'warn']);
+    });
+
+    it('is logged with the user and the passkey', async () => {
+      const warnings: { message: string; context?: LogContext }[] = [];
+      const logger: Logger = { debug() {}, info() {}, warn: (message, context) => void warnings.push({ message, context }), error() {}, child: () => logger };
+      const { stale, response } = await copied(logger);
+      expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+      const copy = warnings.filter((warning) => warning.message.startsWith('A passkey answered with a sign count'));
+      expect(copy).toHaveLength(1);
+      expect(copy[0]!.message).toBe('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended');
+      expect(copy[0]!.context).toMatchObject({ user: ada.id, passkey: 1 });
+    });
+
+    it.each([
+      ['ending the sessions throws', () => vi.spyOn(AccountSessions.prototype, 'end').mockRejectedValue(new Error('session store down'))],
+      ['the account is gone', () => vi.spyOn(AccountSessions.prototype, 'end').mockResolvedValue(err({ kind: 'not-found' }) as never)],
+    ])('refuses, keeps the suspension and tells the owner when %s', async (_name, fail) => {
+      const { booted, stale, response } = await copied(throwingLogger());
+      const spy = fail();
+      try {
+        expect(await stale.pk('sign-in', { response })).toEqual({ ok: false, kind: 'clone-suspected' });
+        expect(spy).toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await suspended(booted)).toBe(true);
+      expect(events.filter((event) => event instanceof PasskeyCloneSuspected)).toHaveLength(1);
+    });
+
+    it('still ends the sessions after a rollback when the suspension cannot be written again and nothing can be logged', async () => {
+      const { booted, owner, stale, response } = await copied(throwingLogger());
+      const suspend = PasskeyStore.prototype.suspend;
+      let calls = 0;
+      const spy = vi.spyOn(PasskeyStore.prototype, 'suspend').mockImplementation(async function (this: PasskeyStore, ...args) {
+        if (++calls > 1) throw new Error('store down');
+        return suspend.apply(this, args);
+      });
+      try {
+        expect(await stale.pk('sign-in-in-transaction', { response, rollback: true })).toEqual({ ok: false, kind: 'clone-suspected' });
+      } finally {
+        spy.mockRestore();
+      }
+      expect(calls, 'the second write was tried').toBeGreaterThan(1);
+      expect(await owner.pk('who')).toEqual({ id: null });
+      expect(await signInRows(booted)).toHaveLength(0);
+    });
+
+    it.each([false, true])('inside an app transaction the sessions end once it is over (rolled back: %s)', async (rollback) => {
+      const { booted, owner, other, stale, response } = await copied(throwingLogger());
+      expect(await stale.pk('sign-in-in-transaction', { response, rollback })).toEqual({ ok: false, kind: 'clone-suspected' });
+      expect(await owner.pk('who')).toEqual({ id: null });
+      expect(await other.pk('who')).toEqual({ id: null });
+      expect(await signInRows(booted)).toHaveLength(0);
+    });
   });
 
   it('removing a passkey ends the other sessions even when a listener of its event throws', async () => {

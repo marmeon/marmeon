@@ -45,6 +45,10 @@ built on pino. Without the package, a minimal console logger writes one line per
 
 Run with `--json`, a `marmeon` command sends every line of `@marmeon/log` and of the console logger to stderr, so stdout holds the document only. A logger of your own decides where it writes.
 
+A logger you write handles a failed write itself, for example with a `catch` inside the method. `debug()`, `info()`, `warn()`
+and `error()` return nothing. A method that throws breaks the code that wrote the line, the framework's included. A rejected
+promise that nobody waits for is an unhandled rejection, which by default ends the process.
+
 ## Configuration
 
 | Variable | Default | Effect |
