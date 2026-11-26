@@ -115,7 +115,11 @@ export const ResetPasswordRequest = defineRequest({
 
 - **Long enough:** at least `min` characters, 8 by default, counted in code points after NFKC: a plain emoji is one, a flag or an
   emoji with a skin tone is two or more.
-- **Short enough:** at most 4096 bytes, the hasher's limit.
+- **Short enough:** at most 4096 characters as typed and 4096 bytes after NFKC. The starter's sign-in refuses more than 4096
+  characters, so a longer new password could never sign in.
+- **Well-formed, without a NUL character.** A lone surrogate or a `\0` gets the `required` message, "Enter a password." by
+  default. The hasher refuses the surrogate, and the starter's sign-in (`r.string()`) refuses the NUL. The hasher itself still
+  accepts a NUL.
 - **Nothing else.** No rules about digits or symbols: NIST advises against them, because they make passwords harder to remember
   and no harder to guess.
 
