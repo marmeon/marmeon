@@ -95,7 +95,7 @@ export class InfrastructureDriver implements Driver {
       await this.#pool!().releaseConnection(connection);
       return;
     }
-    await this.#main.releaseConnection(connection);
+    await this.#main.releaseDetached(connection);
   }
 
   beginTransaction(_connection: DatabaseConnection, _settings: TransactionSettings): Promise<void> {

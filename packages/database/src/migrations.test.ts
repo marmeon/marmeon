@@ -464,6 +464,20 @@ withMysql('migrations on MySQL', () => {
     expect(await tables()).toEqual(['migrations']);
   });
 
+  it('runs the schema changes and the data steps that follow a data step that succeeded, on the connection its transaction ended on', async () => {
+    const own = await freshConnections('mysql');
+    try {
+      const ran = await migrator(own.connections, mysqlModule('mysql-data-ok')).migrate();
+      expect(ran.map((run) => run.name)).toEqual(['2026_04_01_000000_fill_and_extend_the_ledger']);
+      expect((await sql<{ amount: number; note: string }>`select amount, note from ledger order by id`.execute(own.connections.get<any>())).rows).toEqual([
+        { amount: 10, note: 'raised' },
+        { amount: 20, note: 'raised' },
+      ]);
+    } finally {
+      await own.close();
+    }
+  });
+
   it('leaves the rows of a data step that throws unchanged, and does not record the migration', async () => {
     const own = await freshConnections('mysql');
     try {

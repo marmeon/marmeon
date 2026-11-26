@@ -355,7 +355,11 @@ throws instead of writing outside the transaction:
 This work was started inside transaction() on "default" but ran after that transaction was committed — await it inside the callback, or wrap it in outsideTransaction() if it should run on its own.
 ```
 
-The error is a `TransactionFinishedError`. Such work never runs on the bare connection by accident.
+The error is a `TransactionFinishedError`.
+It also covers a query that was already on its way when the transaction ended: it holds the transaction's connection but reaches it after the commit or rollback, so it is not sent.
+The same holds for a nested `transaction()`: work that arrives after its savepoint ended throws a `TransactionFinishedError` and does not run in the transaction around it.
+Such work never runs on the bare connection by accident.
+This guarantee covers work started inside the callback, in its call chain. A `trx` that you use outside that call chain, and Kysely's own transactions, rely on Kysely's checks: an un-awaited statement on them can still run after the end, so await every one.
 
 A statement that is still running when the callback returns is no exception: if it fails while the transaction is still open, the transaction is rolled back and throws D24, as described under [Nested transactions](#nested-transactions).
 
@@ -508,6 +512,10 @@ warning appears. Both are a sign that some code left a transaction open.
 Kysely's own `db.transaction().execute(callback)` is not ambient either. Outside `connections.transaction()` it is a plain
 transaction, and inside its callback only `trx`, or a repository bound with `using(trx)`, is in it. A query on the plain `db`
 there waits for the connection the transaction holds: on SQLite, which has one connection, it waits forever.
+
+A statement you send on a `trx` you began yourself while `commit()` or `rollback()` is running waits behind that call, and Kysely answers it with its own error ("Transaction is already committed" or "…rolled back"): it is not sent. Kysely's checks do not stop a statement that was already queued, so await every statement before `commit()` or `rollback()`.
+After a failed `commit()` the transaction is in a state nobody decided on, so `trx` refuses every statement with a `TransactionError` until you call `rollback()`. Call it in the `catch`, as the example above does.
+This applies to a transaction that starts on its own connection. Inside a `transaction()` or a test's isolated connection, `startTransaction()` opens a savepoint: a statement after a failed `commit()` is sent in that savepoint, which is still open, and `rollback()` undoes it.
 
 ## Testing
 

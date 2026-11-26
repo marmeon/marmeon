@@ -109,9 +109,9 @@ export class TransactionFinishedError extends TransactionError {
   readonly connection: string;
 
   /** @internal */
-  constructor(frame: TransactionFrame) {
+  constructor(frame: TransactionFrame, state?: 'committed' | 'rolled back') {
     super(
-      `This work was started inside transaction() on "${frame.label}" but ran after that transaction was ${frame.state} — ` +
+      `This work was started inside transaction() on "${frame.label}" but ran after that transaction was ${state ?? frame.state} — ` +
         'await it inside the callback, or wrap it in outsideTransaction() if it should run on its own.',
     );
     this.connection = frame.label;
@@ -155,6 +155,15 @@ export function outermostTransaction(): TransactionFrame | undefined {
 /** The innermost transaction of `owner` in the current call chain (throws like {@link currentTransaction}). */
 export function transactionOf(owner: object): TransactionFrame | undefined {
   for (let frame = currentTransaction(); frame; frame = frame.parent) if (frame.owner === owner) return frame;
+  return undefined;
+}
+
+/**
+ * @internal — for database drivers: the transaction a statement was started in, also after it finished (unlike {@link transactionOf}, which throws): the
+ * innermost transaction of `owner` in the current call chain, open or not. Never throws.
+ */
+export function anyTransactionOf(owner: object): TransactionFrame | undefined {
+  for (let frame = storage.getStore()?.frame; frame; frame = frame.parent) if (frame.owner === owner) return frame;
   return undefined;
 }
 

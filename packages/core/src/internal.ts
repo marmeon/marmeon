@@ -41,7 +41,7 @@ export { declaredServerModules, SERVER_MODULES, type ServerModule } from './serv
 export { staticNames } from './static-names.ts';
 export { parseSync } from './oxc.ts';
 export { sourceComments, stringLiterals } from './string-literals.ts';
-export { TransactionFrame, bindTransaction, errOfRollback, followsTransaction, leftTransactionOf, openTransactionOf, outermostTransaction, rollBackOnErr, runTransaction, transactionOf } from './transaction-context.ts';
+export { TransactionFrame, anyTransactionOf, bindTransaction, errOfRollback, followsTransaction, leftTransactionOf, openTransactionOf, outermostTransaction, rollBackOnErr, runTransaction, transactionOf } from './transaction-context.ts';
 export { fillPlaceholders, PreferredLocale } from './translator.ts';
 export { marmeonInjection } from './vite.ts';
 export { recordStubSet, readStubManifest, STUB_MANIFEST, stubHash } from './stubs/manifest.ts';
