@@ -24,10 +24,27 @@ describe('password()', () => {
 
   it('refuses what the hasher would refuse: too long, lone surrogates — and says "Enter a password" for nothing at all', () => {
     expect(issues(password(), 'x'.repeat(MAX_PASSWORD_BYTES + 1))).toEqual([{ path: null, message: 'The password is too long.' }]);
+    // 1025 code points, 4100 bytes: only the byte limit refuses it. 1024 keys are exactly 4096 bytes.
+    expect(issues(password(), '\u{1F511}'.repeat(1025))).toEqual([{ path: null, message: 'The password is too long.' }]);
+    expect(issues(password(), '\u{1F511}'.repeat(1024))).toEqual([]);
     expect(issues(password(), 'password\ud800')).toEqual([{ path: null, message: 'Enter a password.' }]);
     expect(issues(password(), 42)).toEqual([{ path: null, message: 'Enter a password.' }]);
     // A form without the field: its own message, not the object's "required".
     expect(issues(r.object({ password: password() }), {})).toEqual([{ path: 'password', message: 'Enter a password.' }]);
+  });
+
+  it('refuses a NUL character, which sign-in\'s r.string() refuses', () => {
+    expect(issues(password(), 'abcdefgh')).toEqual([]); // control
+    expect(issues(password(), 'abcdef🔑🔑')).toEqual([]); // control: 8 code points with an emoji
+    expect(issues(password(), 'abcdefgh\0')).toEqual([{ path: null, message: 'Enter a password.' }]);
+    expect(issues(password(), 'abcd\0efgh')).toEqual([{ path: null, message: 'Enter a password.' }]);
+    expect(issues(password(), 'ab\0')).toEqual([{ path: null, message: 'Enter a password.' }]); // not the min message
+    expect(issues(r.object({ password: password() }), { password: 'abcdefgh\0' })).toEqual([{ path: 'password', message: 'Enter a password.' }]);
+  });
+
+  it('refuses more than 4096 characters as typed, even when they fit 4096 bytes after NFKC', () => {
+    expect(issues(password(), 'a\u0308\u0304'.repeat(1366))).toEqual([{ path: null, message: 'The password is too long.' }]); // decomposed ǟ: 4098 code points, 2732 bytes after NFKC
+    expect(issues(password(), 'a'.repeat(4096))).toEqual([]); // control
   });
 
   it('is a rule: an object of rules takes it, its confirmation is the object\'s confirmed() — ctx.body stays typed', () => {
