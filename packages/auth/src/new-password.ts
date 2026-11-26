@@ -6,6 +6,7 @@ import { PasskeyRemoved, TwoFactorDisabled } from './events.ts';
 import type { PasswordHash } from './hashing.ts';
 import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import { forgetResetLinks } from './password-reset.ts';
+import { logQuietly } from './quiet-log.ts';
 import { passwordResetHooks } from './reset-hooks.ts';
 import { factorSources, NoTwoFactorState } from './two-factor/state.ts';
 import type { AuthUser, AuthUserId, UserProvider } from './user.ts';
@@ -117,7 +118,7 @@ export class NewPassword {
     const revokeTokens = this.#guard.settings.revokeTokensOnPasswordChange || (via === 'reset' && user !== undefined && (user as { email_verified_at?: unknown }).email_verified_at === null);
     // Always in a transaction: a provider that breaks its contract (error A5) or a lost claim leaves neither the hash nor the revocations.
     const revoked = await this.#guard.connections().transaction(() => write(revokeTokens));
-    if (revokeTokens) this.#guard.logger().info('A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
+    if (revokeTokens) logQuietly(this.#guard.logger(), 'info', 'A new password revoked the API tokens of the user', { user: id, tokens: revoked, via });
     // A listener that throws must not keep the reset from ending the streams of the account: the new password already stands. A reset hands the failure
     // back, so that its caller can finish (free the account) before it throws it.
     let failure: { readonly error: unknown } | undefined;
@@ -136,7 +137,7 @@ export class NewPassword {
         try {
           await this.#guard.endings()?.endAccount(this.#guard.names.accountScope(id));
         } catch (error) {
-          this.#guard.logger().error('The live streams of an account could not be told its sign-ins ended', { error });
+          logQuietly(this.#guard.logger(), 'error', 'The live streams of an account could not be told its sign-ins ended', { error });
         }
       });
     }

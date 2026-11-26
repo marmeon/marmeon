@@ -316,8 +316,11 @@ in.
 
 ## Changing the response
 
-A response may not be the request's own to change. A controller can return the same `Response` object to every request, and the
-headers of some responses, such as those of `Response.redirect()`, cannot change at all. `editableResponse()` hands you a response
+A response may not be the request's own to change. A controller can return the same `Response` without a body to every request,
+such as `Response.redirect()` or `new Response(null, { status: 204 })`. A `new Response('')` has a body, even an empty one. A
+`Response` with a body can be read once, so build it per request. A second request that gets one is answered with `500`, as
+[Other results](responses.md#other-results) explains. The headers of some responses cannot change at all.
+`editableResponse()` hands you a response
 whose headers you may set:
 
 ```ts title="middleware/PreventIndexing.ts"
@@ -339,8 +342,8 @@ When the framework made the response for this request, such as a page, a redirec
 however many middleware add headers, a response is copied at most once.
 
 > [!WARNING]
-> Never set a header or a cookie on a response you did not get from `editableResponse()`. A constant response that a controller
-> hands out to every request would carry the header, or the cookie of one visitor, to the next.
+> Never set a header or a cookie on a response you did not get from `editableResponse()`. A constant response without a body that a
+> controller hands out to every request would carry the header, or the cookie of one visitor, to the next.
 
 A package that builds a response for each request marks it with `ownResponse(response)`, so middleware can change it without a
 copy. Never mark a response that could be handed out twice.

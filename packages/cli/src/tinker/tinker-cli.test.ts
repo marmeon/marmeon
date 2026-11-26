@@ -25,6 +25,11 @@ describe('marmeon tinker (in the web app, SQLite)', { timeout: 60_000 }, () => {
     expect(Number(stdout)).toBeGreaterThan(0);
   });
 
+  it('has jobs and mail, which come from the app\'s own packages', () => {
+    expect(marmeon(['tinker', '-e', 'typeof mail.send'], env).stdout).toBe('function\n');
+    expect(marmeon(['tinker', '-e', 'typeof jobs.dispatch'], env).stdout).toBe('function\n');
+  });
+
   it('takes TypeScript and prints strings as they are (for scripts)', () => {
     const typed = marmeon(['tinker', '-e', 'interface Greeting { name: string }\nconst hello = (g: Greeting): string => `hello ${g.name}`;\nhello({ name: "Ada" } satisfies Greeting)'], env);
     expect(typed.stdout).toBe('hello Ada\n');

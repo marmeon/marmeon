@@ -57,3 +57,18 @@ describe('DefaultExceptionHandler Vary', () => {
     expect(response.headers.get('vary')).toBe('*');
   });
 });
+
+describe('DefaultExceptionHandler without a body', () => {
+  for (const status of [204, 205, 304]) {
+    for (const [kind, accept] of [['page', 'text/html'], ['JSON', 'application/json']] as const) {
+      it(`answers abort(${status}) as a ${kind} request with that status, no body and the error's headers`, async () => {
+        const response = handler.render(new HttpError(status, undefined, { etag: '"x"' }), request({ accept }), options) as Response;
+        expect(response).toBeInstanceOf(Response);
+        expect(response.status).toBe(status);
+        expect(await response.text()).toBe('');
+        expect(response.headers.get('etag')).toBe('"x"');
+        expect(varyOf(response.headers)).toEqual(['accept', 'x-marmeon']);
+      });
+    }
+  }
+});

@@ -5,6 +5,7 @@ import { EverySessionEnded } from './events.ts';
 import { dispatchForGuard, GuardContext } from './guard-context.ts';
 import { APP_GUARD_NAMES } from './guard-names.ts';
 import { forgetResetLinks } from './password-reset.ts';
+import { logQuietly } from './quiet-log.ts';
 import { idOf, UserProvider, type AuthUserId } from './user.ts';
 
 /** The error for a claim on the account's row that failed while the session still fits the account: the provider's `updateSessionKey(id, k, k)` did not return `true`. */
@@ -191,7 +192,7 @@ export class AccountSessions {
     try {
       await this.#guard.endings()?.endAccount(this.#guard.names.accountScope(userId));
     } catch (error) {
-      this.#guard.logger().error('The live streams of an account could not be told its sign-ins ended', { error });
+      logQuietly(this.#guard.logger(), 'error', 'The live streams of an account could not be told its sign-ins ended', { error });
     }
   }
 
@@ -325,7 +326,7 @@ export class AccountSessions {
               : '';
         const advice = `${keys === 'unconfirmed' ? 'fix the UserProvider, then run it again' : 'run it again'}${optOut}`;
         // A log message is never masked, and the cause may quote a secret: the log gets the error as a field, the thrown error keeps the cause in its message.
-        this.#guard.logger().error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}) — ${advice}.`, { step: name, done, error });
+        logQuietly(this.#guard.logger(), 'error', `AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}) — ${advice}.`, { step: name, done, error });
         const cause = error instanceof Error ? error.message : String(error);
         throw new Error(`AccountSessions.endEveryone() failed at "${name}" (${state}; ${keysState}): ${cause} — ${advice}.`, { cause: error });
       }
@@ -371,12 +372,12 @@ export class AccountSessions {
       // Last: the opt-in store must not hold back the API tokens when it fails.
       if (changes) done.emailChanges = await step('changes of address', () => changes.forgetEveryone());
       const ended: EveryoneEnded = { accounts, resetTokens: revokedResets, accessTokens: revokedAccess, signIns };
-      this.#guard.logger().warn('Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
+      logQuietly(this.#guard.logger(), 'warn', 'Ended every session of every account', { ...ended, emailChanges: done.emailChanges });
       // The work is done: a listener that fails must not make the caller run it again.
       try {
         await dispatchForGuard(this.#guard, this.#guard.events(), new EverySessionEnded(ended, new Date(this.#guard.clock().now())));
       } catch (error) {
-        this.#guard.logger().error('A listener of EverySessionEnded failed', { error });
+        logQuietly(this.#guard.logger(), 'error', 'A listener of EverySessionEnded failed', { error });
       }
       return ended;
     } finally {
@@ -385,7 +386,7 @@ export class AccountSessions {
         try {
           await this.#guard.endings()?.endEverySession();
         } catch (error) {
-          this.#guard.logger().error('The live streams could not be told every sign-in ended', { error });
+          logQuietly(this.#guard.logger(), 'error', 'The live streams could not be told every sign-in ended', { error });
         }
       }
     }

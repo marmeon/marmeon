@@ -523,6 +523,13 @@ still cuts it in every statement: `drop()`, `dropIfExists()` and `dropColumn()` 
 first 63 bytes, and so does a query of a `data()` step. Use names of at most 63 bytes for temporary tables and columns too. Names in
 `schema.raw()` and in `data()` steps are not checked, so test your migrations on Postgres.
 
+The names a migration gives to an index, a check constraint or a foreign key (error D5) are not measured by Marmeon: it asks the server
+whether it would cut each one, so the answer is that of the database's own encoding. A name of 40 `é` is 80 bytes in UTF8 and refused,
+but 40 bytes in LATIN1 and kept; 22 of them are 66 bytes in EUC_JP and refused. The names of a whole run are asked before its first
+migration, and a rollback asks for the names of its `down()`s before the first one runs. The names a table renamed with `indexes: true`
+gives are read from the database, so they are asked when that migration runs: on Postgres it rolls back, and the migrations of the run
+before it stay. A name the encoding cannot hold ends in D5 too, naming the names it may be.
+
 A migration is also refused, before any migration of the run has started, when the order it runs in gives another schema than the order
 of the names. Every other process (the build, the types, the projection file, a second app server) replays the migrations by name, but
 the database has them in the order they ran, the pending ones after. A migration with a timestamp older than one that already ran
@@ -792,7 +799,7 @@ Every foreign key also describes two relations, one for each table. The
 
 `table.index(columns)` adds an index and `table.unique(columns)` a unique index, over one column or a list. Their names are
 `{table}_{columns}_index` and `{table}_{columns}_unique`, joined by underscores, unless you pass a name as the second argument.
-Postgres cuts a name at 63 bytes without a word, so on Postgres a migration that would create an index with a longer default
+Postgres cuts a name at 63 bytes of the database's encoding without a word, so on Postgres a migration that would create an index with a longer default
 name is refused. A table you made earlier may hold the cut name, so pass the name Postgres stored for it (`select indexname from
 pg_indexes where tablename = '…'`) in a migration that exists already, and a name of your own in a new one; a later `dropIndex`
 needs the name the database holds.
@@ -850,7 +857,7 @@ schema.create('memberships', (table) => {
 
 `oneOf()` works on `string()` and `text()` columns, and such a column is read as the union of its values. Each value is a string of 1 to 255 characters, none twice, and none with a NUL character or a backslash; anything else throws when the plan is built. The values are
 written into the statement as quoted literals, so a quote or a semicolon in one is plain text. The constraint is named
-`{table}_{column}_check` (on Postgres at most 63 bytes, like an index name). A `NULL` passes it, so a column that is not
+`{table}_{column}_check` (on Postgres at most 63 bytes of the database's encoding, like an index name). A `NULL` passes it, so a column that is not
 `nullable()` stays protected by `NOT NULL`. A `oneOf()` column can be added with `schema.alter()` on both drivers; an existing
 row that does not fit stops the migration, which is rolled back (not on MySQL, see [MySQL](#mysql)).
 
@@ -1103,7 +1110,7 @@ schema.rename('invoices', 'bills', { indexes: true });
 ```
 
 Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
-sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
+sequences of its identity columns too. A new name over 63 bytes of the database's encoding is refused on Postgres, which would cut it: rename that index
 yourself first, to a name of your choice. Without the option, `rename` changes the table's name only. MySQL renames the indexes only, and refuses a table whose foreign keys or checks start with the old name ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 The names of check constraints (`{table}_{column}_check` of `oneOf()`, and those of `check()`) follow on Postgres. SQLite keeps them as they were, so a later `dropCheck()` there is
 not possible in either case; Marmeon's description follows Postgres.
