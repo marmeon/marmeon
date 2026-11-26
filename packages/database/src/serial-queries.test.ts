@@ -1,9 +1,12 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { CompiledQuery, sql, type DatabaseConnection, type Driver, type QueryResult } from 'kysely';
+import { runTransaction } from '@marmeon/core/internal';
+import { CompiledQuery, Kysely, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, sql, type DatabaseConnection, type Driver, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { TransactionError } from '@marmeon/core';
+import { TransactionError, TransactionFinishedError } from '@marmeon/core';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
-import { MarmeonDriver, serialQueries } from './driver.ts';
+import { MarmeonDriver, serialQueries, UncheckedDriver } from './driver.ts';
+import { InfrastructureDriver } from './infrastructure.ts';
 import { controlOf } from './mysql-transaction-control.ts';
 import type { Connections } from './index.ts';
 
@@ -54,6 +57,11 @@ class CountingConnection implements DatabaseConnection {
 }
 
 const raw = (text: string) => CompiledQuery.raw(text);
+
+/** A hang is a failure, not a stuck suite. */
+function within<T>(promise: Promise<T>, ms = 20_000): Promise<T> {
+  return Promise.race([promise, sleep(ms).then(() => Promise.reject(new Error(`hung for ${ms} ms`)))]);
+}
 
 describe('serialQueries()', () => {
   it('runs the queries of one connection one at a time, in the order they were sent', async () => {
@@ -150,6 +158,91 @@ describe('serialQueries()', () => {
     })();
     const [, refusedStream] = await Promise.allSettled([disarm.executeQuery(raw('arm again')), streaming]);
     expect(refusedStream).toMatchObject({ status: 'rejected', reason: { message: 'stream refused' } });
+  });
+
+
+  it('asks the admit hook when a query is sent, in the sender’s call chain — a refused query or stream never queues or reaches the connection', async () => {
+    const log: string[] = [];
+    const inner = new CountingConnection(log);
+    const senders = new AsyncLocalStorage<string>();
+    const asked: Array<[string, string | undefined]> = [];
+    const refusal = new Error('too late');
+    const connection = serialQueries(inner, {
+      admit: (query) => {
+        asked.push([query.sql, senders.getStore()]);
+        return query.sql === 'late' ? refusal : undefined;
+      },
+    });
+    const slow = connection.executeQuery(raw('slow 1'));
+    const refused = await senders.run('sender', () => connection.executeQuery(raw('late')).then(() => 'ran', (error: unknown) => error));
+    expect(refused).toBe(refusal);
+    // Refused on the spot: the query ahead of it has not ended, and nothing was queued behind it.
+    expect(log).not.toContain('end slow 1');
+    const refusedStream = await senders.run('sender', async () => {
+      try {
+        for await (const _chunk of connection.streamQuery(raw('late'), 1)) void _chunk;
+        return 'ran';
+      } catch (error) {
+        return error;
+      }
+    });
+    expect(refusedStream).toBe(refusal);
+    expect(log).not.toContain('end slow 1');
+    await slow;
+    await connection.executeQuery(raw('after'));
+    for await (const _chunk of connection.streamQuery(raw('stream after'), 1)) void _chunk;
+    expect(log).not.toContain('start late');
+    expect(asked.filter(([text]) => text === 'late').length).toBeGreaterThan(0);
+    expect(asked.filter(([text]) => text === 'late').every(([, sender]) => sender === 'sender')).toBe(true);
+  });
+
+  describe.each(['execute', 'stream'] as const)('asks admit in every layer of a %s', (kind) => {
+    /** `resolve` pends until released; `admit` refuses on the call numbered `refuseOn` only. */
+    function setup(refuseOn: 1 | 2) {
+      const log: string[] = [];
+      const refusal = new Error(`refused on call ${refuseOn}`);
+      let calls = 0;
+      let resolved = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const connection = serialQueries(new CountingConnection(log), {
+        deferred: (query) => query.sql === 'deferred',
+        resolve: async (query) => {
+          resolved++;
+          await gate;
+          return query;
+        },
+        admit: () => (++calls === refuseOn ? refusal : undefined),
+      });
+      const send = () =>
+        kind === 'execute'
+          ? connection.executeQuery(raw('deferred')).then(() => 'ran', (error: unknown) => error)
+          : (async () => {
+              try {
+                for await (const _chunk of connection.streamQuery(raw('deferred'), 1)) void _chunk;
+                return 'ran';
+              } catch (error) {
+                return error;
+              }
+            })();
+      return { log, refusal, send, release, resolved: () => resolved };
+    }
+
+    it('before the query is resolved — a refusal there never waits for the resolution', async () => {
+      const { refusal, send, release, resolved } = setup(1);
+      expect(await send()).toBe(refusal);
+      expect(resolved()).toBe(0);
+      release();
+    });
+
+    it('again right before it queues — a refusal after the resolution never reaches the connection', async () => {
+      const { log, refusal, send, release, resolved } = setup(2);
+      const outcome = send();
+      release();
+      expect(await outcome).toBe(refusal);
+      expect(resolved()).toBe(1);
+      expect(log).toEqual([]);
+    });
   });
 
   it('is the connection for everything else — methods bound to it (private fields), one wrapper per connection', async () => {
@@ -288,6 +381,81 @@ describe('on MySQL, the MarmeonDriver', () => {
     }
   });
 
+
+  it('seals a connection while the outermost commit is under way and after a failed one — until rollback() — and not after one that succeeded; a savepoint’s release seals nothing', async () => {
+    for (const sqlDriver of ['mysql', 'pgsql'] as const) {
+      const { sent, inner } = recording();
+      let failing = false;
+      const base = fakeDriver(inner);
+      const driver = new MarmeonDriver(
+        { ...base, commitTransaction: async (given) => { await base.commitTransaction(given); if (failing) throw new Error('commit failed'); } },
+        { name: 'default', driver: sqlDriver, target: 'fake' },
+      );
+      const connection = await driver.acquireConnection();
+      await driver.beginTransaction(connection, {});
+      await driver.beginTransaction(connection, {});
+      await driver.commitTransaction(connection);
+      await connection.executeQuery(raw('insert after the release'));
+      // A statement sent while the commit is under way: refused, the commit itself goes out.
+      const committing = driver.commitTransaction(connection);
+      await expect(connection.executeQuery(raw('insert during the commit')), sqlDriver).rejects.toBeInstanceOf(TransactionError);
+      await committing;
+      // The commit succeeded: no frame names the transaction and Kysely has its own flag, so a statement is a plain one again.
+      await connection.executeQuery(raw('insert after the commit'));
+      await driver.beginTransaction(connection, {});
+      failing = true;
+      await expect(driver.commitTransaction(connection)).rejects.toThrow('commit failed');
+      failing = false;
+      await expect(connection.executeQuery(raw('insert after the failed commit')), sqlDriver).rejects.toBeInstanceOf(TransactionError);
+      // Kysely rolls back next, which is what lifts it.
+      await driver.rollbackTransaction(connection);
+      await connection.executeQuery(raw('insert after the rollback'));
+      expect(sent.map((statement) => statement.sql), sqlDriver).toEqual([
+        'begin', 'savepoint marmeon_savepoint_1', 'release savepoint marmeon_savepoint_1', 'insert after the release', 'commit',
+        'insert after the commit', 'begin', 'commit', 'rollback', 'insert after the rollback',
+      ]);
+    }
+  });
+
+  it('refuses the handle of a transaction whose rollback failed for good — also after the pool handed the connection out again, to a fresh handle', async () => {
+    const { sent, inner } = recording();
+    const base = fakeDriver(inner);
+    const driver = new MarmeonDriver(
+      { ...base, rollbackTransaction: async (given) => { await base.rollbackTransaction(given); throw new Error('rollback failed'); } },
+      { name: 'default', driver: 'pgsql', target: 'fake' },
+    );
+    const connection = await driver.acquireConnection();
+    await driver.beginTransaction(connection, {});
+    await expect(driver.rollbackTransaction(connection)).rejects.toThrow('rollback failed');
+    await expect(connection.executeQuery(raw('insert after the failed rollback'))).rejects.toBeInstanceOf(TransactionError);
+    await driver.releaseConnection(connection);
+    await expect(connection.executeQuery(raw('insert between release and acquire'))).rejects.toBeInstanceOf(TransactionError);
+    const again = await driver.acquireConnection();
+    expect(again).not.toBe(connection);
+    await again.executeQuery(raw('insert after the release'));
+    await expect(connection.executeQuery(raw('insert through the dead handle'))).rejects.toBeInstanceOf(TransactionError);
+    expect(sent.map((statement) => statement.sql)).toEqual(['begin', 'rollback', 'insert after the release']);
+  });
+
+  it('runs the statements after a data step’s transaction on the connection a migration reserved, on MySQL: nothing is refused', async () => {
+    const { sent, inner } = recording();
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: 'mysql', target: 'fake' });
+    const reserved = await driver.acquireConnection();
+    await reserved.executeQuery(raw('create table ledger (id int)'));
+    await driver.beginTransaction(reserved, {});
+    await reserved.executeQuery(raw('insert into ledger values (1)'));
+    await driver.commitTransaction(reserved);
+    await reserved.executeQuery(raw('alter table ledger add column note text'));
+    await driver.beginTransaction(reserved, {});
+    await reserved.executeQuery(raw('update ledger set id = 2'));
+    await driver.commitTransaction(reserved);
+    await reserved.executeQuery(raw('select * from ledger'));
+    expect(sent.map((statement) => statement.sql)).toEqual([
+      'create table ledger (id int)', 'begin', 'insert into ledger values (1)', 'commit', 'alter table ledger add column note text',
+      'begin', 'update ledger set id = 2', 'commit', 'select * from ledger',
+    ]);
+  });
+
   it('marks the begin, commit and rollback of its own transactions, and nothing else; the other drivers get none', async () => {
     for (const sqlDriver of ['mysql', 'pgsql'] as const) {
       const { sent, inner } = recording();
@@ -351,5 +519,199 @@ describe.each(drivers)('one query at a time on a shared connection on %s', (driv
       await isolation.rollback();
     }
     if (driver === 'pgsql') expect(most).toBe(1);
+  });
+});
+
+// Work that arrives after a transaction ended, at every tick of the window after its commit, on a dialect that counts what it hands out and takes back.
+describe('work that arrives after the commit of a transaction, tick by tick', () => {
+  const settle = (work: Promise<unknown>) => work.then(() => 'ran', (error: unknown) => error);
+
+  async function sweep(ticks: number) {
+    const log: string[] = [];
+    const inner = new CountingConnection(log);
+    let acquired = 0;
+    let released = 0;
+    const base = fakeDriver(inner);
+    const driver = new MarmeonDriver(
+      { ...base, acquireConnection: async () => (acquired++, inner), releaseConnection: async () => void released++ },
+      { name: 'default', driver: 'pgsql', target: 'fake' },
+    );
+    let late: Promise<unknown[]> | undefined;
+    const db: Kysely<any> = new Kysely<any>({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => driver,
+        createIntrospector: (kysely) => new PostgresIntrospector(kysely),
+        createQueryCompiler: () => new PostgresQueryCompiler(),
+      },
+      // Started where the commit was awaited: in the transaction's call chain.
+      log: (event) => {
+        if (event.level === 'query' && event.query.sql === 'commit' && !late) late = start();
+      },
+    });
+    const transaction = (title: string) => runTransaction(driver, 'default', () => db.transaction().execute((trx) => trx.insertInto('t').values({ title }).execute()));
+    const start = async () => {
+      for (let tick = 0; tick < ticks; tick++) await new Promise((resolve) => setImmediate(resolve));
+      return [await settle(transaction('late, nested')), await settle(db.insertInto('t').values({ title: 'late, plain' }).execute())];
+    };
+    await transaction('first');
+    const results = await late;
+    await db.destroy();
+    return { log, results, acquired, released };
+  }
+
+  it('refuses a nested transaction() and a plain query started in the call chain of the commit, at every tick — never sent, never released twice', async () => {
+    for (let ticks = 0; ticks <= 30; ticks++) {
+      const { log, results, acquired, released } = await within(sweep(ticks));
+      for (const result of results ?? []) expect(result, `after ${ticks} ticks`).toBeInstanceOf(TransactionError);
+      const afterCommit = log.slice(log.indexOf('start commit'));
+      expect(
+        afterCommit.filter((entry) => /^start (insert|begin|savepoint)/.test(entry)),
+        `after ${ticks} ticks`,
+      ).toEqual([]);
+      expect(released, `after ${ticks} ticks`).toBe(acquired);
+    }
+  });
+});
+
+describe('a query that took the transaction’s connection before the transaction ended', () => {
+  it('holds the connection from the moment it asks for it: the metadata load resumes after the transaction released it, and its own release is not a second one', async () => {
+    let acquired = 0;
+    let released = 0;
+    let waiting = false;
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const inner = new CountingConnection([]);
+    const base = fakeDriver(inner);
+    const driver = new MarmeonDriver(
+      { ...base, acquireConnection: async () => (acquired++, inner), releaseConnection: async () => void released++ },
+      // The metadata load of a connection handed out, held up while a query is on its way.
+      { name: 'default', driver: 'pgsql', target: 'fake', metadata: { managed: true, refresh: async () => void (waiting && (await gate)), release() {}, holds: () => false, invalidate() {} } as never },
+    );
+    const db = new Kysely<any>({
+      dialect: {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => driver,
+        createIntrospector: (kysely) => new PostgresIntrospector(kysely),
+        createQueryCompiler: () => new PostgresQueryCompiler(),
+      },
+    });
+    let late!: Promise<unknown>;
+    await runTransaction(driver, 'default', () =>
+      db.transaction().execute(async (trx) => {
+        await trx.insertInto('t').values({ title: 'inside' }).execute();
+        waiting = true;
+        late = db.insertInto('t').values({ title: 'late' }).execute().then(() => 'ran', (error: unknown) => error);
+      }),
+    );
+    // The transaction committed and released its connection while the query still waits for the metadata.
+    open();
+    expect(await late).toBeInstanceOf(TransactionFinishedError);
+    await db.destroy();
+    expect(released).toBe(acquired);
+  });
+});
+
+describe('a nested transaction that began before its parent ended', () => {
+  it('is refused when its metadata wait ends after the parent committed: it never runs as a transaction of its own, and releases the connection once', async () => {
+    const log: string[] = [];
+    let released = 0;
+    let waiting = false;
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const inner = new CountingConnection(log);
+    const base = fakeDriver(inner);
+    const driver = new MarmeonDriver(
+      { ...base, releaseConnection: async () => void released++ },
+      { name: 'default', driver: 'pgsql', target: 'fake', metadata: { managed: true, refresh: async () => void (waiting && (await gate)), release() {}, holds: () => false, invalidate() {} } as never },
+    );
+    const { late: nested } = await runTransaction(driver, 'default', async () => {
+      const connection = await driver.acquireConnection();
+      await driver.beginTransaction(connection, {});
+      waiting = true;
+      // Starts its acquisition inside the transaction and waits for the metadata.
+      const late = runTransaction(driver, 'default', async () => {
+        const own = await driver.acquireConnection();
+        await driver.beginTransaction(own, {});
+        await own.executeQuery(raw('insert late nested'));
+        await driver.commitTransaction(own);
+      }).then(() => 'ran', (error: unknown) => error);
+      await connection.executeQuery(raw('insert outer'));
+      await driver.commitTransaction(connection);
+      await driver.releaseConnection(connection);
+      return { late };
+    });
+    // The outer transaction committed, lifted its seal and released; now the wait ends.
+    open();
+    expect(await nested).toBeInstanceOf(TransactionFinishedError);
+    expect(log.filter((entry) => entry.startsWith('start '))).toEqual(['start begin', 'start insert outer', 'start commit']);
+    expect(released).toBe(1);
+  });
+});
+
+describe('what a transaction counts as its own', () => {
+  it('counts only acquisitions routed through its frame: an unchecked connection acquired and released inside it changes nothing, so a late write is still refused', async () => {
+    const inner = new CountingConnection([]);
+    const other = new CountingConnection([]);
+    let handedOut = 0;
+    // The unchecked connection is a connection of its own, not the transaction's.
+    const driver = new MarmeonDriver({ ...fakeDriver(inner), acquireConnection: async () => (handedOut++ === 0 ? inner : other) }, { name: 'default', driver: 'pgsql', target: 'fake' });
+    const unchecked = new UncheckedDriver(driver);
+    const late = await runTransaction(driver, 'default', async () => {
+      const connection = await driver.acquireConnection();
+      await driver.beginTransaction(connection, {});
+      await unchecked.releaseConnection(await unchecked.acquireConnection());
+      await connection.executeQuery(raw('insert inside'));
+      await driver.commitTransaction(connection);
+      // The commit succeeded, so only the frame can tell this write from a plain one.
+      return connection.executeQuery(raw('insert late')).then(() => 'ran', (error: unknown) => error);
+    });
+    expect(late).toBeInstanceOf(TransactionFinishedError);
+  });
+
+  it('counts only acquisitions routed through its frame: an infrastructure connection acquired and released in the call chain of a finished transaction changes nothing', async () => {
+    const inner = new CountingConnection([]);
+    const driver = new MarmeonDriver(fakeDriver(inner), { name: 'default', driver: 'pgsql', target: 'fake' });
+    const infra = new InfrastructureDriver({ main: driver, peers: () => [driver] });
+    const { chain, outstanding } = await runTransaction(driver, 'default', async () => {
+      const connection = await driver.acquireConnection();
+      await driver.beginTransaction(connection, {});
+      // A query that already took the transaction's connection and keeps it: the frame's count stays above zero.
+      const outstanding = await driver.acquireConnection();
+      await connection.executeQuery(raw('insert inside'));
+      await driver.commitTransaction(connection);
+      // The transaction's own release: exactly one acquisition of the frame is left.
+      await driver.releaseConnection(connection);
+      return { chain: AsyncLocalStorage.snapshot(), outstanding };
+    });
+    const late = await chain(async () => {
+      await infra.releaseConnection(await infra.acquireConnection());
+      return outstanding.executeQuery(raw('insert late')).then(() => 'ran', (error: unknown) => error);
+    });
+    expect(late).toBeInstanceOf(TransactionFinishedError);
+  });
+
+  it('walks past a transaction of another connection when it looks for an ended savepoint around a late transaction', async () => {
+    const fake = () => new MarmeonDriver(fakeDriver(new CountingConnection([])), { name: 'default', driver: 'pgsql', target: 'fake' });
+    const first = fake();
+    const second = fake();
+    const late = await runTransaction(first, 'first', async () => {
+      const outer = await first.acquireConnection();
+      await first.beginTransaction(outer, {});
+      return runTransaction(first, 'first', async () => {
+        const savepoint = await first.acquireConnection();
+        await first.beginTransaction(savepoint, {});
+        return runTransaction(second, 'second', async () => {
+          const other = await second.acquireConnection();
+          await second.beginTransaction(other, {});
+          // The savepoint ended on the driver's side while its transaction is still open in the call chain.
+          await first.rollbackTransaction(savepoint);
+          const outcome = await runTransaction(first, 'first', () => first.acquireConnection()).then(() => 'ran', (error: unknown) => error);
+          await second.commitTransaction(other);
+          return outcome;
+        });
+      });
+    });
+    expect(late).toBeInstanceOf(TransactionFinishedError);
   });
 });

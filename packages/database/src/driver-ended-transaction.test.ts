@@ -1,6 +1,6 @@
-import { TransactionError } from '@marmeon/core';
+import { outsideTransaction, TransactionError, TransactionFinishedError } from '@marmeon/core';
 import { runTransaction, type TransactionFrame } from '@marmeon/core/internal';
-import { AbortedTransactionError, isAbortedTransactionError, type CompiledQuery, type DatabaseConnection, type Driver } from 'kysely';
+import { AbortedTransactionError, CompiledQuery as Compiled, isAbortedTransactionError, type CompiledQuery, type DatabaseConnection, type Driver } from 'kysely';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LATE_FAILURE, MarmeonDriver, releasedOpen } from './driver.ts';
 
@@ -74,6 +74,7 @@ function stub(): Stub {
 const warnings = () => vi.spyOn(process, 'emitWarning').mockImplementation(() => {});
 afterEach(() => vi.restoreAllMocks());
 
+const insert = (text: string) => Compiled.raw(text);
 const server = (code: string, message: string) => Object.assign(new Error(message), { code, severity: 'ERROR' });
 
 describe('a commit that Postgres answers with a rollback, at the driver', () => {
@@ -114,6 +115,133 @@ describe('a commit that Postgres answers with a rollback, at the driver', () => 
     await inner.marmeon.beginTransaction(again, {});
     await inner.marmeon.rollbackTransaction(again);
     expect(inner.sent).toEqual(['begin', 'commit', 'begin', 'rollback']);
+  });
+});
+
+describe('the statements that arrive after a commit Postgres answered with a rollback', () => {
+  it('are refused without being sent between the aborted commit and the rollback after it, which sends nothing and lets the connection take statements again', async () => {
+    const inner = stub();
+    inner.commitAborts = true;
+    const connection = await inner.marmeon.acquireConnection();
+    await inner.marmeon.beginTransaction(connection, {});
+    await inner.marmeon.commitTransaction(connection).catch(() => undefined);
+    const refused = await connection.executeQuery(insert('insert late')).then(() => 'ran', (error: unknown) => error);
+    expect(refused).toBeInstanceOf(TransactionError);
+    expect(refused).not.toBeInstanceOf(TransactionFinishedError);
+    await inner.marmeon.rollbackTransaction(connection);
+    await connection.executeQuery(insert('select 1'));
+    await inner.marmeon.releaseConnection(connection);
+    expect(inner.sent).toEqual(['begin', 'commit', 'select 1']);
+    // After the release the pool hands the connection out again.
+    await (await inner.marmeon.acquireConnection()).executeQuery(insert('select 2'));
+    expect(inner.sent.at(-1)).toBe('select 2');
+  });
+
+  it('are refused for an ambient transaction as work of a transaction that was rolled back, not committed — and its rollback is answered, then everything runs again', async () => {
+    const inner = stub();
+    inner.commitAborts = true;
+    const outcome = await runTransaction(inner.marmeon, 'default', async () => {
+      const connection = await inner.marmeon.acquireConnection();
+      await inner.marmeon.beginTransaction(connection, {});
+      await inner.marmeon.commitTransaction(connection).catch(() => undefined);
+      const late = await connection.executeQuery(insert('insert late')).then(() => 'ran', (error: unknown) => error);
+      await inner.marmeon.rollbackTransaction(connection);
+      await inner.marmeon.releaseConnection(connection);
+      return late;
+    });
+    expect(outcome).toBeInstanceOf(TransactionFinishedError);
+    expect((outcome as Error).message).toContain('was rolled back');
+    expect(inner.sent).toEqual(['begin', 'commit']);
+  });
+});
+
+describe('the rollbacks the driver sends on its own', () => {
+  it('refuse a frameless statement that arrives while the release of a connection with an open transaction rolls it back, and still send the rollback', async () => {
+    warnings();
+    const inner = stub();
+    const connection = await inner.marmeon.acquireConnection();
+    await inner.marmeon.beginTransaction(connection, {});
+    const releasing = inner.marmeon.releaseConnection(connection).catch((error: unknown) => error);
+    const refused = await connection.executeQuery(insert('insert late')).then(() => 'ran', (error: unknown) => error);
+    expect(refused).toBeInstanceOf(TransactionError);
+    expect(await releasing).toBeInstanceOf(TransactionError);
+    expect(inner.sent).toEqual(['begin', 'rollback']);
+  });
+
+  it('refuse the work of the frame while the release of a connection with an open transaction rolls it back', async () => {
+    warnings();
+    const inner = stub();
+    const outcome = await runTransaction(inner.marmeon, 'default', async () => {
+      const connection = await inner.marmeon.acquireConnection();
+      await inner.marmeon.beginTransaction(connection, {});
+      // The final release of the connection, which finds the transaction still open; the frame's own acquisition stays counted.
+      const releasing = inner.marmeon.releaseDetached(connection).catch((error: unknown) => error);
+      const refused = await connection.executeQuery(insert('insert late')).then(() => 'ran', (error: unknown) => error);
+      return { refused, released: await releasing };
+    });
+    expect(outcome.refused).toBeInstanceOf(TransactionFinishedError);
+    expect(outcome.released).toBeInstanceOf(TransactionError);
+    expect(inner.sent).toEqual(['begin', 'rollback']);
+  });
+
+  it('refuse the work of a nested frame while closed() rolls back a level nobody closed', async () => {
+    const inner = stub();
+    const outcome = await runTransaction(inner.marmeon, 'default', async () => {
+      const connection = await inner.marmeon.acquireConnection();
+      await inner.marmeon.beginTransaction(connection, {});
+      return runTransaction(inner.marmeon, 'default', async (frame) => {
+        const own = await inner.marmeon.acquireConnection();
+        await inner.marmeon.beginTransaction(own, {});
+        await inner.marmeon.beginTransaction(own, {});
+        const closing = inner.marmeon.closed(frame, true).then(() => undefined, (error: unknown) => error);
+        const refused = await own.executeQuery(insert('insert late')).then(() => 'ran', (error: unknown) => error);
+        return { refused, closed: await closing };
+      });
+    });
+    expect(outcome.refused).toBeInstanceOf(TransactionFinishedError);
+    expect(outcome.closed).toBeInstanceOf(TransactionError);
+    expect(inner.sent).toEqual(['begin', 'savepoint marmeon_savepoint_1', 'savepoint marmeon_savepoint_2', 'rollback to savepoint marmeon_savepoint_1', 'release savepoint marmeon_savepoint_1']);
+  });
+
+  it('seal the connection against a frameless statement while closed() rolls it back, and take one again once it did', async () => {
+    const inner = stub();
+    await twoFramesOf(inner, async ({ a, own }) => {
+      const closing = inner.marmeon.closed(a, true).then(() => undefined, (error: unknown) => error);
+      const during = await outsideTransaction(() => own.executeQuery(insert('insert during')).then(() => 'ran', (error: unknown) => error));
+      expect(during).toBeInstanceOf(TransactionError);
+      expect(during).not.toBeInstanceOf(TransactionFinishedError);
+      expect(await closing).toBeInstanceOf(TransactionError);
+      await outsideTransaction(() => own.executeQuery(insert('insert after')));
+      expect(inner.sent).toEqual(['begin', 'rollback', 'insert after']);
+    });
+  });
+
+  it('send the savepoint rollback of closed() for a level nobody closed, although the frame is marked ended by then', async () => {
+    const inner = stub();
+    const error = await runTransaction(inner.marmeon, 'default', async () => {
+      const connection = await inner.marmeon.acquireConnection();
+      await inner.marmeon.beginTransaction(connection, {});
+      return runTransaction(inner.marmeon, 'default', async (frame) => {
+        const own = await inner.marmeon.acquireConnection();
+        await inner.marmeon.beginTransaction(own, {});
+        // A level inside it that nothing closes.
+        await inner.marmeon.beginTransaction(own, {});
+        return inner.marmeon.closed(frame, true).then(() => undefined, (caught: unknown) => caught);
+      });
+    });
+    expect((error as Error).message).toContain('D24');
+    expect(inner.sent).toEqual(['begin', 'savepoint marmeon_savepoint_1', 'savepoint marmeon_savepoint_2', 'rollback to savepoint marmeon_savepoint_1', 'release savepoint marmeon_savepoint_1']);
+  });
+
+  it('refuse the work of the frame while closed() rolls back the connection it still holds, and still send the rollback', async () => {
+    const inner = stub();
+    await twoFramesOf(inner, async ({ a, own }) => {
+      const closing = inner.marmeon.closed(a, true).then(() => undefined, (error: unknown) => error);
+      const refused = await own.executeQuery(insert('insert late')).then(() => 'ran', (error: unknown) => error);
+      expect(refused).toBeInstanceOf(TransactionFinishedError);
+      expect(await closing).toBeInstanceOf(TransactionError);
+      expect(inner.sent).toEqual(['begin', 'rollback']);
+    });
   });
 });
 
@@ -179,7 +307,8 @@ describe('a connection released with a transaction still recorded', () => {
       { type: 'MarmeonDatabaseWarning', code: 'MARMEON_TRANSACTION_LEFT_OPEN' },
     );
     inner.rollbackFails = false;
-    await inner.marmeon.beginTransaction(connection, {});
+    // The failed rollback left the connection sealed; the pool hands it out again.
+    await inner.marmeon.beginTransaction(await inner.marmeon.acquireConnection(), {});
     expect(inner.sent.at(-1)).toBe('begin');
   });
 
@@ -234,6 +363,18 @@ describe('the release of a savepoint that fails', () => {
     await expect(inner.marmeon.commitTransaction(connection)).rejects.toBe(answer);
   });
 });
+
+/** As {@link twoFrames} below, with a second statement of frame A on the connection (`own`), still out. */
+async function twoFramesOf(inner: Stub, then: (frames: { a: TransactionFrame; own: DatabaseConnection }) => Promise<void>) {
+  const { marmeon } = inner;
+  await runTransaction(marmeon, 'default', async (frame) => {
+    const connection = await marmeon.acquireConnection();
+    await marmeon.beginTransaction(connection, {});
+    const own = await marmeon.acquireConnection();
+    await then({ a: frame, own });
+    return 'a';
+  });
+}
 
 describe('closed(): the outermost transaction while a holder keeps the connection', () => {
   /** Two frames on one connection object, as on SQLite: frame B began first, frame A holds the connection now. */

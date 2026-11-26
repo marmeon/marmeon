@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { commitAnyway, err, ok, type Result } from '@marmeon/core';
 import { sql, type Generated, type Kysely } from 'kysely';
@@ -38,6 +39,19 @@ async function createNotes(db: Kysely<any>, driver: 'sqlite' | 'pgsql'): Promise
     .addColumn('id', driver === 'sqlite' ? 'integer' : 'bigint', (c) => (driver === 'sqlite' ? c.primaryKey().autoIncrement() : c.primaryKey().generatedByDefaultAsIdentity()))
     .addColumn('title', 'text', (c) => c.notNull())
     .execute();
+}
+
+/**
+ * Starts `work` once a statement with exactly this SQL has run — from the query log, where the statement was awaited: in the
+ * transaction's call chain, after the end statement ran and before Kysely's `execute()` returns. `settled()` is what `work` came to:
+ * `'ran'`, or the error it was refused with.
+ */
+function afterStatement(connections: Connections, statement: string, work: () => Promise<unknown>): { settled: () => Promise<unknown>; stop: () => void } {
+  let started: Promise<unknown> | undefined;
+  const stop = connections.onQuery((query) => {
+    if (started === undefined && query.sql === statement && query.error === undefined) started = work().then(() => 'ran', (error: unknown) => error);
+  });
+  return { settled: async () => started ?? Promise.reject(new Error(`no "${statement}" ran, so nothing was started`)), stop };
 }
 
 describe.each(drivers)('connections.transaction() on %s', (driver) => {
@@ -370,6 +384,217 @@ describe.each(drivers)('connections.transaction() on %s', (driver) => {
       connections.transaction(() => outsideTransaction(() => connections.transaction(() => notes.insert({ title: 'never' })))),
     ).rejects.toThrow('cannot start inside outsideTransaction()');
     expect(await notes.titles()).not.toContain('never');
+  });
+
+  it('refuses a query that already had the transaction’s connection but reached it after the rollback — it never autocommits', async () => {
+    let handle!: Kysely<any>;
+    const lateDb = afterStatement(connections, 'rollback', () => db.insertInto('notes').values({ title: 'late, db' }).execute());
+    const lateTrx = afterStatement(connections, 'rollback', () => handle.insertInto('notes').values({ title: 'late, trx' }).execute());
+    try {
+      await expect(
+        within(
+          connections.transaction(async (trx) => {
+            handle = trx;
+            await notes.insert({ title: 'rolled back' });
+            throw new Rollback();
+          }),
+        ),
+      ).rejects.toBeInstanceOf(Rollback);
+      for (const late of [await lateDb.settled(), await lateTrx.settled()]) {
+        expect(late).toBeInstanceOf(TransactionFinishedError);
+        expect((late as Error).message).toContain('ran after that transaction was rolled back');
+      }
+    } finally {
+      lateDb.stop();
+      lateTrx.stop();
+    }
+    expect(await notes.titles()).toEqual([]);
+  });
+
+  it('refuses a query that reached the connection after the commit', async () => {
+    const late = afterStatement(connections, 'commit', () => db.insertInto('notes').values({ title: 'late' }).execute());
+    try {
+      await within(connections.transaction(() => notes.insert({ title: 'kept' })));
+      const outcome = await late.settled();
+      expect(outcome).toBeInstanceOf(TransactionFinishedError);
+      expect((outcome as Error).message).toContain('ran after that transaction was committed');
+    } finally {
+      late.stop();
+    }
+    expect(await notes.titles()).toEqual(['kept']);
+  });
+
+  it('refuses a query of a savepoint that arrives after the savepoint ended — it does not run in the transaction around it', async () => {
+    const afterRollbackTo = afterStatement(connections, 'rollback to savepoint marmeon_savepoint_1', () => db.insertInto('notes').values({ title: 'late, after rollback to' }).execute());
+    const afterRelease = afterStatement(connections, 'release savepoint marmeon_savepoint_1', () => db.insertInto('notes').values({ title: 'late, after release' }).execute());
+    try {
+      await within(
+        connections.transaction(async () => {
+          await expect(
+            connections.transaction(async () => {
+              await notes.insert({ title: 'inner, rolled back' });
+              throw new Rollback();
+            }),
+          ).rejects.toBeInstanceOf(Rollback);
+          await connections.transaction(() => notes.insert({ title: 'inner, kept' }));
+          await notes.insert({ title: 'outer, after' });
+        }),
+      );
+      expect(await afterRollbackTo.settled()).toBeInstanceOf(TransactionFinishedError);
+      expect(await afterRelease.settled()).toBeInstanceOf(TransactionFinishedError);
+    } finally {
+      afterRollbackTo.stop();
+      afterRelease.stop();
+    }
+    expect(await notes.titles()).toEqual(['inner, kept', 'outer, after']);
+  });
+
+  it('refuses late work of a nested transaction after the middle savepoint rolled back, and a transaction started after it', async () => {
+    let innermost!: ReturnType<typeof AsyncLocalStorage.snapshot>;
+    const lateMiddle = afterStatement(connections, 'rollback to savepoint marmeon_savepoint_1', () => db.insertInto('notes').values({ title: 'late, middle' }).execute());
+    const lateInnermost = afterStatement(connections, 'rollback to savepoint marmeon_savepoint_1', () => innermost(() => db.insertInto('notes').values({ title: 'late, innermost' }).execute()));
+    // A transaction that starts after its parent savepoint ended would register at the next level and run in the transaction around the parent.
+    const lateNested = afterStatement(connections, 'rollback to savepoint marmeon_savepoint_1', () => connections.transaction(() => notes.insert({ title: 'late, nested' })));
+    const late = [lateMiddle, lateInnermost, lateNested];
+    try {
+      await within(
+        connections.transaction(async () => {
+          await notes.insert({ title: 'outer' });
+          await expect(
+            connections.transaction(async () => {
+              await connections.transaction(async () => {
+                innermost = AsyncLocalStorage.snapshot();
+                await notes.insert({ title: 'innermost' });
+              });
+              await notes.insert({ title: 'middle' });
+              throw new Rollback();
+            }),
+          ).rejects.toBeInstanceOf(Rollback);
+          await notes.insert({ title: 'outer, after' });
+        }),
+      );
+      for (const one of late) expect(await one.settled()).toBeInstanceOf(TransactionFinishedError);
+    } finally {
+      for (const one of late) one.stop();
+    }
+    expect(await notes.titles()).toEqual(['outer', 'outer, after']);
+  });
+
+  it('keeps an ambient transaction usable after a Kysely transaction inside it ended', async () => {
+    await within(
+      connections.transaction(async () => {
+        await db.transaction().execute((trx) => trx.insertInto('notes').values({ title: 'kysely, nested' }).execute());
+        await notes.insert({ title: 'after' });
+      }),
+    );
+    expect(await notes.titles()).toEqual(['kysely, nested', 'after']);
+  });
+
+  it('runs the statements that follow a transaction on a reserved connection(): the connection is not sealed once the transaction ended', async () => {
+    const reserved = (work: (connection: Kysely<any>) => Promise<void>) => within(db.connection().execute(work));
+    await reserved(async (connection) => {
+      await connection.transaction().execute((trx) => trx.insertInto('notes').values({ title: 'transaction' }).execute());
+      expect(await connection.selectFrom('notes').select('title').execute()).toEqual([{ title: 'transaction' }]);
+    });
+    await reserved(async (connection) => {
+      const trx = await connection.startTransaction().execute();
+      await trx.insertInto('notes').values({ title: 'started' }).execute();
+      await trx.commit().execute();
+      await connection.insertInto('notes').values({ title: 'after the commit' }).execute();
+    });
+    await reserved(async (connection) => {
+      await connection.transaction().execute((trx) => trx.insertInto('notes').values({ title: 'first of two' }).execute());
+      await connection.transaction().execute((trx) => trx.insertInto('notes').values({ title: 'second of two' }).execute());
+      await connection.deleteFrom('notes').where('title', '=', 'transaction').execute();
+    });
+    expect(await notes.titles()).toEqual(['started', 'after the commit', 'first of two', 'second of two']);
+  });
+
+  it('still runs infrastructure work in the call chain of a finished transaction — it never joins one', async () => {
+    let inside!: ReturnType<typeof AsyncLocalStorage.snapshot>;
+    await within(
+      connections.transaction(async () => {
+        await notes.insert({ title: 'inside' });
+        inside = AsyncLocalStorage.snapshot();
+      }),
+    );
+    const rows = await within(inside(() => sql<{ one: number }>`select 1 as one`.execute(connections.infrastructure()).then((result) => result.rows)));
+    expect(rows).toEqual([{ one: 1 }]);
+  });
+
+  it.runIf(driver === 'pgsql')(
+    'refuses a write started after the transaction ended on the driver’s side, when Postgres answers the commit with a rollback — the table stays empty',
+    async () => {
+      let late!: Promise<unknown>;
+      const outcome = await connections
+        .transaction(async (trx) => {
+          await notes.insert({ title: 'first' });
+          // Volatile, so it fails only after the sleep: the commit is queued behind it, long before it fails.
+          const failing = sql`select 1 / (0 * extract(epoch from clock_timestamp()))::int from pg_sleep(0.2)`.execute(trx);
+          late = failing.catch(() => db.insertInto('notes').values({ title: 'late' }).execute()).then(() => 'ran', (error: unknown) => error);
+          await new Promise((resolve) => setImmediate(resolve));
+        })
+        .then(() => undefined, (error: unknown) => error);
+      // Postgres answered the commit with a rollback: transaction() says so (D24) and keeps the aborted error as the cause.
+      expect(outcome).toBeInstanceOf(TransactionError);
+      expect((outcome as Error).message).toMatch(/^\[marmeon:D24\]/);
+      expect((outcome as Error).cause).toBeDefined();
+      expect(await late).toBeInstanceOf(TransactionFinishedError);
+      expect(await notes.titles()).toEqual([]);
+    },
+  );
+
+  it.runIf(driver === 'sqlite')('refuses the handle of a transaction whose rollback failed for good — also after the connection was handed out again', async () => {
+    const any = db as Kysely<any>;
+    await sql`create table taken (id integer primary key)`.execute(any);
+    try {
+      let handle!: Kysely<any>;
+      // SQLite rolls the transaction back itself at the conflict, so Kysely's own rollback fails and leaves the handle active.
+      await expect(
+        within(
+          connections.transaction(async (trx) => {
+            handle = trx;
+            await sql`insert into taken (id) values (1)`.execute(trx);
+            await sql`insert or rollback into taken (id) values (1)`.execute(trx);
+          }),
+        ),
+      ).rejects.toThrow();
+      // The next query hands the connection out again.
+      expect(await notes.titles()).toEqual([]);
+      const late = await handle.insertInto('notes').values({ title: 'late, dead handle' }).execute().then(() => 'ran', (error: unknown) => error);
+      expect(late).toBeInstanceOf(TransactionError);
+      expect(await notes.titles()).toEqual([]);
+    } finally {
+      await sql`drop table taken`.execute(any);
+    }
+  });
+
+  it('refuses a statement on a startTransaction() whose commit failed, until rollback() — never on the bare connection', async () => {
+    const any = db as Kysely<any>;
+    await sql`create table late_parents (id integer primary key)`.execute(any);
+    await sql`create table late_children (id integer primary key, parent_id integer not null references late_parents (id) deferrable initially deferred)`.execute(any);
+    try {
+      const trx = await db.startTransaction().execute();
+      await (trx as Kysely<any>).insertInto('late_children').values({ id: 1, parent_id: 999 }).execute();
+      // The foreign key is checked at the commit.
+      await expect(trx.commit().execute()).rejects.toThrow();
+      const refused = await trx.insertInto('notes').values({ title: 'after the failed commit' }).execute().then(() => 'ran', (error: unknown) => error);
+      expect(refused).toBeInstanceOf(TransactionError);
+      expect(refused).not.toBeInstanceOf(TransactionFinishedError);
+      expect((refused as Error).message).toContain('was sent, so this statement was not sent');
+      await trx.rollback().execute();
+      expect(await notes.titles()).toEqual([]);
+      expect(await (any as Kysely<any>).selectFrom('late_children').selectAll().execute()).toEqual([]);
+      // The rollback that succeeded lifted the seal: the pool serves plain statements and a new transaction again.
+      await notes.insert({ title: 'plain' });
+      const next = await db.startTransaction().execute();
+      await next.insertInto('notes').values({ title: 'second transaction' }).execute();
+      await next.commit().execute();
+      expect(await notes.titles()).toEqual(['plain', 'second transaction']);
+    } finally {
+      await sql`drop table late_children`.execute(any);
+      await sql`drop table late_parents`.execute(any);
+    }
   });
 });
 
@@ -720,6 +945,26 @@ describe.each(drivers)('transactions in an isolated test connection on %s', (dri
     }
     expect(await notes.titles()).toEqual([]);
   });
+
+  it('refuses a query that reached the pinned connection after its transaction rolled back — the test’s transaction does not keep it', async () => {
+    const isolation = await connections.isolate();
+    const late = afterStatement(connections, 'rollback to savepoint marmeon_savepoint_1', () => connections.get<NoteTables>().insertInto('notes').values({ title: 'late' }).execute());
+    try {
+      await expect(
+        within(
+          connections.transaction(async () => {
+            await notes.insert({ title: 'rolled back' });
+            throw new Rollback();
+          }),
+        ),
+      ).rejects.toBeInstanceOf(Rollback);
+      expect(await late.settled()).toBeInstanceOf(TransactionFinishedError);
+      expect(await notes.titles()).toEqual([]);
+    } finally {
+      late.stop();
+      await isolation.rollback();
+    }
+  });
 });
 
 it('types the callback and the result', () => {
@@ -765,6 +1010,27 @@ withMysql('connections.transaction() on mysql', () => {
     await db.deleteFrom('lockers').execute();
     await db.deleteFrom('marks').execute();
     await db.insertInto('lockers').values([{ id: 1, v: 0 }, { id: 2, v: 0 }]).execute();
+  });
+
+
+  it('refuses a query that reached the connection after the rollback — the marked rollback still goes out', async () => {
+    const late = afterStatement(connections, 'rollback', () => db.insertInto('marks').values({ name: 'late' }).execute());
+    try {
+      await expect(
+        within(
+          connections.transaction(async () => {
+            await db.insertInto('marks').values({ name: 'inside' }).execute();
+            throw new Rollback();
+          }),
+        ),
+      ).rejects.toBeInstanceOf(Rollback);
+      expect(await late.settled()).toBeInstanceOf(TransactionFinishedError);
+    } finally {
+      late.stop();
+    }
+    expect(await names()).toEqual([]);
+    await within(connections.transaction(() => db.insertInto('marks').values({ name: 'after' }).execute()));
+    expect(await names()).toEqual(['after']);
   });
 
   /**

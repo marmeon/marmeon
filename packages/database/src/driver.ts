@@ -1,5 +1,5 @@
-import { TransactionError } from '@marmeon/core';
-import { leftTransactionOf, transactionOf, withCode, type TransactionFrame } from '@marmeon/core/internal';
+import { TransactionError, TransactionFinishedError } from '@marmeon/core';
+import { anyTransactionOf, leftTransactionOf, transactionOf, withCode, type TransactionFrame } from '@marmeon/core/internal';
 import { CompiledQuery, isAbortedTransactionError, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
 import { transactionControls } from './mysql-transaction-control.ts';
@@ -121,6 +121,23 @@ export class MarmeonDriver implements Driver {
   /** The outermost frame that began on the connection {@link #holders} counts: where every frame shares one connection (SQLite), whose holders those are. */
   readonly #holderOf = new Map<DatabaseConnection, TransactionFrame>();
 
+  /** Which transaction frame opened which level (of {@link #depth}) on a connection: the frames the driver marks ended when that level ends. */
+  readonly #frameLevels = new WeakMap<DatabaseConnection, Map<number, TransactionFrame>>();
+  /** The frames whose level ended on the driver's side (a commit, rollback, release or rollback to savepoint was queued), and how. */
+  readonly #frameEnds = new WeakMap<TransactionFrame, 'committed' | 'rolled back'>();
+  /** How many acquisitions routed through a frame are out (its transaction and each query inside it): infrastructure work that merely shares the connection is not counted. */
+  readonly #routed = new WeakMap<TransactionFrame, number>();
+  /**
+   * Connections that accept only the driver's end statements, and why. `end`: the outermost transaction queued its commit or rollback; lifted when that
+   * end succeeds, kept after a failed commit until `rollback()` succeeds and, once the connection's release undid a transaction left open, until the connection is handed out again. A failed rollback of any kind becomes `failed`.
+   * `retired`, `closed` and `failed` (an outermost rollback failed: the wrapper is dead and the raw connection gets a fresh one at its next hand-out): never
+   * lifted. A frameless handle (the `trx` of Kysely's own transaction, or a `trx` used outside the callback's call chain) is sealed only while the end statement
+   * runs; after the lift Kysely's own state check takes over, and statements already queued in Kysely can still go out. A savepoint's handle is never sealed.
+   * Work started in the callback's own call chain is refused by its frame. One more exit: a `begin` at depth 0 on a connection whose commit ended in D24 (no
+   * rollback yet) lifts the seal; only a direct driver call reaches it.
+   */
+  readonly #sealed = new WeakMap<DatabaseConnection, 'end' | 'retired' | 'closed' | 'failed'>();
+
   /** A pool that never joins an ambient transaction: an infrastructure connection's own pool. */
   readonly #detached: boolean;
   /**
@@ -128,6 +145,8 @@ export class MarmeonDriver implements Driver {
    * isolation pins a wrapper of its own that is not kept here; see `#retired`.
    */
   readonly #serial = new WeakMap<DatabaseConnection, DatabaseConnection>();
+  /** A cached wrapper → the connection of the dialect's driver it wraps. */
+  readonly #raw = new WeakMap<DatabaseConnection, DatabaseConnection>();
 
   constructor(driver: Driver, context: DriverContext, options: { single?: boolean; detached?: boolean } = {}) {
     this.#driver = driver;
@@ -182,7 +201,8 @@ export class MarmeonDriver implements Driver {
 
     // Throws when this call chain's transaction has finished: never a silent fallback to a fresh connection.
     const frame = transactionOf(this);
-    if (frame) return frame.resource === undefined ? this.#begin(frame, options) : this.#join(frame.resource as DatabaseConnection);
+    if (frame) this.#refuseEnded(frame);
+    if (frame) return frame.resource === undefined ? this.#begin(frame, options) : this.#join(frame, frame.resource as DatabaseConnection);
     const left = leftTransactionOf(this);
     if (left && (this.#single || this.#pinned)) {
       throw new TransactionError(
@@ -194,7 +214,29 @@ export class MarmeonDriver implements Driver {
     return this.#acquire(options);
   }
 
+  /** Work started in a transaction (or a savepoint around it) whose level ended on the driver's side is refused before it takes a connection: it would register at the next level and run in the transaction around the ended one. */
+  #refuseEnded(frame: TransactionFrame): void {
+    for (let current: TransactionFrame | undefined = frame; current; current = current.parent) {
+      if (current.owner !== this) continue;
+      const outcome = this.#frameEnds.get(current);
+      if (outcome !== undefined) throw new TransactionFinishedError(current, current.open ? outcome : undefined);
+    }
+  }
+
   async releaseConnection(connection: DatabaseConnection, options?: Parameters<Driver['releaseConnection']>[1]): Promise<void> {
+    // Kysely releases in the async context it acquired in.
+    const frame = anyTransactionOf(this);
+    const routed = frame ? this.#routed.get(frame) : undefined;
+    if (frame && routed) this.#routed.set(frame, routed - 1);
+    return this.#release(connection, options);
+  }
+
+  /** @internal — releases a connection acquired by acquireDetached() or acquireUnchecked(): never routed through a frame, so no frame's count changes. */
+  releaseDetached(connection: DatabaseConnection, options?: Parameters<Driver['releaseConnection']>[1]): Promise<void> {
+    return this.#release(connection, options);
+  }
+
+  async #release(connection: DatabaseConnection, options?: Parameters<Driver['releaseConnection']>[1]): Promise<void> {
     const holders = this.#holders.get(connection);
     if (holders !== undefined) {
       if (holders > 1) {
@@ -217,11 +259,15 @@ export class MarmeonDriver implements Driver {
         this.#context.metadata?.release(connection);
         let failed = false;
         leftOpen = true;
+        // Whatever of this transaction still arrives is refused: before the rollback is queued, as at any end.
+        this.#endFrames(connection, 1, 'rolled back');
+        this.#sealed.set(connection, 'end');
         try {
           await this.#driver.rollbackTransaction(this.#controls(connection));
         } catch {
           // Nothing to add to the error that left the transaction open; the warning below says the rollback failed.
           failed = true;
+          this.#kill(connection);
         }
         this.#warnLeftOpen(failed);
       }
@@ -262,11 +308,15 @@ export class MarmeonDriver implements Driver {
       this.#tainted.delete(connection);
       this.#context.metadata?.release(connection);
       let failed = false;
+      this.#endFrames(connection, 1, 'rolled back');
+      this.#sealed.set(connection, 'end');
       try {
         await this.#driver.rollbackTransaction(this.#controls(connection));
+        this.#lift(connection);
       } catch {
         // As at the release: the error of the caller (or D24) is what is told; the dialect's driver discards or resets the connection.
         failed = true;
+        this.#kill(connection);
       }
       if (failed) this.#warnLeftOpen(true);
       if (completed) throw new TransactionError(withCode('D24', UNCLOSED_LEVEL));
@@ -276,8 +326,9 @@ export class MarmeonDriver implements Driver {
     if (open === undefined || open <= base) return;
     this.#depth.set(connection, base);
     this.#healed(connection, base + 1);
-    await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(base)}`));
-    await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(base)}`));
+    this.#endFrames(connection, base + 1, 'rolled back');
+    await connection.executeQuery(control(`rollback to savepoint ${savepoint(base)}`));
+    await connection.executeQuery(control(`release savepoint ${savepoint(base)}`));
     this.#undone(connection);
     if (completed) throw new TransactionError(withCode('D24', UNCLOSED_LEVEL));
   }
@@ -322,6 +373,7 @@ export class MarmeonDriver implements Driver {
       // A request that waited for the lock while the application shut down gets the shutdown's message, not the closed file's.
       if (this.#closed) throw this.#closedError();
       connection = this.#pinned ?? this.#serialOf(await this.#connecting(() => this.#driver.acquireConnection(options)));
+      if (connection !== this.#pinned) this.#sealed.delete(connection);
     } catch (error) {
       if (this.#single) this.#lock.release();
       throw error;
@@ -330,7 +382,7 @@ export class MarmeonDriver implements Driver {
     try {
       await this.#context.metadata?.refresh(unlogged(connection), connection);
     } catch (error) {
-      await this.releaseConnection(connection);
+      await this.#release(connection);
       throw error;
     }
     return connection;
@@ -346,11 +398,12 @@ export class MarmeonDriver implements Driver {
     if (outer) {
       frame.resource = outer.resource;
       this.#bases.set(frame, this.#depth.get(outer.resource as DatabaseConnection) ?? 0);
-      return this.#join(outer.resource as DatabaseConnection);
+      return this.#join(frame, outer.resource as DatabaseConnection);
     }
     const connection = await this.#acquire(options);
     frame.resource = connection;
     this.#bases.set(frame, this.#depth.get(connection) ?? 0);
+    this.#routed.set(frame, (this.#routed.get(frame) ?? 0) + 1);
     // Isolated on a dialect with several connections, everyone shares the pinned one without a lock: nothing to count.
     if (this.#single || connection !== this.#pinned) {
       this.#holders.set(connection, 1);
@@ -360,11 +413,21 @@ export class MarmeonDriver implements Driver {
   }
 
   /** The transaction's connection, for a query (or a savepoint) inside it. */
-  async #join(connection: DatabaseConnection): Promise<DatabaseConnection> {
-    await this.#context.metadata?.refresh(unlogged(connection), connection);
-    // Counted once it is handed out (a failed refresh is never released).
+  async #join(frame: TransactionFrame, connection: DatabaseConnection): Promise<DatabaseConnection> {
+    // Taken before the wait: the refresh can resume after the transaction released the connection, and this query's own release would be a second one.
     const holders = this.#holders.get(connection);
     if (holders !== undefined) this.#holders.set(connection, holders + 1);
+    this.#routed.set(frame, (this.#routed.get(frame) ?? 0) + 1);
+    try {
+      await this.#context.metadata?.refresh(unlogged(connection), connection);
+      // The wait can outlast the transaction (or a savepoint around it): work that began before the end and arrives after it is refused here.
+      this.#refuseEnded(frame);
+    } catch (error) {
+      // Kysely never releases after a failed acquire.
+      this.#routed.set(frame, (this.#routed.get(frame) ?? 1) - 1);
+      if (holders !== undefined) await this.#release(connection);
+      throw error;
+    }
     return connection;
   }
 
@@ -379,7 +442,7 @@ export class MarmeonDriver implements Driver {
     const acquired = await this.#connecting(() => this.#driver.acquireConnection());
     // Not the cached one: this isolation's own object tells its late releases from those of whoever gets the client next.
     const connection = this.#serialOf(acquired, false);
-    await this.#driver.beginTransaction(this.#controls(connection), {});
+    await this.#driver.beginTransaction(this.#beginControls(connection), {});
     this.#depth.set(connection, 1);
     this.#tainted.delete(connection);
     this.#pinned = connection;
@@ -392,6 +455,8 @@ export class MarmeonDriver implements Driver {
         this.#depth.delete(connection);
         this.#tainted.delete(connection);
         this.#context.metadata?.release(connection);
+        // The retired wrapper is discarded, never unsealed: what outlived the test is refused instead of running on a client the pool may have handed on.
+        this.#sealed.set(connection, 'retired');
         try {
           await this.#driver.rollbackTransaction(this.#controls(connection));
         } finally {
@@ -403,14 +468,22 @@ export class MarmeonDriver implements Driver {
 
   async beginTransaction(connection: DatabaseConnection, settings: TransactionSettings): Promise<void> {
     const depth = this.#depth.get(connection) ?? 0;
-    if (depth === 0) this.#ended.delete(connection);
+    // A transaction Postgres ended with its rollback answer is over, and a new one on the connection starts clean.
+    if (depth === 0 && this.#ended.delete(connection)) this.#lift(connection);
     // Isolation level and access mode belong to the outermost transaction; a savepoint has neither.
     // SQLite upgrades a deferred transaction to a write lock at its first write — and fails at once with SQLITE_BUSY when another
     // connection (the worker, the scheduler) wrote in between. `begin immediate` takes the lock first and waits under the busy timeout.
     if (depth === 0 && this.#single && settings.accessMode !== 'read only') await connection.executeQuery(CompiledQuery.raw('begin immediate'));
-    else if (depth === 0) await this.#driver.beginTransaction(this.#controls(connection), settings);
+    else if (depth === 0) await this.#driver.beginTransaction(this.#beginControls(connection), settings);
     else await connection.executeQuery(CompiledQuery.raw(`savepoint ${savepoint(depth)}`));
     this.#depth.set(connection, depth + 1);
+    const frame = anyTransactionOf(this);
+    if (frame?.open && frame.resource === connection) {
+      let levels = this.#frameLevels.get(connection);
+      if (!levels) this.#frameLevels.set(connection, (levels = new Map()));
+      // One level per frame (the first), overwriting what a frame of an earlier run left on this level.
+      if (![...levels.values()].includes(frame)) levels.set(depth + 1, frame);
+    }
     this.#tainted.get(connection)?.delete(depth + 1);
   }
 
@@ -429,12 +502,15 @@ export class MarmeonDriver implements Driver {
     if (depth === 0) {
       try {
         await this.#driver.commitTransaction(this.#controls(connection));
+        this.#lift(connection);
       } catch (error) {
         // Postgres answered the commit with a rollback: the transaction is over. Kysely's own error never leaves here: it makes Kysely skip the
         // rollback of any transaction whose callback it escapes from, which would leave the transaction of the other connection open. D24 is an ordinary
         // failure, and the rollback it brings is answered without sending anything.
         if (isAbortedTransactionError(error)) {
           this.#ended.add(connection);
+          // What Postgres did was a rollback: late work is told so. The seal stays until Kysely's rollback, which sends nothing, lifts it.
+          this.#endFrames(connection, 1, 'rolled back');
           throw new TransactionError(withCode('D24', LATE_FAILURE), { cause: error });
         }
         // The commit itself failed (a deferred constraint, a serialization failure): Kysely rolls back next, with the original error kept.
@@ -448,7 +524,7 @@ export class MarmeonDriver implements Driver {
     // A failing `release` taints the level below, which it did not abort before: only a level that was tainted already stays so.
     const outerTainted = this.#tainted.get(connection)?.has(depth) ?? false;
     try {
-      await connection.executeQuery(CompiledQuery.raw(`release savepoint ${savepoint(depth)}`));
+      await connection.executeQuery(control(`release savepoint ${savepoint(depth)}`));
     } catch (error) {
       // Kysely rolls this level back next.
       this.#depth.set(connection, depth + 1);
@@ -460,18 +536,27 @@ export class MarmeonDriver implements Driver {
   }
 
   async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
-    if (this.#ended.delete(connection)) return;
+    if (this.#ended.delete(connection)) {
+      // The end that succeeded by sending nothing: the aborted commit was a rollback.
+      this.#endFrames(connection, 1, 'rolled back');
+      this.#lift(connection);
+      return;
+    }
     const level = this.#depth.get(connection);
-    const depth = this.#leave(connection);
+    const depth = this.#leave(connection, 'rolled back');
     if (depth === 0) {
       this.#tainted.delete(connection);
       try {
         await this.#driver.rollbackTransaction(this.#controls(connection));
+        this.#lift(connection);
+      } catch (error) {
+        this.#kill(connection);
+        throw error;
       } finally {
         this.#context.metadata?.release(connection);
       }
     } else {
-      await connection.executeQuery(CompiledQuery.raw(`rollback to savepoint ${savepoint(depth)}`));
+      await connection.executeQuery(control(`rollback to savepoint ${savepoint(depth)}`));
       this.#healed(connection, level!);
       this.#undone(connection);
     }
@@ -523,6 +608,7 @@ export class MarmeonDriver implements Driver {
       this.#depth.delete(pinned);
       this.#tainted.delete(pinned);
       this.#context.metadata?.release(pinned);
+      this.#sealed.set(pinned, 'closed');
       try {
         await this.#driver.rollbackTransaction(this.#controls(pinned));
       } finally {
@@ -533,13 +619,37 @@ export class MarmeonDriver implements Driver {
   }
 
   /** Leaves one level and returns the level that remains (0 = the real transaction ends now). */
-  #leave(connection: DatabaseConnection): number {
+  #leave(connection: DatabaseConnection, outcome: 'committed' | 'rolled back' = 'committed'): number {
     const open = this.#depth.get(connection);
     if (open === undefined) throw new Error('No transaction is open on this connection — a commit or rollback without its begin.');
+    // Synchronously, before the end statement is queued: a statement sent after this can never take its turn ahead of it.
+    this.#endFrames(connection, open, outcome);
     const depth = open - 1;
+    if (depth === 0) this.#sealed.set(connection, 'end');
     if (depth === 0) this.#depth.delete(connection);
     else this.#depth.set(connection, depth);
     return depth;
+  }
+
+  /** The outermost end succeeded: the connection takes statements again. */
+  #lift(connection: DatabaseConnection): void {
+    if (this.#sealed.get(connection) === 'end') this.#sealed.delete(connection);
+  }
+
+  /**
+   * An outermost rollback failed: this wrapper never takes a statement again, and the raw connection gets a fresh wrapper at its next hand-out, so a handle
+   * Kysely left active cannot reach a connection that is handed to someone else.
+   */
+  #kill(connection: DatabaseConnection): void {
+    if (connection === this.#pinned) return;
+    this.#sealed.set(connection, 'failed');
+    const raw = this.#raw.get(connection);
+    if (raw && this.#serial.get(raw) === connection) this.#serial.delete(raw);
+  }
+
+  /** The frames that opened level `open` or a level above it on `connection` are over: work of theirs that arrives from now on is refused. */
+  #endFrames(connection: DatabaseConnection, open: number, outcome: 'committed' | 'rolled back'): void {
+    for (const [level, frame] of this.#frameLevels.get(connection) ?? []) if (level >= open) this.#frameEnds.set(frame, outcome);
   }
 
   /** `rollback to savepoint` brought the transaction back from level `from` on: nothing in those levels is aborted any more. */
@@ -567,19 +677,45 @@ export class MarmeonDriver implements Driver {
       // The schema of a managed connection is the migrations', not the catalog's: a statement that changes the catalog changes nothing there.
       if (metadata && !metadata.managed) hooks.ran = (query) => this.#ran(serial!, query, metadata);
       if (this.#context.driver === 'mysql') hooks.refuse = (query) => this.#refuse(serial!, query);
+      if (!this.#detached) hooks.admit = (query) => this.#admit(serial!, query);
       if (this.#context.driver === 'pgsql') {
         hooks.failed = (error) => this.#failed(serial!, error);
         hooks.passed = (query) => this.#passed(serial!, query);
       }
       serial = serialQueries(connection, hooks);
-      if (cached) this.#serial.set(connection, serial);
+      if (cached) {
+        this.#serial.set(connection, serial);
+        this.#raw.set(serial, connection);
+      }
     }
     return serial;
   }
 
-  /** The driver's own `begin`, `commit` and `rollback` on MySQL are marked, so its guard tells them from the app's SQL; elsewhere the connection as it is. */
+  /**
+   * The connection for the driver's own `commit` and `rollback`: they pass {@link #admit} by their object mark, and on MySQL they are also marked
+   * for its guard, so it tells them from the app's SQL.
+   */
   #controls(connection: DatabaseConnection): DatabaseConnection {
+    return this.#context.driver === 'mysql' ? transactionControls(endStatements(connection)) : endStatements(connection);
+  }
+
+  /** The driver's own `begin` on MySQL is marked, so its guard tells it from the app's SQL; elsewhere the connection as it is. It ends nothing. */
+  #beginControls(connection: DatabaseConnection): DatabaseConnection {
     return this.#context.driver === 'mysql' ? transactionControls(connection) : connection;
+  }
+
+  /** A statement sent after its transaction (or savepoint) queued its end: refused, never queued behind the end. */
+  #admit(connection: DatabaseConnection, query: CompiledQuery): Error | undefined {
+    if (ENDS.has(query)) return undefined;
+    const frame = anyTransactionOf(this);
+    if (frame?.resource === connection) {
+      const outcome = this.#frameEnds.get(frame);
+      // Routed through the frame (#begin, #join) and not released: not infrastructure work that shares the one connection.
+      if (outcome !== undefined && this.#routed.get(frame)) return new TransactionFinishedError(frame, frame.open ? outcome : undefined);
+    }
+    const sealed = this.#sealed.get(connection);
+    if (sealed) return new TransactionError(sealedMessage(sealed, this.#context.name));
+    return undefined;
   }
 
   /** MySQL commits a transaction at a schema change, silently: inside one the builder refuses it, before anything is sent. A temporary table, made or dropped, is no schema change to it. */
@@ -704,7 +840,7 @@ export class UncheckedDriver implements Driver {
   }
 
   releaseConnection(connection: DatabaseConnection): Promise<void> {
-    return this.#main.releaseConnection(this.#of(connection));
+    return this.#main.releaseDetached(this.#of(connection));
   }
 
   #of(connection: DatabaseConnection): DatabaseConnection {
@@ -780,6 +916,42 @@ const MYSQL_COMMITS: ReadonlySet<string> = new Set([
 ]);
 
 const savepoint = (depth: number) => `marmeon_savepoint_${depth}`;
+
+/** The statements the driver sends to end a level: they pass {@link MarmeonDriver}'s check of what is sent after the end. Private, so app SQL cannot carry the mark. */
+const ENDS = new WeakSet<CompiledQuery>();
+
+/** A `release savepoint` or `rollback to savepoint` of the driver's own. */
+function control(text: string): CompiledQuery {
+  const query = CompiledQuery.raw(text);
+  ENDS.add(query);
+  return query;
+}
+
+/** The connection with every statement sent through it marked as one of the driver's end statements (Kysely's `commit` and `rollback`). */
+function endStatements(connection: DatabaseConnection): DatabaseConnection {
+  return new Proxy(connection, {
+    get(target, property) {
+      if (property === 'executeQuery') {
+        return (query: CompiledQuery, ...rest: unknown[]) => {
+          ENDS.add(query);
+          return (target.executeQuery as (...args: unknown[]) => Promise<QueryResult<unknown>>).call(target, query, ...rest);
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+const sealedMessage = (kind: 'end' | 'retired' | 'closed' | 'failed', name: string): string =>
+  kind === 'failed'
+    ? `The rollback of the transaction on "${name}" failed, so this statement was not sent: the handle of that transaction is dead. Start a new transaction.`
+    : kind === 'end'
+    ? `The commit or rollback of the transaction on "${name}" was sent, so this statement was not sent. Await every statement of the transaction before commit() or rollback(). After a failed commit(), call rollback() on the transaction.`
+    : kind === 'retired'
+      ? `The test's database connection "${name}" was released when the test ended, so this statement was not sent. Await everything the test starts before it ends.`
+      : `The database connections were closed (the application shut down), so this statement was not sent. "${name}" accepts no more statements.`;
+
 /** A statement that may roll a savepoint back — a false alarm (the word in a string) costs one load, and only after a schema change. */
 const ROLLBACK = /rollback/i;
 
@@ -813,6 +985,11 @@ export interface SerialHooks {
   failed?(error: unknown): void;
   /** Why a statement must not be sent, checked on its turn, before it runs or streams: the error it fails with instead. */
   refuse?(query: CompiledQuery): Error | undefined;
+  /**
+   * Why a statement must not be sent, asked when it is sent through the connection (not its unlogged view), in the sender's call chain, before it is
+   * resolved and again right before it queues; unlike `refuse`, which is asked on its turn.
+   */
+  admit?(query: CompiledQuery): Error | undefined;
   /** The connection's name, for the message when a query holds placeholders nobody resolves. */
   name?: string;
   /** The rows of a query that ran (or of each chunk of a stream), with the query as it ran. */
@@ -833,7 +1010,7 @@ function unlogged(connection: DatabaseConnection): DatabaseConnection {
  * query sent while another is under way ("client.query() when the client is already executing a query") and pg 9 refuses it. A
  * stream holds the turn until it ends. Everything else is the connection itself, bound to it (private fields, the driver's symbols).
  * What is set on the wrapper stays on it: Kysely puts its query log around `executeQuery` that way — around the turn, so the
- * connection's own method is never replaced underneath it.
+ * connection's own method is never replaced underneath it. A query the `admit` hook refuses is rejected in the sender's call chain, before it is queued.
  */
 export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks = {}): DatabaseConnection {
   type Execute = (query: CompiledQuery, ...rest: unknown[]) => Promise<QueryResult<unknown>>;
@@ -841,7 +1018,7 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   const execute = connection.executeQuery.bind(connection) as Execute;
   const stream = connection.streamQuery.bind(connection) as Stream;
   const own = new Map<PropertyKey, unknown>();
-  const { ran, failed, passed, refuse } = hooks;
+  const { ran, failed, passed, refuse, admit } = hooks;
   const checked: Execute = refuse
     ? (query, ...rest) => {
         const refusal = refuse(query);
@@ -895,6 +1072,18 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
       done();
     }
   }
+  // A statement sent after its transaction ended is refused in the sender's call chain, before it is queued behind the end.
+  const admitted: Execute = admit
+    ? (query, ...rest) => {
+        const refusal = admit(query);
+        return refusal ? Promise.reject(refusal) : turned(query, ...rest);
+      }
+    : turned;
+  async function* admittedStream(query: CompiledQuery, ...rest: unknown[]): AsyncIterableIterator<QueryResult<unknown>> {
+    const refusal = admit?.(query);
+    if (refusal) throw refusal;
+    yield* turnedStream(query, ...rest);
+  }
   // Resolved before it takes its turn: loading the metadata takes turns on this connection too. A query with nothing to
   // resolve is queued at once, so queries keep the order they were sent in.
   const unloggedView = { executeQuery: turned, streamQuery: turnedStream } as unknown as DatabaseConnection;
@@ -919,20 +1108,24 @@ export function serialQueries(connection: DatabaseConnection, hooks: SerialHooks
   const resolvedExecute = (logged: Execute): Execute => {
     const inner = finished(logged);
     return (query, ...rest) => {
+      const refusal = admit?.(query);
+      if (refusal) return Promise.reject(refusal);
       const pending = resolving(query);
       return pending ? pending.then((resolved) => inner(resolved, ...rest)) : inner(query, ...rest);
     };
   };
   const resolvedStream = (inner: Stream): Stream =>
     async function* (query, ...rest) {
+      const refusal = admit?.(query);
+      if (refusal) throw refusal;
       const resolved = (await resolving(query)) ?? query;
       for await (const chunk of inner(resolved, ...rest)) {
         after?.(resolved, chunk);
         yield chunk;
       }
     };
-  const executeQuery = resolvedExecute(turned);
-  const streamQuery = resolvedStream(turnedStream);
+  const executeQuery = resolvedExecute(admitted);
+  const streamQuery = resolvedStream(admittedStream);
   return new Proxy(connection, {
     get(target, property) {
       if (property === UNLOGGED) return unloggedView;
