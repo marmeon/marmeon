@@ -13,10 +13,9 @@
  *
  * A function, no command of its own.
  */
-import type { ChildProcess } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { freePort, SmokeError } from './pack-smoke.ts';
+import { freePort, SmokeError, type Launched } from './pack-smoke.ts';
 
 /** What the check needs of the smoke app: its directory and a way to run a command in it. */
 export interface WorkspaceApp {
@@ -25,8 +24,8 @@ export interface WorkspaceApp {
   run(command: string, args: string[], env?: NodeJS.ProcessEnv): string;
   /** `marmeon start` until `path` answers 200, then ends it. */
   serve(path: string): Promise<void>;
-  /** A long-running child in the app: `stop()` ends it, and so does an interrupted run. */
-  background(command: string, args: string[], env?: NodeJS.ProcessEnv): { child: ChildProcess; stop(): void };
+  /** A long-running command in the app: `stop()` ends it, and so does an interrupted run. */
+  launch(command: string, args: string[], env?: NodeJS.ProcessEnv): Launched;
 }
 
 /** The files of a package whose TypeScript sources the app's tests import: `Name`, `NAME` and `name` are filled in. */
@@ -708,15 +707,12 @@ async function checkNamespacePackage(smoke: WorkspaceApp): Promise<void> {
 
     // development: the dev server transforms the client entry and, when asked, the package's module
     const port = await freePort();
-    const { child: vite, stop } = smoke.background(join(app, 'node_modules/.bin/vite'), ['--host', '127.0.0.1', '--port', String(port), '--strictPort'], env);
-    let output = '';
-    vite.stdout!.on('data', (chunk) => (output += chunk));
-    vite.stderr!.on('data', (chunk) => (output += chunk));
+    const vite = smoke.launch(join(app, 'node_modules/.bin/vite'), ['--host', '127.0.0.1', '--port', String(port), '--strictPort'], env);
     try {
       const deadline = Date.now() + 30_000;
       for (;;) {
-        if (vite.exitCode !== null) throw new SmokeError(`vite ended with ${vite.exitCode}:\n${output}`);
-        if (Date.now() > deadline) throw new SmokeError(`the dev server did not answer within 30 s:\n${output}`);
+        if (vite.hasExited()) throw new SmokeError(`vite ended with ${vite.exitCode() ?? 'a signal'}:\n${vite.output()}`);
+        if (Date.now() > deadline) throw new SmokeError(`the dev server did not answer within 30 s:\n${vite.output()}`);
         try {
           if ((await fetch(`http://127.0.0.1:${port}/bootstrap/client.tsx`, { signal: AbortSignal.timeout(2_000) })).ok) break;
         } catch {
@@ -725,9 +721,9 @@ async function checkNamespacePackage(smoke: WorkspaceApp): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
       const served = await fetch(`http://127.0.0.1:${port}/packages/ui/src/components.ts`);
-      if (!(await served.text()).includes('smoke-ui-component')) throw new SmokeError(`the dev server did not serve the module of the namespace package (${served.status}):\n${output}`);
+      if (!(await served.text()).includes('smoke-ui-component')) throw new SmokeError(`the dev server did not serve the module of the namespace package (${served.status}):\n${vite.output()}`);
     } finally {
-      stop();
+      await vite.stop();
     }
     if (!recorded(record).has('client')) throw new SmokeError('the plugins of the app did not see the namespace package in the dev server.');
 

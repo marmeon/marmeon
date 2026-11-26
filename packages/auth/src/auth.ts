@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { afterCommit, afterRollback, Clock, durationToSeconds, err, EventDispatcher, Logger, ok, type Duration, type Result } from '@marmeon/core';
+import { logQuietly } from './quiet-log.ts';
 import { withCode } from '@marmeon/core/internal';
 import { ClientHistory, ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
@@ -715,7 +716,7 @@ export class Auth {
       await this.#guard.signIns().endAll(userId, own?.id);
       if (ownTokenGone && own !== undefined) await this.#guard.signIns().dropToken(userId, own.id);
     } catch (error) {
-      this.#logger.error('The sign-in rows of the other devices could not be ended', { error });
+      logQuietly(this.#logger, 'error', 'The sign-in rows of the other devices could not be ended', { error });
     }
   }
 
@@ -756,13 +757,10 @@ export class Auth {
       this.#cookies.delete(this.#rememberCookie); // no row to keep: the cookie is of no use
       return true;
     }
-    this.#logger.warn('A rotated remember-me token was presented again while signing out other devices: all remember-me tokens and sessions of the user are being ended', {
-      user: result.error.userId,
-      ip: this.#request.ip,
-      userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
-    });
     this.#cookies.delete(this.#rememberCookie);
     await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
+    // A logger that throws never skips an ending or the owner's notice, and never changes how the request ends. Logged before `#end()`, which can throw.
+    this.#logTheft('A rotated remember-me token was presented again while signing out other devices: all remember-me tokens and sessions of the user are being ended', result.error.userId);
     await this.#end();
     return false;
   }
@@ -984,6 +982,11 @@ export class Auth {
     return found.user;
   }
 
+  /** The warning of a detected theft; the address and browser are those of the request that presented the cookie. */
+  #logTheft(message: string, userId: AuthUserId): void {
+    logQuietly(this.#logger, 'warn', message, { user: userId, ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
+  }
+
   /**
    * A rotated validator coming back means two browsers hold one cookie, and the one that used it first already has a session:
    * deleting the tokens would leave that session signed in. `consume()` runs in the request's transaction when there is one, and
@@ -997,10 +1000,7 @@ export class Auth {
       try {
         sessionsEnded = (await this.#guard.accountSessions().end(userId as AuthUserId, { accessTokens: false })).ok;
       } catch (error) {
-        this.#logger.error('A rotated remember-me token was used again, but the sessions of the user could not be ended', {
-          user: userId,
-          error,
-        });
+        logQuietly(this.#logger, 'error', 'A rotated remember-me token was used again, but the sessions of the user could not be ended', { user: userId, error });
       }
       let tokensGone = sessionsEnded;
       if (!sessionsEnded) {
@@ -1009,10 +1009,7 @@ export class Auth {
           await this.#guard.signIns().endAll(userId as AuthUserId);
           tokensGone = true;
         } catch (error) {
-          this.#logger.error('A rotated remember-me token was used again, but the remember-me tokens of the user could not be deleted', {
-            user: userId,
-            error,
-          });
+          logQuietly(this.#logger, 'error', 'A rotated remember-me token was used again, but the remember-me tokens of the user could not be deleted', { user: userId, error });
         }
       }
       // Announced only once the tokens are gone: a replay would find them and repeat the event.
@@ -1028,10 +1025,7 @@ export class Auth {
       const found = await this.#guard.users().findById(userId as never);
       if (found) await this.#emit(new RememberTokenReused(found.user, details, new Date()));
     } catch (error) {
-      this.#logger.error('A rotated remember-me token was used again, but the event could not be dispatched', {
-        user: userId,
-        error,
-      });
+      logQuietly(this.#logger, 'error', 'A rotated remember-me token was used again, but the event could not be dispatched', { user: userId, error });
     }
   }
 
@@ -1063,12 +1057,9 @@ export class Auth {
     if (!result.ok) {
       this.#cookies.delete(this.#rememberCookie);
       if (result.error.kind === 'stolen') {
-        this.#logger.warn('A rotated remember-me token was used again: all remember-me tokens and sessions of the user are being ended', {
-          user: result.error.userId,
-          ip: this.#request.ip,
-          userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT),
-        });
         await this.#endSessionsOfThief(result.error.userId, { ip: this.#request.ip, userAgent: this.#request.userAgent?.slice(0, MAX_USER_AGENT) });
+        // A logger that throws never skips an ending or the owner's notice, and never changes how the request ends.
+        this.#logTheft('A rotated remember-me token was used again: all remember-me tokens and sessions of the user are being ended', result.error.userId);
       }
       return undefined;
     }
@@ -1123,7 +1114,7 @@ export class Auth {
     if (signIn === undefined) return;
     // Clean-up only: the sign-in it belonged to is over or replaced already, so a store that fails here leaves a row that `prune` removes.
     await this.#guard.signIns().end(signIn.userId, signIn.id).catch((error: unknown) => {
-      this.#logger.error('A sign-in row could not be ended', { error });
+      logQuietly(this.#logger, 'error', 'A sign-in row could not be ended', { error });
     });
   }
 

@@ -16,3 +16,10 @@ export class RecordRun {
     await sql`insert into ran (task, minute, pid) values (${String(currentLogContext().task)}, ${minute}, ${process.pid})`.execute(this.#db);
   }
 }
+
+/** A run that never ends and holds no handle: nothing but a timer of the worker keeps its process alive. */
+export class HangRun {
+  handle(): Promise<void> {
+    return new Promise(() => {});
+  }
+}

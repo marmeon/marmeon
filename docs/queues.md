@@ -529,7 +529,7 @@ export class RefreshMemberStats {
 
 Ten registrations in a burst queue one rebuild. The key belongs to the job class: `stats:1` of one job does not block another job.
 A lock in the app's cache holds the key. It is taken at the dispatch, outside any transaction, so every process sees it at once, and
-it is freed again when the transaction around the dispatch rolls back. Otherwise it is freed:
+it is freed again when the dispatch fails or the transaction around it rolls back. Otherwise it is freed:
 
 - with `uniqueUntil: 'done'`, the default, when the job leaves the queue: processed, failed or discarded,
 - with `uniqueUntil: 'processing'`, when a worker starts the job. A dispatch during the run queues the next one,

@@ -3,11 +3,11 @@ import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
 import { followsTransaction, messageBase, startedByReporter, trace } from '@marmeon/core/internal';
 import type { Transaction } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
-import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvent, type JobEvents } from './events.ts';
+import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvents } from './events.ts';
 import type { BatchOptions, CheckJob, DispatchOptions, DispatchResult, JobClass, JobInput, PendingJob, UniqueDispatchOptions } from './job.ts';
 import { releaseUnique, uniqueLock, uniqueRecord, type CacheSource } from './locks.ts';
 import { backoffOf, nameOf, providerSourceOf, QueueError, triesOf, type JobRegistry } from './registry.ts';
-import { cipherContext, delaySeconds, nextInChain, RECORD_VERSION, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
+import { cipherContext, delaySeconds, isEncryptedJob, nextInChain, RECORD_VERSION, toJson, validatePayload, type JobRunner, type PayloadCipher } from './runner.ts';
 
 /**
  * Settings of one queued record that the framework's own jobs take from elsewhere — a queued listener's `tries` and
@@ -42,7 +42,7 @@ export interface Queue {
    *
    * With `unique`: a no-op — resolving `undefined` — while one of this job with the same key is queued (or
    * running, with `uniqueUntil: 'done'`). The key's lock lives in the app's cache, taken right here (visible to every
-   * process at once); a rollback of a transaction around the dispatch frees it again.
+   * process at once); a dispatch that fails, or a rollback of a transaction around it, frees it again.
    */
   dispatch<J extends JobClass, const O extends DispatchOptions | UniqueDispatchOptions = DispatchOptions>(job: J & CheckJob<J>, payload: JobInput<J>, options?: O): Promise<DispatchResult<O>>;
   /**
@@ -189,7 +189,7 @@ export class QueueManager implements Queue {
       kind,
       jobs: pending.map(([job]) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
       payloads: pending.map(([, payload]) => payload),
-      encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
+      encrypted: pending.map(([job]) => isEncryptedJob(job)),
       connection,
       queue: options.queue ?? this.#deps.connection(connection)?.queue ?? '',
       delaySeconds: delay,
@@ -247,13 +247,23 @@ export class QueueManager implements Queue {
     if (this.#detached()) {
       throw new QueueError('A unique job cannot follow a transaction you began yourself (Kysely\'s db.transaction() or db.startTransaction()): its lock could not be freed when the transaction rolls back. Dispatch it inside connections.transaction() instead.');
     }
+    // Where afterRollback() would throw for a finished transaction: before the lock is taken, so a refused dispatch holds nothing.
+    inTransaction();
     const lock = uniqueLock(await this.#cache(), record);
-    if (!(await lock.get())) {
-      this.#deps.logger.child({ job: record.job, unique: record.unique.key }).debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`);
+    let taken: boolean;
+    try {
+      taken = await lock.get();
+    } catch (error) {
+      // The lock may be set although its reply was lost: free it (owner-checked, so only this dispatch's).
+      await lock.release().catch(() => {});
+      throw error;
+    }
+    if (!taken) {
+      this.#deps.logger.child({ dispatched: record.job, unique: record.unique.key }).debug(`Not queued: ${record.job} with the unique key "${record.unique.key}" is queued already`);
       return undefined;
     }
-    await afterRollback(() => lock.release());
     try {
+      await afterRollback(() => lock.release());
       await this.#push([prepared], options, () => lock.release());
     } catch (error) {
       await lock.release().catch(() => {});
@@ -262,7 +272,7 @@ export class QueueManager implements Queue {
     return record.uuid;
   }
 
-  /** `failed`: frees what the dispatch took (a unique lock) when a push held until the commit fails after it. */
+  /** `failed`: frees what the dispatch took (a unique lock) when the work held until the commit fails — the push, or the run of a sync job. */
   async #push(prepared: readonly Prepared[], options: DispatchOptions | UniqueDispatchOptions, failed?: () => Promise<unknown>): Promise<string[]> {
     const name = options.connection ?? this.#deps.default;
     const connection = this.#connection(name);
@@ -282,8 +292,14 @@ export class QueueManager implements Queue {
       }
       // Held until the commit inside a transaction: a sync job must never act on data that is rolled back.
       await afterCommit(async () => {
-        await queued();
-        await this.#runNow(prepared, queue, name);
+        try {
+          await queued();
+          await this.#runNow(prepared, queue, name);
+        } catch (error) {
+          // The job never ran (or failed before its own release): free what the dispatch took, by its owner.
+          await failed?.().catch(() => {});
+          throw error;
+        }
       });
       return ids;
     }
@@ -377,12 +393,14 @@ export class QueueManager implements Queue {
     return this.#deps.cache();
   };
 
-  async #emit(event: JobEvent): Promise<void> {
+  async #emit(event: JobQueued | JobProcessing | JobProcessed | JobFailed): Promise<void> {
     if (!this.#deps.events) return;
     try {
       await this.#deps.events(event);
     } catch (error) {
-      this.#deps.logger.child({ job: event.job, jobId: event.jobId }).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
+      // A sync run is the job itself, with its attempt; a `JobQueued` names a job that is not running.
+      const bindings = event instanceof JobQueued ? { dispatched: event.job, dispatchedId: event.jobId } : { job: event.job, jobId: event.jobId, attempt: event.attempt };
+      this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
     }
   }
 
@@ -431,13 +449,13 @@ export async function prepareRecord(
   const requestId = currentRequest()?.requestId ?? currentJob()?.requestId;
   // Queued by a reporter, or by a job that a reporter queued: its failure is never reported (see JobRecord.fromReporter).
   const fromReporter = startedByReporter() || currentJob()?.fromReporter === true;
-  const data = job.encrypted ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
+  const data = isEncryptedJob(job) ? await (await deps.cipher()).encrypt(JSON.stringify(json), cipherContext(job.job)) : json;
   const record: JobRecord = {
     v: RECORD_VERSION,
     uuid,
     job: job.job,
     data,
-    ...(job.encrypted ? { encrypted: true as const } : {}),
+    ...(isEncryptedJob(job) ? { encrypted: true as const } : {}),
     tries: extra.tries ?? triesOf(job),
     backoff: extra.backoff ? [...extra.backoff] : backoffOf(job),
     dispatchedAt: deps.clock.now(),
