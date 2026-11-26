@@ -21,6 +21,7 @@ export { importPackage } from './discovery/import-package.ts';
 export { isNamespace, isViewName } from './discovery/surface.ts';
 export type { PackageSurface } from './discovery/surface.ts';
 export { belongsTo, isInside } from './discovery/contain.ts';
+export { findLockfile } from './discovery/trusted-folders.ts';
 export { findPackage, printable, resolveExports, runtimeConditions } from './discovery/resolve.ts';
 export { canonicalTimeZone, isTimeZone } from './time-zone.ts';
 export { startedByReporter } from './error-reports.ts';

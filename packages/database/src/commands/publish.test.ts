@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Application, ServiceProviderClass } from '@marmeon/core';
 import { readStubManifest, recordStubSet, STUB_MANIFEST, stubHash } from '@marmeon/core/internal';
 import type { CheckProblem, CommandInput } from 'marmeon';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 import { PackageMigrationsCheck } from '../checks.ts';
 import { PublishCommand, publishOwnMigrations } from './publish.ts';
@@ -336,6 +336,21 @@ describe('marmeon publish', () => {
     chmodSync(parent, 0o777);
     const root = join(parent, 'apps/web');
     mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@acme/perm': '1.0.0' } }));
+    const { code, lines } = await publish(root);
+    expect(code).toBe(1);
+    expect(lines[0]).toBe('✗ @acme/perm is not installed in your app — install your dependencies first.');
+  });
+
+  it.skipIf(process.platform === 'win32')('does not look above a folder that everyone can write to between the app and the lockfile', async () => {
+    const top = makeApp();
+    writeFileSync(join(top, 'pnpm-lock.yaml'), '');
+    chmodSync(top, 0o755);
+    const open = join(top, 'open');
+    const root = join(open, 'apps/web');
+    mkdirSync(root, { recursive: true });
+    chmodSync(open, 0o777);
+    onTestFinished(() => chmodSync(open, 0o755));
     writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { '@acme/perm': '1.0.0' } }));
     const { code, lines } = await publish(root);
     expect(code).toBe(1);

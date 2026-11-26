@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
 import { importModule } from './import-package.ts';
+import { findLockfile, trustedTop } from './trusted-folders.ts';
 import { checkExportKeys, isNamespace, resolveSurface, resolveSurfaceEntry, resolveSurfaceTexts, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
@@ -23,7 +24,6 @@ import {
   exportedSubpaths,
   lookupPackage,
   printable,
-  trusted,
   resolveExports,
   resolveTypes,
   runtimeConditions,
@@ -36,7 +36,7 @@ import {
 /** Bump when the manifest format changes, so old manifests are regenerated. */
 const MANIFEST_VERSION = '5';
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
-const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
+const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'] as const;
 
 /** The entry a package names, which must lie in the package (also by its real path): discovery imports it and reads its types. */
 function contained(pkg: PackageInfo, entry: string | undefined): string | undefined {
@@ -573,8 +573,8 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   hash.update(readFileSync(join(root, 'package.json')));
   // The same rule as the way up to the workspace: a lockfile above the last trusted folder counts as absent, and so does one that is no regular file.
   const app = realRoot(root);
-  const { limit, refusedAt, top } = workspaceLookup(root);
-  const lockfile = findLockfile(app, top);
+  const { limit, refusedAt } = workspaceLookup(root);
+  const lockfile = findLockfile(app, LOCKFILES);
   hash.update(lockfile !== undefined && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
   // The boundary the package lookup uses: a marker added, moved or removed changes which packages are in reach, though neither package.json
   // nor the lockfile did, and so does the folder the way up ends below. Relative to the app, so a copy of the app at another path hashes alike.
@@ -623,26 +623,6 @@ function declaresWorkspace(dir: string): boolean {
   }
 }
 
-/** The user that owns the app folder: a folder of that user is as trusted as one of the process's user. */
-function appOwner(app: string): number | undefined {
-  try {
-    return statSync(app).uid;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * The last folder of the way up from the app that can be trusted: the way ends below the first folder above the app that `trusted`
- * refuses, so markers and lockfiles are looked for only up to here. The app folder itself is always accepted.
- */
-function trustedTop(app: string): string {
-  const owner = appOwner(app);
-  let top = app;
-  for (let dir = dirname(app); dir !== top && trusted(dir, owner); dir = dirname(dir)) top = dir;
-  return top;
-}
-
 /** Whether `dir` holds a lockfile. */
 function hasLockfile(dir: string): boolean {
   return LOCKFILES.some((name) => existsSync(join(dir, name)));
@@ -658,13 +638,13 @@ function workspaceRoot(root: string): string {
   return workspaceLookup(root).limit;
 }
 
-/** {@link workspaceRoot}, the refused folder when the app has no workspace marker or lockfile below it (the limit shrank to the app there), and the last trusted folder of the way up. */
-function workspaceLookup(root: string): { limit: string; refusedAt?: string; top: string } {
+/** {@link workspaceRoot}, and the refused folder when the app has no workspace marker or lockfile below it (the limit shrank to the app there). */
+function workspaceLookup(root: string): { limit: string; refusedAt?: string } {
   const app = realRoot(root);
   const top = trustedTop(app);
   for (let dir = app; ; dir = dirname(dir)) {
-    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir, top };
-    if (dir === top) return dirname(top) === top ? { limit: app, top } : { limit: app, refusedAt: dirname(top), top };
+    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir };
+    if (dir === top) return dirname(top) === top ? { limit: app } : { limit: app, refusedAt: dirname(top) };
   }
 }
 
@@ -734,15 +714,6 @@ export function combineDigests(digests: readonly (string | undefined)[]): string
   const hash = createHash('sha256');
   for (const digest of digests) hash.update(digest ?? 'missing').update('\0');
   return hash.digest('hex').slice(0, 16);
-}
-
-function findLockfile(root: string, top: string): string | undefined {
-  for (let dir = root; ; dir = dirname(dir)) {
-    for (const name of LOCKFILES) {
-      if (existsSync(join(dir, name))) return join(dir, name);
-    }
-    if (dir === top || dirname(dir) === dir) return undefined;
-  }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 import { installRoot, workspaceRoot } from './workspace.ts';
 
@@ -72,5 +72,44 @@ describe('workspaceRoot', () => {
     expect(installRoot(app)).toBe(app);
     chmodSync(base, 0o755);
     expect(installRoot(app)).toBe(base);
+  });
+
+  it.skipIf(process.platform === 'win32')('does not let a folder that everyone can write to, between the app and the lockfile, change the root', () => {
+    const { base } = tree({ 'pnpm-lock.yaml': '', 'pnpm-workspace.yaml': '' });
+    const open = join(base, 'open');
+    const app = join(open, 'app');
+    mkdirSync(app, { recursive: true });
+    chmodSync(base, 0o755);
+    chmodSync(open, 0o777);
+    onTestFinished(() => chmodSync(open, 0o755));
+    expect(installRoot(app)).toBe(app);
+    expect(workspaceRoot(app)).toBe(app);
+    // Planted with a workspace declaration, so that a search reaching `open` would make it the workspace.
+    writeFileSync(join(open, 'pnpm-lock.yaml'), '');
+    writeFileSync(join(open, 'pnpm-workspace.yaml'), '');
+    expect(installRoot(app)).toBe(app);
+    expect(workspaceRoot(app)).toBe(app);
+  });
+
+  it.skipIf(process.platform === 'win32')('takes the nearest lockfile of a trusted folder between the app and the root', () => {
+    const { base } = tree({ 'pnpm-lock.yaml': '', 'pnpm-workspace.yaml': '', 'mid/pnpm-lock.yaml': '' });
+    const mid = join(base, 'mid');
+    const app = join(mid, 'app');
+    mkdirSync(app, { recursive: true });
+    chmodSync(mid, 0o755);
+    expect(installRoot(app)).toBe(mid);
+    // `mid` declares no workspace: the rule errs on the narrow side.
+    expect(workspaceRoot(app)).toBe(app);
+    writeFileSync(join(mid, 'pnpm-workspace.yaml'), '');
+    expect(workspaceRoot(app)).toBe(mid);
+  });
+
+  it.skipIf(process.platform === 'win32')('finds the lockfile above a trusted folder without a lockfile between the app and the root', () => {
+    const { base } = tree({ 'pnpm-lock.yaml': '', 'pnpm-workspace.yaml': '' });
+    const app = join(base, 'mid', 'app');
+    mkdirSync(app, { recursive: true });
+    chmodSync(join(base, 'mid'), 0o755);
+    expect(installRoot(app)).toBe(base);
+    expect(workspaceRoot(app)).toBe(base);
   });
 });
