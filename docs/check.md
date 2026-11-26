@@ -81,7 +81,7 @@ running, instead of ending the process.
 
 ## Checks from packages
 
-A package or a module adds its own checks to this list. See [package development](package-development.md#checks).
+A package or a module adds its own checks to this list. See [package development](package-commands.md#checks).
 
 ## Status
 
@@ -442,7 +442,7 @@ packages (no app is loaded, no file is searched) and compares each `marmeon` and
 | A package is installed in another version than `@marmeon/core`. The message names the package, both versions and the command in your package manager, chosen by the lockfile (`pnpm add -E @marmeon/storage@<the app's version>`, or `npm install -E …` with a `package-lock.json` and no `pnpm-lock.yaml`). | error |
 | A package that is in the app's version, or a package of someone else the app lists, pulls an `@marmeon/*` in a different version, so a second copy is installed. | error |
 | A package is listed with a range (`^1.0.0`) or a tag instead of an exact version. | warning |
-| A package of someone else that the app lists resolves its own copy of an `@marmeon/*` package that it declares as a dependency or a peer. The message is "`ui` resolves another copy of `@marmeon/storage` (the same version, other peers)". The copy is in the app's version but in another directory. The range does not matter, `workspace:` included, and `marmeon` is left out. A copy in another version that no error above reports (a package only in `peerDependencies`, or a `workspace:` range) gets a warning with both versions. "Other peers" is how pnpm tells it apart: it installs a package once per set of peers. Align the versions of the peers, then run `pnpm dedupe`. [One copy of a framework package](package-development.md#one-copy-of-a-framework-package) explains the cause. A copy is certain, a fault is not: a package that only imports types works. | warning |
+| A package of someone else that the app lists resolves its own copy of an `@marmeon/*` package that it declares as a dependency or a peer. The message is "`ui` resolves another copy of `@marmeon/storage` (the same version, other peers)". The copy is in the app's version but in another directory. The range does not matter, `workspace:` included, and `marmeon` is left out. A copy in another version that no error above reports (a package only in `peerDependencies`, or a `workspace:` range) gets a warning with both versions. "Other peers" is how pnpm tells it apart: it installs a package once per set of peers. Align the versions of the peers, then run `pnpm dedupe`. [One copy of a framework package](package-publishing.md#one-copy-of-a-framework-package) explains the cause. A copy is certain, a fault is not: a package that only imports types works. | warning |
 | A package that is not looked up by version (`workspace:*`, `file:`, `link:`). | not reported |
 | No `@marmeon/core` installed. | `skipped` |
 | `package.json` cannot be read. | `error`, "could not run" |

@@ -12,7 +12,7 @@ export interface PackageUiField {
   readonly lang?: string;
 }
 
-/** What a package's user interface consists of, resolved to files inside the package (docs/package-development.md#pages-of-a-package). */
+/** What a package's user interface consists of, resolved to files inside the package (docs/package-pages.md#pages-of-a-package). */
 export interface PackageSurface {
   /** The package's name in the dependency list. */
   readonly package: string;

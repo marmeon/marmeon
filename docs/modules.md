@@ -72,7 +72,7 @@ The definition is what ships. What only one boot decides is not part of it: `def
 `defineApplication({ root, override: … })` are type errors, so a test double or a foreign environment cannot end up in the
 app that runs in production. A definition that carries one anyway, through a variable or a spread the types cannot see, is refused
 when `createApplication()` boots it. A package that adds an option to the definition declares it on `ApplicationDefinition` (see [extending
-the app's types](package-development.md#extending-the-apps-types)).
+the app's types](package-pages.md#extending-the-apps-types)).
 
 `createApplication(definition, options)` boots an app from its definition and returns it. The `marmeon` command and
 `createTestApp()` call it for you. The options are the ones a boot decides:
@@ -102,7 +102,7 @@ its own:
 | `routes` | Its route file, loaded into the `web` group. See [routing](routing.md#route-files). | `@marmeon/http` |
 | `apiRoutes` | Its route file for the `api` group, under `/api`. | `@marmeon/http` |
 | `commands` | Its [console commands](console.md). | `marmeon` |
-| `checks` | Its [checks for `marmeon check`](package-development.md#checks). | `marmeon` |
+| `checks` | Its [checks for `marmeon check`](package-commands.md#checks). | `marmeon` |
 | `migrations` | The folder of its [migrations](migrations.md): `new URL('./migrations/', import.meta.url)`. | `@marmeon/database` |
 | `seeders` | Its [seeders](seeding.md). | `@marmeon/database` |
 | `exposes` | The tables other modules may read and join. See [repositories](queries.md#module-boundaries). | `@marmeon/database` |

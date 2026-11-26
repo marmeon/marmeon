@@ -111,7 +111,7 @@ describe('the core solutions', () => {
       const error = Object.assign(new Error(thrownByNode.message), { code: thrownByNode.code });
       expect((error as { code?: string }).code).toBe('ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING');
       const [solution] = await solutions.find(error);
-      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'docs/package-development.md#building-and-publishing' });
+      expect(solution).toMatchObject({ title: 'Install the package as it is published', docs: 'docs/package-publishing.md#building-and-publishing' });
       expect(solution?.text).toContain('node_modules/shipped/index.ts');
       expect(solution?.text).toContain('A copy of the package under node_modules');
       for (const cause of ['published with a TypeScript entry', 'pack with pnpm', 'copied with its workspace manifest', 'still has an @marmeon/source export']) {

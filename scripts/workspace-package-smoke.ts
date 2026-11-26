@@ -1,5 +1,5 @@
 /**
- * A package in the app's workspace (docs/package-development.md#a-package-in-your-apps-workspace) on the smoke app. The files come
+ * A package in the app's workspace (docs/package-workspace.md#a-package-in-your-apps-workspace) on the smoke app. The files come
  * from the titled blocks of that section, word for word, and the commands from its `sh` block. With the variable and without the
  * package's `dist/`, `dev` (its server and the child `node --watch` runs), `migrate` and `check` run the package's source; without the
  * variable `build` and `start` run its `dist/`, told apart by the `origin` the package reports. Each of them fails the other way round:
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { blocks } from './guides.ts';
 import { freePort, SmokeError, type Launched } from './pack-smoke.ts';
 
-const PAGE = fileURLToPath(new URL('../docs/package-development.md', import.meta.url));
+const PAGE = fileURLToPath(new URL('../docs/package-workspace.md', import.meta.url));
 const HEADING = "A package in your app's workspace";
 /** The condition as the section writes it into `NODE_OPTIONS`. */
 const FLAG = '--conditions=@marmeon/source';
@@ -38,7 +38,7 @@ export interface WorkspaceTarget {
 /** The titled blocks of the section (title → text) and the lines of its `sh` block. */
 export function sectionBlocks(page: string): { titled: Map<string, string>; commands: string[] } {
   const start = page.indexOf(`\n## ${HEADING}\n`);
-  if (start === -1) throw new SmokeError(`docs/package-development.md has no section "${HEADING}".`);
+  if (start === -1) throw new SmokeError(`docs/package-workspace.md has no section "${HEADING}".`);
   const rest = page.slice(start + 1);
   const end = rest.indexOf('\n## ', 1);
   const found = blocks(end === -1 ? rest : rest.slice(0, end + 1));

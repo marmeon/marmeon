@@ -19,6 +19,7 @@ export const SECTIONS = [
   'Database',
   'Testing',
   'Tools',
+  'Package Development',
 ];
 
 const searched = (response: { page(): { props: unknown } | undefined }) => (response.page()!.props as { results: SearchResults }).results;

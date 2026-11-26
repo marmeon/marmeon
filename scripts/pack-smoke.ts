@@ -1,7 +1,7 @@
 /**
  * `pnpm pack:smoke` — the framework as a stranger gets it: a new app (the starter kit with pnpm and `--agents`, `--minimal --npm`) made from the
  * tarballs by `create-marmeon` OUTSIDE the monorepo: install, test, build without .env, `marmeon start` (exactly one Node
- * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), a package in the app's workspace (docs/package-development.md, run from its source and from its dist/), the packages of the app's own workspace under test (scripts/workspace-packages.ts), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
+ * process; no oxc-parser or pino-pretty loaded), `/login` 200, the notes demo (examples/notes), the recipes (examples/recipes), the landing's snippets (examples/landing), a package in the app's workspace (docs/package-workspace.md, run from its source and from its dist/), the packages of the app's own workspace under test (scripts/workspace-packages.ts), `install --prod`, Redis and S3 steps, the skills and `.mcp.json` the creator wrote with `--agents` (and none without it; the block of AGENTS.md names them) and `marmeon mcp` over stdio, and `marmeon doctor --json` (every check passed) in both apps.
  *
  *   pnpm pack:smoke              # packs the current dist/ (pnpm build first; pnpm run ci does)
  *   pnpm pack:smoke --keep       # leaves the apps in $TMPDIR (the path is printed); a red run always keeps them
@@ -891,7 +891,7 @@ async function main(): Promise<number> {
     await pnpmApp.step('recipes (examples/recipes/*): overlays, blocks in the app, test, typecheck, lint, check, docs', () => checkRecipes(pnpmApp, 'pnpm'));
     // The landing page's code (examples/landing) on the same app, after the recipes: every snippet word for word in a file that type checks, and each typo of the chain with the compiler's error.
     await pnpmApp.step('landing snippets (examples/landing): overlay, every snippet in the app, test, typecheck, lint, every typo of the chain fails with its error', () => checkLanding(pnpmApp, 'pnpm'));
-    // A package in the app's workspace (docs/package-development.md): its source with the variable, its dist/ without — the app as found afterwards.
+    // A package in the app's workspace (docs/package-workspace.md): its source with the variable, its dist/ without — the app as found afterwards.
     await pnpmApp.step('a package in the app\'s workspace: dev, migrate and check run its source without dist/, build and start its dist/; each fails without the variable', () => checkWorkspacePackage(pnpmApp, pnpmFlags));
     // The packages of the app's own workspace (sources, a source condition, built files, a guard) after the landing: the tests of the app run against them with and without the import of `virtual:marmeon/test-packages`.
     await pnpmApp.step('workspace packages (packages/*): the tests import the class discovery booted — only with the import; the same suite with external node_modules, with the native runner, with @marmeon/vite linked from outside; a package with a namespace in dev, build, start', () => checkWorkspacePackages(pnpmApp, pnpmFlags));

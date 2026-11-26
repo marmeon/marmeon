@@ -179,7 +179,7 @@ start`, and `marmeon dev` refuses it.
 | `tinker [--sandbox] [--execute "<code>"] [--no-history]` | A REPL with the booted app. See [tinker](#tinker). |
 | `make:lint-config [--boundaries] [--force]` | Writes the lint preset. See [lint](#lint). |
 | `make:docker [--caddy \| --nginx] [--systemd] [--force]` | Writes the files for a production image. See [deployment](deployment.md#the-docker-image). |
-| `package:build [dirs…] [--clean]` | Builds framework packages for publishing. See [package development](package-development.md#building-and-publishing). |
+| `package:build [dirs…] [--clean]` | Builds framework packages for publishing. See [package development](package-publishing.md#building-and-publishing). |
 
 `key:generate` copies `.env.example` to `.env` when there is no `.env` yet, then writes a new key. `--show` only prints a key. An
 app that has a key keeps it unless you pass `--force`, which moves the old key to the front of `APP_PREVIOUS_KEYS`: sessions,
@@ -434,7 +434,7 @@ their own, which the [cache](cache.md#the-database-driver-and-transactions) page
 A package that uses the other copy may write through a connection pool of its own, which the transaction cannot roll back.
 Tinker prints one line for each second copy, like those of [`marmeon check`](check.md#the-packages-check)
 (that check does not report a framework package's own copy in the same version). It also refuses when it cannot check the tree, for example because a `package.json` cannot be read. Install one copy, as
-[one copy of a framework package](package-development.md#one-copy-of-a-framework-package) explains, or leave out `--sandbox`.
+[one copy of a framework package](package-publishing.md#one-copy-of-a-framework-package) explains, or leave out `--sandbox`.
 
 > [!WARNING]
 > On SQLite, a sandbox session that wrote holds the file's write lock until it ends. The dev server and the worker still read,

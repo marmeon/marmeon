@@ -124,7 +124,7 @@ const INTERNAL_IMPORT = new RegExp(
   'm',
 );
 
-/** Rule 9: every import of a package's internal subpath outside `packages/<name>/src/` — it is not API (docs/package-development.md). */
+/** Rule 9: every import of a package's internal subpath outside `packages/<name>/src/` — it is not API (docs/package-routes.md#routes). */
 export function internalImportHits(files: Iterable<SourceFile>): string[] {
   const hits: string[] = [];
   for (const { path, text } of files) {
@@ -767,7 +767,7 @@ export function checkSource(repository: string = root): string[] {
   return [
     ...oldNameHits(files).map((hit) => `the old name: ${hit}`),
     ...engineHits(files).map((hit) => `no ${ENGINE} in apps, stubs and templates: ${hit}`),
-    ...internalImportHits(files).map((hit) => `the internal subpath of a package is not API (decide access with everyone or a check; docs/package-development.md): ${hit}`),
+    ...internalImportHits(files).map((hit) => `the internal subpath of a package is not API (decide access with everyone or a check; docs/package-routes.md#routes): ${hit}`),
     ...libraryImportHits(files).map(
       (hit) =>
         `only @marmeon/database depends on Kysely; take the builder and its types from it (sql, Kysely, Transaction, Connection, SelectQuery, ColumnReference …) — the framework pins its version; docs/releases.md#libraries-the-framework-builds-on: ${hit}`,

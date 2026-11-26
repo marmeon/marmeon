@@ -71,7 +71,7 @@ declare module '@marmeon/core' {
   interface ServiceProviderClass {
     /**
      * The jobs this provider brings: none by default, and a worker runs them like a module's. A value that is no list of job classes,
-     * a name another class has, or one under `marmeon.` stops the start. See `docs/package-development.md#jobs`.
+     * a name another class has, or one under `marmeon.` stops the start. See `docs/package-commands.md#jobs`.
      */
     readonly [providerJobs]?: readonly JobClass[];
     /**

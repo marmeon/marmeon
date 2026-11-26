@@ -31,12 +31,12 @@ declare module '@marmeon/core' {
     /**
      * The directory of the migrations the provider's package ships, and the module they go to:
      * `{ from: new URL('../stubs/migrations', import.meta.url), module: 'permissions' }`. `marmeon publish` copies them into an app.
-     * See `docs/package-development.md#declaring-the-migrations-a-package-ships`.
+     * See `docs/package-tables.md#declaring-the-migrations-a-package-ships`.
      */
     readonly migrations?: ProviderMigrations;
     /**
      * The files the provider's package lets an app copy in: `{ lang: new URL('../stubs/lang', import.meta.url) }`. In this version only
-     * `@marmeon/i18n` publishes files, its language files. See `docs/package-development.md#declaring-the-files-a-package-publishes`.
+     * `@marmeon/i18n` publishes files, its language files. See `docs/package-tables.md#declaring-the-files-a-package-publishes`.
      */
     readonly publishes?: ProviderPublishes;
   }

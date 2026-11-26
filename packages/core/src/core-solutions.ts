@@ -104,7 +104,7 @@ export const coreSolutions = defineSolutions([
         'node_modules points Node at its TypeScript sources. Usually it is a package published with a TypeScript entry, one packed with npm ' +
         'pack (which ignores publishConfig.exports — pack with pnpm), a workspace package copied with its workspace manifest, or an ' +
         'installed package that still has an @marmeon/source export while that condition is on (NODE_OPTIONS).',
-      docs: 'docs/package-development.md#building-and-publishing',
+      docs: 'docs/package-publishing.md#building-and-publishing',
     }),
   },
   {

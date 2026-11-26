@@ -10,7 +10,7 @@ export interface ProviderPublishes {
   /**
    * The language files of the framework's texts, as a `file:` URL: `new URL('../stubs/lang', import.meta.url)`. Only
    * `@marmeon/i18n` can declare it in this version; `marmeon publish @marmeon/i18n --only=lang` copies them into `lang/marmeon/`.
-   * See `docs/package-development.md#declaring-the-files-a-package-publishes`.
+   * See `docs/package-tables.md#declaring-the-files-a-package-publishes`.
    */
   readonly lang?: URL;
 }

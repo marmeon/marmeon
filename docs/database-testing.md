@@ -523,7 +523,7 @@ it('fills the slug of the notes that exist, and takes the column away again', as
   file imports `@marmeon/database` as any migration does, so the directory has to lie inside the app, where the app's
   `node_modules` is found.
 - **The stamp.** `nextMigrationStamp(application.root)` gives a stamp behind the migrations in `modules/*/migrations`, as a generator should
-  write one; see [registering what a generator writes](package-development.md#registering-what-a-generator-writes).
+  write one; see [registering what a generator writes](package-commands.md#registering-what-a-generator-writes).
 
 ### `database: 'refresh'` and a module that arrives later
 

@@ -424,7 +424,7 @@ export class TinkerSession {
     }
     if (lines.length === 0 && this.app.packages.filter((listed) => listed === name).length > 1) lines = [`discovery found ${name} in more than one directory`];
     if (lines.length === 0) return;
-    throw new Error([lead, ...lines.map((line) => `  ${line}`), 'Install one copy: docs/package-development.md#one-copy-of-a-framework-package'].join('\n'));
+    throw new Error([lead, ...lines.map((line) => `  ${line}`), 'Install one copy: docs/package-publishing.md#one-copy-of-a-framework-package'].join('\n'));
   }
 
   #own(): OwnExports {

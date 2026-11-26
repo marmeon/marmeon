@@ -11,7 +11,7 @@ export interface TableRequirement {
 
 /**
  * The tables the packages need columns of, per connection. A package registers its requirement when its database driver is the
- * one in use; readiness compares them with the database. See `docs/package-development.md#tables`.
+ * one in use; readiness compares them with the database. See `docs/package-tables.md#tables`.
  *
  * A singleton of the `DatabaseServiceProvider`: take it with `container.make(SchemaRequirements)` once `container.has(Connections)`.
  */

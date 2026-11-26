@@ -333,7 +333,7 @@ language.
 A package that declares a `namespace` and `views` in its `package.json` brings pages of its own. A page's name is the namespace, `::`
 and the view's path below the package's `views` folder: `dist/views/entries/Edit.js` of the package with the namespace `status` is
 `status::entries/Edit`. The package declares what it ships, and
-[Pages of a package](package-development.md#pages-of-a-package) shows how.
+[Pages of a package](package-pages.md#pages-of-a-package) shows how.
 
 The package's own controllers render them, from the routes the package registers:
 
