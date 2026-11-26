@@ -43,6 +43,7 @@ import {
   ResponseLifecycle,
   isVisit,
   speaksProtocol,
+  isResponseStatus,
   VERSION_HEADER,
   partialReloadOf,
   AssetVersion,
@@ -94,7 +95,7 @@ import { createResponseFactory, leaveForeignRedirect, toActionResponse, toLiveVa
 import { DevDocument } from './dev-document.ts';
 import { DevRequestRecorder } from './error-page/recorder-token.ts';
 import { devHosts, hostAllowed } from '@marmeon/core/dev';
-import { checkHealthPaths, createHealthEndpoints, readyPathOf } from './health.ts';
+import { checkHealthPaths, createHealthEndpoints, healthPathsOf } from './health.ts';
 import { ServerConfig } from './provider.ts';
 import { forwardedRequest, proxyMatcher } from './proxies.ts';
 import { serveAssets } from './assets.ts';
@@ -135,7 +136,8 @@ export interface KernelOptions {
   islandTimeoutMs?: number;
   /**
    * The health endpoints' path: `/up` (liveness) and `/up/ready` (readiness), answered before any middleware. Default:
-   * `ServerConfig.health` (env `SERVER_HEALTH_PATH`, `/up`); `false`: none.
+   * `ServerConfig.health` (env `SERVER_HEALTH_PATH`, `/up`); `false`: none. `router.claimedBy()` sees this value only once the kernel
+   * exists; before that it sees `SERVER_HEALTH_PATH`.
    */
   health?: string | false;
 }
@@ -284,8 +286,10 @@ export function createHttpKernel(
   const redactor = application.container.has(Redactor) ? application.container.make(Redactor) : new Redactor();
   // The locales a localized route can name (`@marmeon/i18n`); the start stops without them, and on a route they would shadow.
   const urlLocales = container.has(UrlLocales) ? container.make(UrlLocales) : undefined;
-  // What the server answers besides routes — the locales a localized route's path names, the health check — for `claimedBy`.
-  router.bindServerPaths({ locales: urlLocales?.supported, health: health === false ? [] : [health, readyPathOf(health)] });
+  // What the server answers besides routes, for `claimedBy`. The providers bound both at boot; bound again because the `health` option
+  // may override the configuration, and an app may supply `UrlLocales` without `@marmeon/i18n`.
+  if (urlLocales) router.bindUrlLocales(urlLocales);
+  router.bindHealthPaths(healthPathsOf(health));
   checkLocalizedRoutes(router, urlLocales, (route) => redactor.path(route.path, route.path));
   // A route no request reaches, because an earlier one has its method and path: a warning in development, the start goes on.
   if (environment.isDevelopment()) {
@@ -512,7 +516,7 @@ export function createHttpKernel(
   const reported = new WeakMap<Request, WeakSet<object>>();
   /** Hands a server error (not a client one, an `HttpError` below 500) to the reporters: the request's method, route name and path, never its body, cookies or headers. */
   const giveToReporters = (error: unknown, failed: Request, phase?: 'deferred' | 'after-response' | 'terminate'): void => {
-    if (error instanceof HttpError && error.status < 500) return;
+    if (error instanceof HttpError && isResponseStatus(error.status) && error.status < 500) return;
     // The same error object reaches us twice when a controller awaits a promise that its deferred work returns too.
     if (typeof error === 'object' && error !== null && reported.get(failed)?.has(error)) return;
     const route = matched.get(failed);
@@ -557,7 +561,7 @@ export function createHttpKernel(
 
   const renderError = async (error: unknown, failed: Request, scope?: Container): Promise<Response> => {
     if (exceptions.hasSubscribers) {
-      const status = error instanceof HttpError ? error.status : error instanceof ValidationError ? 422 : 500;
+      const status = error instanceof HttpError && isResponseStatus(error.status) ? error.status : error instanceof ValidationError ? 422 : 500;
       const routePath = matched.get(failed)?.path;
       exceptions.publish({ ...messageBase(application), error, status, method: failed.method, path: new URL(failed.url).pathname, host: failed.headers.get('host') ?? new URL(failed.url).host, ...(routePath === undefined ? {} : { routePath }), ...fetchSite(failed) });
     }
@@ -622,7 +626,7 @@ export function createHttpKernel(
       return await errorPageResponse(
         {
           error,
-          status: result.status,
+          status: isResponseStatus(result.status) ? result.status : 500,
           request: failed,
           requestId: info?.requestId,
           refererRoutePath: failed.headers.has('referer') ? routePatternOf(failed.headers.get('referer')!, failed) : undefined,
@@ -663,11 +667,11 @@ export function createHttpKernel(
       // Never back to a form with the errors flashed (that would write the session): the island has no form.
       const result = error instanceof ValidationError ? Response.json({ message: error.message }, { status: 422 }) : handler.render(error, request, { debug: showsDebug(request), translator });
       if (isResponse(result)) return result;
-      if (isViewResult(result)) return Response.json(result.props, { status: result.status, headers: result.headers });
+      if (isViewResult(result)) return Response.json(result.props, { status: isResponseStatus(result.status) ? result.status : 500, headers: result.headers });
     } catch (failure) {
       logger.error('Rendering the error of an island failed', { exception: redactor.text(String(failure)) });
     }
-    return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError ? error.status : 500 });
+    return Response.json({ message: 'Server Error' }, { status: error instanceof HttpError && isResponseStatus(error.status) ? error.status : 500 });
   };
 
   /**

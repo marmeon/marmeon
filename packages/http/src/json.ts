@@ -1,5 +1,5 @@
 import { ownResponse } from '@marmeon/router';
-import { assertResultOptions, type ResultOptions } from './view.ts';
+import { assertResultOptions, assertStatus, type ResultOptions } from './view.ts';
 import { withFlashMethod, type FlashMethod } from './flash.ts';
 
 const JSON_RESULT = Symbol.for('marmeon.json-result');
@@ -23,10 +23,12 @@ export interface JsonResult<T = unknown> {
   readonly flash: FlashMethod<JsonResult<T>>;
 }
 
-/** `data` as JSON, with the `status` (default 200) and `headers` of the options. */
+/**
+ * `data` as JSON, with the `status` (default 200) and `headers` of the options. Throws a `TypeError` for a status that is not
+ * a whole number from 200 to 599, and for 204, 205 and 304 with data. See docs/responses.md#json.
+ */
 export function json<T>(data: T, options: ResultOptions = {}): JsonResult<T> {
-  assertResultOptions('json', options);
-  const { status = 200, headers } = options;
+  const { status, headers } = assertResultOptions('json', options, data !== undefined);
   return withFlashMethod({ [JSON_RESULT]: true, kind: 'json', data, status, ...(headers ? { headers } : {}) } as JsonResult<T>);
 }
 
@@ -36,6 +38,8 @@ export function isJsonResult(value: unknown): value is JsonResult {
 
 /** The response of a {@link JsonResult}. */
 export function jsonResponse(result: JsonResult): Response {
+  // A result is data: its status may have changed since json() checked it.
+  assertStatus('json', result.status, result.data !== undefined);
   // `undefined` is no JSON (Response.json would throw): an answer without data.
   if (result.data === undefined) return ownResponse(new Response(null, { status: result.status === 200 ? 204 : result.status, headers: result.headers }));
   return ownResponse(Response.json(result.data, { status: result.status, headers: result.headers }));

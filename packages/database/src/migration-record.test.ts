@@ -669,6 +669,33 @@ describe.runIf(drivers.includes('pgsql' as never))('tables an extension owns, on
   });
 });
 
+describe.runIf(drivers.includes('pgsql' as never))('tables an extension owns, when the app parses booleans as strings', () => {
+  it('are still no tables of the app, and a nullable column is still nullable', async () => {
+    const { default: pg } = await import('pg');
+    const { connections, close } = await freshConnections('pgsql', { record: false });
+    const BOOL = 16;
+    const original = pg.types.getTypeParser(BOOL);
+    try {
+      const books = migratorConnection(connections);
+      await sql`create extension if not exists citext`.execute(books);
+      await books.schema.createTable('spatial_ref_sys').addColumn('srid', 'integer').execute();
+      await sql`alter extension citext add table spatial_ref_sys`.execute(books);
+      // The app's own parser for booleans, global to `pg`: it gives back the text of the answer, and 'f' is truthy.
+      pg.types.setTypeParser(BOOL, (value: string) => value);
+      const { extension, nullable } = await tableColumns(async <R>(query: string) => (await sql.raw<R>(query).execute(books)).rows, 'pgsql');
+      expect([...extension]).toEqual(['spatial_ref_sys']);
+      expect([...nullable]).toEqual(['spatial_ref_sys\0srid']);
+      expect([...(await migrator(connections, auth).undescribedColumns('default', [])).columns.keys()]).not.toContain('spatial_ref_sys');
+      const unknown: UnknownSchema[] = [];
+      await migrator(connections, auth).migrate({ onUnknown: (_, found) => unknown.push(found) });
+      expect(unknown).toEqual([]);
+    } finally {
+      pg.types.setTypeParser(BOOL, original);
+      await close();
+    }
+  });
+});
+
 describe('the solutions for migrations that are not what the code expects', () => {
   const read = (reason: MigrationStateError['reason'], code: 'D1' | 'D2') =>
     new ErrorSolutions(databaseSolutions).find(new MigrationStateError(reason, 'default', `[marmeon:${code}] text`, reason === 'pending' ? ['2026_01_01_000000_a'] : []));

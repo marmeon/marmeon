@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Clock, createApplication, inTransaction, Logger, TransactionError, type Application } from '@marmeon/core';
+import { Cache, CacheServiceProvider } from '@marmeon/cache';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } from '@marmeon/database';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
@@ -59,6 +60,23 @@ class ContextJob {
   }
 }
 
+/** Accepts a payload at the dispatch and refuses it at the run while `refuse.now` is set — a job whose record the runner will not hand out. */
+const refuse = { now: false };
+
+class RefusedJob {
+  static readonly job = 'test.refused';
+  static readonly schema = {
+    '~standard': {
+      version: 1 as const,
+      vendor: 'test',
+      validate: (value: unknown) => (refuse.now ? { issues: [{ message: 'refused at the run' }] } : { value: value as { n: number } }),
+      types: undefined as unknown as { input: { n: number }; output: { n: number } },
+    },
+  };
+
+  handle(): void {}
+}
+
 class Rollback extends Error {}
 
 describe.each(databaseKinds)('dispatching inside connections.transaction() on %s', (kind) => {
@@ -78,10 +96,10 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     const application = await createApplication({
       root: '/tmp',
       discover: false,
-      providers: [DatabaseServiceProvider, EncryptionServiceProvider, QueueServiceProvider],
-      modules: [{ name: 'test', jobs: [LookJob, ContextJob] }],
+      providers: [DatabaseServiceProvider, EncryptionServiceProvider, CacheServiceProvider, QueueServiceProvider],
+      modules: [{ name: 'test', jobs: [LookJob, ContextJob, RefusedJob] }],
     }, {
-      env: { APP_KEY: KEY, NODE_ENV: 'test', ...database, ...env },
+      env: { APP_KEY: KEY, NODE_ENV: 'test', CACHE_DRIVER: 'memory', ...database, ...env },
       override: (container) => {
         container.instance(Clock, new TestClock());
         container.instance(Seen, seen);
@@ -169,6 +187,247 @@ describe.each(databaseKinds)('dispatching inside connections.transaction() on %s
     });
     await expect(late).rejects.toBeInstanceOf(TransactionFinishedError);
     expect(await queue.size()).toBe(0);
+  });
+
+  describe('a unique job whose dispatch never gives a job', () => {
+    /** A dispatch begun inside a transaction that runs only once `finish()` is called — after the transaction ended. */
+    function late(run: () => Promise<unknown>): { readonly result: Promise<unknown>; readonly finish: () => void } {
+      let finish!: () => void;
+      const gate = new Promise<void>((resolve) => (finish = resolve));
+      return { result: gate.then(run), finish };
+    }
+
+    it('frees the lock of a dispatch refused because its transaction finished, so the key can be dispatched again', async () => {
+      await using application = await app();
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      let held!: ReturnType<typeof late>;
+      await connections.transaction(async () => {
+        held = late(() => queue.dispatch(ContextJob, { n: 1 }, { unique: 'k' }));
+      });
+      held.finish();
+      await expect(held.result).rejects.toBeInstanceOf(TransactionFinishedError);
+      expect(await queue.dispatch(ContextJob, { n: 2 }, { unique: 'k' })).toEqual(expect.any(String));
+      expect(await queue.size()).toBe(1);
+    });
+
+    it('QueueFake: frees the lock of a dispatch refused because its transaction finished', async () => {
+      await using application = await app();
+      const fake = new QueueFake(application.container);
+      const connections = application.container.make(Connections);
+      let held!: ReturnType<typeof late>;
+      await connections.transaction(async () => {
+        held = late(() => fake.dispatch(ContextJob, { n: 1 }, { unique: 'k' }));
+      });
+      held.finish();
+      await expect(held.result).rejects.toBeInstanceOf(TransactionFinishedError);
+      expect(await fake.dispatch(ContextJob, { n: 2 }, { unique: 'k' })).toEqual(expect.any(String));
+    });
+
+    it('sync queue: frees the lock when the job is refused at the commit, so the key can be dispatched again', async () => {
+      await using application = await app({ QUEUE_DRIVER: 'sync' });
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      try {
+        await expect(
+          connections.transaction(async () => {
+            await queue.dispatch(RefusedJob, { n: 1 }, { unique: 'k' });
+            refuse.now = true;
+          }),
+        ).rejects.toThrow('refused at the run');
+      } finally {
+        refuse.now = false;
+      }
+      expect(await queue.dispatch(RefusedJob, { n: 2 }, { unique: 'k' })).toEqual(expect.any(String));
+    });
+
+    it('sync queue: a failed commit frees only the lock its own job took, not a key another dispatch took since', async () => {
+      await using application = await app({ QUEUE_DRIVER: 'sync' });
+      const queue = application.container.make(Queue);
+      const connections = application.container.make(Connections);
+      const cache = application.container.make(Cache);
+      const taken = cache.lock('queue:unique:test.refused:k', 60);
+      try {
+        await expect(
+          connections.transaction(async () => {
+            await queue.dispatch(RefusedJob, { n: 1 }, { unique: 'k' });
+            refuse.now = true;
+            // The first lock is gone (expired, say) and another dispatch took the key.
+            await cache.lock('queue:unique:test.refused:k', 60).forceRelease();
+            expect(await taken.get()).toBe(true);
+          }),
+        ).rejects.toThrow('refused at the run');
+      } finally {
+        refuse.now = false;
+      }
+      expect(await queue.dispatch(RefusedJob, { n: 2 }, { unique: 'k' })).toBeUndefined();
+      expect(await taken.release()).toBe(true);
+    });
+
+    type Locks = Cache['lock'];
+    /** The plain form of `Lock.get()`, which the tests replace. */
+    type Patchable = { get: () => Promise<boolean> };
+
+    /** Runs `use` with every lock the cache makes passed through `wrap`; the cache's own `lock` is back afterwards. */
+    async function wrapping(cache: Cache, wrap: (lock: Patchable, made: number) => void, use: () => Promise<void>): Promise<void> {
+      const real = cache.lock.bind(cache);
+      let made = 0;
+      cache.lock = ((...args: Parameters<Locks>) => {
+        const lock = real(...args);
+        wrap(lock as unknown as Patchable, made++);
+        return lock;
+      }) as Locks;
+      try {
+        await use();
+      } finally {
+        cache.lock = real;
+      }
+    }
+
+    /** The first lock takes its key for real, says so through `reached`, then `get()` waits on `gate` before it answers. */
+    function holdFirstGet(gate: Promise<void>, reached: () => void): (lock: Patchable, made: number) => void {
+      return (lock, made) => {
+        if (made > 0) return;
+        const get = (lock.get as () => Promise<boolean>).bind(lock);
+        lock.get = async () => {
+          const taken = await get();
+          reached();
+          await gate;
+          return taken;
+        };
+      };
+    }
+
+    for (const driver of ['database', 'sync'] as const) {
+      it(`${driver} queue: never takes the lock of a dispatch that runs after its transaction finished`, async () => {
+        await using application = await app({ QUEUE_DRIVER: driver });
+        const queue = application.container.make(Queue);
+        const connections = application.container.make(Connections);
+        let gets = 0;
+        let held!: ReturnType<typeof late>;
+        await wrapping(application.container.make(Cache), (lock) => {
+          const get = (lock.get as () => Promise<boolean>).bind(lock);
+          lock.get = () => (gets++, get());
+        }, async () => {
+          await connections.transaction(async () => {
+            held = late(() => queue.dispatch(ContextJob, { n: 1 }, { unique: 'k' }));
+          });
+          held.finish();
+          await expect(held.result).rejects.toBeInstanceOf(TransactionFinishedError);
+        });
+        expect(gets).toBe(0);
+      });
+
+      it(`${driver} queue: frees the lock taken before its transaction finished, when the dispatch is refused after it`, async () => {
+        await using application = await app({ QUEUE_DRIVER: driver });
+        const queue = application.container.make(Queue);
+        const connections = application.container.make(Connections);
+        const cache = application.container.make(Cache);
+        let open!: () => void;
+        const gate = new Promise<void>((resolve) => (open = resolve));
+        let reached!: () => void;
+        const taken = new Promise<void>((resolve) => (reached = resolve));
+        let outcome!: Promise<unknown>;
+        await wrapping(cache, holdFirstGet(gate, () => reached()), async () => {
+          await connections.transaction(async () => {
+            outcome = queue.dispatch(RefusedJob, { n: 1 }, { unique: 'k' }).then(() => undefined, (error: unknown) => error);
+            await taken; // the lock is held before the transaction ends
+          });
+          open();
+          expect(await outcome).toBeInstanceOf(TransactionFinishedError);
+        });
+        expect(await cache.lock('queue:unique:test.refused:k', 60).get()).toBe(true);
+      });
+    }
+
+    it('QueueFake: never takes the lock of a dispatch that runs after its transaction finished', async () => {
+      await using application = await app();
+      const fake = new QueueFake(application.container);
+      const connections = application.container.make(Connections);
+      let gets = 0;
+      let held!: ReturnType<typeof late>;
+      await wrapping(application.container.make(Cache), (lock) => {
+        const get = (lock.get as () => Promise<boolean>).bind(lock);
+        lock.get = () => (gets++, get());
+      }, async () => {
+        await connections.transaction(async () => {
+          held = late(() => fake.dispatch(ContextJob, { n: 1 }, { unique: 'k' }));
+        });
+        held.finish();
+        await expect(held.result).rejects.toBeInstanceOf(TransactionFinishedError);
+      });
+      expect(gets).toBe(0);
+    });
+
+    it('QueueFake: frees the lock taken before its transaction finished, when the dispatch is refused after it', async () => {
+      await using application = await app();
+      const fake = new QueueFake(application.container);
+      const connections = application.container.make(Connections);
+      const cache = application.container.make(Cache);
+      let open!: () => void;
+      const gate = new Promise<void>((resolve) => (open = resolve));
+      let reached!: () => void;
+      const taken = new Promise<void>((resolve) => (reached = resolve));
+      let outcome!: Promise<unknown>;
+      await wrapping(cache, holdFirstGet(gate, () => reached()), async () => {
+        await connections.transaction(async () => {
+          outcome = fake.dispatch(ContextJob, { n: 1 }, { unique: 'k' }).then(() => undefined, (error: unknown) => error);
+          await taken; // the lock is held before the transaction ends
+        });
+        open();
+        expect(await outcome).toBeInstanceOf(TransactionFinishedError);
+      });
+      expect(await cache.lock('queue:unique:test.context:k', 60).get()).toBe(true);
+    });
+
+    it('frees the lock when taking it fails after the cache set it, so the key can be dispatched again', async () => {
+      await using application = await app();
+      const queue = application.container.make(Queue);
+      const cache = application.container.make(Cache);
+      await wrapping(cache, (lock, made) => {
+        if (made > 0) return;
+        const get = (lock.get as () => Promise<boolean>).bind(lock);
+        lock.get = async () => {
+          await get();
+          throw new Error('the reply was lost');
+        };
+      }, async () => {
+        await expect(queue.dispatch(ContextJob, { n: 1 }, { unique: 'k' })).rejects.toThrow('the reply was lost');
+      });
+      expect(await queue.dispatch(ContextJob, { n: 2 }, { unique: 'k' })).toEqual(expect.any(String));
+    });
+
+    it('QueueFake: frees the lock when taking it fails after the cache set it, so the key can be dispatched again', async () => {
+      await using application = await app();
+      const fake = new QueueFake(application.container);
+      const cache = application.container.make(Cache);
+      await wrapping(cache, (lock, made) => {
+        if (made > 0) return;
+        const get = (lock.get as () => Promise<boolean>).bind(lock);
+        lock.get = async () => {
+          await get();
+          throw new Error('the reply was lost');
+        };
+      }, async () => {
+        await expect(fake.dispatch(ContextJob, { n: 1 }, { unique: 'k' })).rejects.toThrow('the reply was lost');
+      });
+      expect(await fake.dispatch(ContextJob, { n: 2 }, { unique: 'k' })).toEqual(expect.any(String));
+    });
+
+    it('QueueFake: frees the lock of a dispatch that throws after it, like an invalid delay', async () => {
+      await using application = await app();
+      const fake = new QueueFake(application.container);
+      await expect(fake.dispatch(ContextJob, { n: 1 }, { unique: 'k', delay: -1 })).rejects.toThrow(/delay/i);
+      expect(await fake.dispatch(ContextJob, { n: 2 }, { unique: 'k' })).toEqual(expect.any(String));
+    });
+
+    it('still turns a duplicate away while the first job is queued', async () => {
+      await using application = await app();
+      const queue = application.container.make(Queue);
+      expect(await queue.dispatch(ContextJob, { n: 1 }, { unique: 'k' })).toEqual(expect.any(String));
+      expect(await queue.dispatch(ContextJob, { n: 2 }, { unique: 'k' })).toBeUndefined();
+      expect(await queue.size()).toBe(1);
+    });
   });
 
   it('database queue: bulk() in the transaction inserts in one statement, and its jobs are part of it', async () => {

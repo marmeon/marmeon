@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { withCode } from '../error-codes.ts';
@@ -8,6 +9,9 @@ export interface PackageInfo {
   readonly dir: string;
   readonly json: PackageJson;
 }
+
+/** A package `findPackage` read: with the digest of the bytes of the `package.json` its `json` was parsed from. */
+export type FoundPackage = PackageInfo & { readonly digest: string };
 
 export interface PackageJson {
   name?: string;
@@ -66,22 +70,29 @@ const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i;
 
 /** Finds a package the way Node does: `node_modules/<name>` in `fromDir` and every parent. */
 export function findPackage(name: string, fromDir: string): PackageInfo | undefined {
+  return findFoundPackage(name, fromDir);
+}
+
+/** {@link findPackage} with the digest of the `package.json` it parsed: discovery hashes those bytes, not a second read. */
+export function findFoundPackage(name: string, fromDir: string): FoundPackage | undefined {
   if (!PACKAGE_NAME.test(name)) return undefined;
   for (let dir = fromDir; ; dir = dirname(dir)) {
     const candidate = join(dir, 'node_modules', name, 'package.json');
     if (existsSync(candidate)) {
       let realDir: string;
       let json: unknown;
+      let bytes: Buffer;
       try {
         realDir = realpathSync.native(dirname(candidate));
-        json = JSON.parse(readFileSync(join(realDir, 'package.json'), 'utf8'));
+        bytes = readFileSync(join(realDir, 'package.json'));
+        json = JSON.parse(bytes.toString('utf8'));
       } catch (cause) {
         throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) cannot be read as JSON: ${printable(cause instanceof Error ? cause.message : String(cause))}`), { cause });
       }
       if (typeof json !== 'object' || json === null || Array.isArray(json)) {
         throw new Error(withCode('K7', `The package.json of ${name} (${candidate}) is not a JSON object.`));
       }
-      return { name, dir: realDir, json: json as PackageInfo['json'] };
+      return { name, dir: realDir, json: json as PackageInfo['json'], digest: createHash('sha256').update(bytes).digest('hex') };
     }
     if (dirname(dir) === dir) return undefined;
   }

@@ -42,6 +42,8 @@ const routes = openRoutes((Route) => {
     throw new Error(`connect failed: postgres://app:${PASSWORD}@db.internal/shop`, { cause: new Error(`refused token=${TOKEN}`) });
   }));
   Route.get('/gone', () => abort(404));
+  Route.get('/abort-zero', () => abort(0));
+  Route.get('/abort-fraction', () => abort(404.5));
   Route.get('/teapot', () => abort(500, 'broken'));
   Route.get('/users/:token', (ctx: HttpContext<{}, { token: string }>) => {
     throw new Error(`failed for ${ctx.params.token}`);
@@ -62,6 +64,28 @@ async function boot() {
 }
 
 describe('createHttpKernel — error reporters', () => {
+  it('answers an abort() with a status no response can carry as a 500 error, JSON and page, and reports it', async () => {
+    for (const path of ['/abort-zero', '/abort-fraction']) {
+      for (const accept of ['application/json', 'text/html']) {
+        reports.length = 0;
+        const app = await boot();
+        const response = await app.request(path, { headers: { accept } });
+        expect(response.status, `${path} ${accept}`).toBe(500);
+        expect(response.headers.get('content-type'), `${path} ${accept}`).not.toContain('text/plain');
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(reports, `${path} ${accept}`).toHaveLength(1);
+      }
+    }
+  });
+
+  it('still answers abort(404) as a 404 that no reporter sees', async () => {
+    reports.length = 0;
+    const app = await boot();
+    expect((await app.request('/gone', { headers: { accept: 'application/json' } })).status).toBe(404);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reports).toHaveLength(0);
+  });
+
   it('gives a 500 to the provider\'s reporters, masked, without waiting for them', async () => {
     reports.length = 0;
     const app = await boot();

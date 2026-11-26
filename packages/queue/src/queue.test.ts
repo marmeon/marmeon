@@ -883,7 +883,7 @@ describe('the worker', () => {
       expect(await w.run({ queues: ['default'], stopWhenEmpty: true })).toMatchObject({ processed: 2, released: 1, failed: 1 });
       expect(ended.map(({ job, jobId, attempt, originRequestId, payload, error }) => ({ job, jobId, attempt, originRequestId, payload, error: (error as Error).message.split(' (')[0] }))).toEqual([
         { job: 'test.from-the-next-release', jobId: unknown, attempt: 1, originRequestId: 'req-9', payload: { token: 't0k3n' }, error: 'No job named "test.from-the-next-release" is registered in this app' },
-        { job: 'test.reset-link', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: { email: 'a@b.c', token: 't' }, error: expect.stringMatching(/^test\.reset-link takes an encrypted payload/) },
+        { job: 'test.reset-link', jobId: poisoned, attempt: 1, originRequestId: undefined, payload: undefined, error: expect.stringMatching(/^test\.reset-link takes an encrypted payload/) },
       ]);
       // The worker's lines about it carry the job's context — what the recorder files them under.
       expect(lines.map(({ context }) => context.jobId)).toEqual([unknown, poisoned]);
