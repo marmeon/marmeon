@@ -66,8 +66,8 @@ export class ScheduleWorkCommand {
 
   async handle({ options, output }: CommandInput): Promise<number> {
     const stopTimeout = options['stop-timeout'] === undefined ? 30 : Number(options['stop-timeout']);
-    if (!Number.isFinite(stopTimeout) || stopTimeout < 0) {
-      throw new CommandArgumentsError(`--stop-timeout must be a number of seconds ≥ 0, not ${String(options['stop-timeout'])}.`);
+    if (!Number.isFinite(stopTimeout) || stopTimeout < 0 || stopTimeout > 2_073_600) {
+      throw new CommandArgumentsError(`--stop-timeout must be a number of seconds from 0 to 2073600 (24 days), not ${String(options['stop-timeout'])}.`);
     }
     if (!(await checked(this.#scheduler, output, this.#redactor))) return 1;
 
