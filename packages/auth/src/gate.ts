@@ -2,6 +2,7 @@ import { environment, Logger } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
 import { describeAccess, HttpError, type ClassResolver, type HttpContext, type JoinNames } from '@marmeon/router';
 import { Auth } from './auth.ts';
+import { logQuietly } from './quiet-log.ts';
 import { policyGuard, type PolicyUser } from './policy-guard.ts';
 import { RequestGuard } from './request-guard.ts';
 import type { AuthUser } from './user.ts';
@@ -184,14 +185,17 @@ export class Gate {
     if (!environment.isDevelopment()) return;
     const seen = WARNED.get(policy) ?? new Set<string>();
     if (seen.has(routeGuard)) return;
-    WARNED.set(policy, seen.add(routeGuard));
-    this.#resolve(Logger).warn(
+    const said = logQuietly(
+      this.#resolve(Logger),
+      'warn',
       withCode(
         'A9',
         `${policy.name || 'A policy'} judges the users of the guard '${policyGuardName}', but Gate.${method}() asked it on a route of the guard '${routeGuard}': the answer is no. ` +
           'See docs/authorization.md#policies-of-a-guard.',
       ),
     );
+    // A sink that threw said nothing: the next check tries again.
+    if (said) WARNED.set(policy, seen.add(routeGuard));
   }
 
   async allows<P extends object, K extends AbilityOf<P, PolicyUser<C>>, C extends PolicyClass<P> = PolicyClass<P>>(policy: C & PolicyClass<P>, ability: K, ...resources: ResourcesOf<P, K, PolicyUser<C>>): Promise<boolean> {

@@ -640,7 +640,8 @@ A localized [fallback route](#under-a-locale) answers every path below `/:locale
 The same page without the locale, `/about`, answers every `GET` and `HEAD` request with a `302` to the visitor's preferred
 language, such as `/de/about`. The route builds the target from its own pattern and the parameters that matched, and the query
 string stays as it came. The response carries `Cache-Control: private, no-store` and `Vary: accept-language, cookie`, because
-the session and the language header decide where it leads. A route of another method has no such URL.
+the session and the language header decide where it leads. A route of another method has no such URL. An app can
+[serve its default locale at that address](#the-default-locale-without-a-prefix) instead.
 
 The start stops, and names both routes, when:
 
@@ -648,13 +649,75 @@ The start stops, and names both routes, when:
 - a route that is not localized starts with a locale of the app (`/de/impressum`), in any case: the URL would have two
   owners;
 - another route of the app answers the URL without the locale: a `GET /` next to a localized `/`;
-- the app supports no locale, or one that is not letters and digits joined by hyphens (`de-AT`): it cannot stand in a URL.
+- the app supports no locale, or one that is not letters and digits joined by hyphens (`de-AT`): it cannot stand in a URL;
+- with [the default locale without a prefix](#the-default-locale-without-a-prefix) also: that locale is none of the supported ones,
+  a localized route has a locale of the app as its first fixed segment after `/:locale` (`/en/x`), another route answers the address
+  of a localized route with a method they share, or a route registered after an address that starts with a parameter (`/:username`)
+  has a fixed path (`/login`) and a method that address answers too, and no route before it answers that path with that method.
 
 `marmeon route:types` needs no locales: it writes `localized: true` and the path with `/:locale` in front. The
 [localization](localization.md#the-locale-in-the-url) page covers the languages themselves: which locale a request speaks, and
 the `alternates` of a page. `SetLocale` chooses before the bindings run, so a page whose language is its record's sets it
 afterwards with [`RequestLocale`](localization.md#a-page-in-the-language-of-a-record), on a route that is not localized: the URL
 of a localized route names the locale.
+
+### The default locale without a prefix
+
+`APP_LOCALE_PREFIX=false` moves the pages of the default locale (`APP_LOCALE`) to the address without a locale. The other locales keep
+their prefix. With `APP_LOCALE=en` and `de` as the other language, the page of the example above has these addresses:
+
+| Address | Answer |
+| --- | --- |
+| `GET /about` | the page, in `en` |
+| `GET /de/about` | the page, in `de` |
+| `GET /en/about` | `301` to `/about`, the query kept |
+| `POST /en/contact`, for a localized `POST /contact` | `404`: the form of the English page posts to `/contact` |
+
+The address without a prefix is the route itself, not a redirect. Session, account and `Accept-Language` do not decide its language: one
+URL is one language, and `/about` is always English, also for a visitor who chose German. The response carries `Content-Language` and no
+`Vary: accept-language`, so it is as cacheable as any other localized page. A page in another language links to its own pages with their
+prefix, and `<Link route>` on an English page leads to `/about`. `/en` alone, with a localized route at `/`, goes to `/`; where no
+localized route answers `/`, it is a 404.
+
+`GET` and `HEAD` of the prefixed address of the default locale answer `301`. Only the global middleware runs, so no session starts and no
+cookie is set. The target is built from the route's pattern and the values that matched, never from the request's path, so no `//host` can become
+the `Location`. The `301` carries `Cache-Control: max-age=3600`. Without it a browser
+would keep the redirect for good, and a switch back to prefixes would send visitors round in a loop; with it, the loop lasts an hour at most. Another method is
+a `404`: a form of the page posts to the address without a prefix, because `router.url()` and `<Form route>` build it.
+
+A path that starts with a locale belongs to that locale. A parameter that looks like one (`/:username` with the value `EN`) therefore
+cannot live at `/EN`: the page of the default locale keeps its prefix there, `/en/EN` answers it, and `/EN` is a 404. `router.url()`, the
+`alternates` of the page and the sitemap build `/en/EN` for it.
+
+The address of a page stands in the route order right behind its route, so the order of your route files holds for it as for any
+route (see [Route order](#route-order)). Two things follow:
+
+- A route that is not localized and starts with a parameter (`/:username`) takes the address of a localized route that loads after it,
+  `/about` included. Register it after the localized routes, or answer such paths with [`Route.fallback()`](#the-fallback-route).
+- A rest route that is not localized (`/:page{.+}`) takes `/sitemap.xml` and `/robots.txt` while a route carries `.sitemap()`, and the
+  endpoints never answer ([Sitemap and robots.txt](seo.md#sitemap-and-robotstxt)). The address of a localized rest route hands both paths
+  on to the endpoints.
+
+The start checks what it can: a localized address that starts with a parameter, and a fixed path (`/login`) of a route registered after
+it, with a method both answer, stop the app with [H9](errors.md#server-error-codes). A route before the localized address, such as the
+`/:username` of the first point, is not checked: the order of the files protects there. H9 also stops a route that is not localized and
+answers an address with a method the localized route has, and a localized route that starts with a locale after `/:locale` (`/en/x`),
+whose address would be that locale's own path.
+
+A localized [fallback](#under-a-locale) answers its default locale at the prefix without a locale, `/help/getting-started`.
+
+Switching has consequences for what is already out there:
+
+- A browser keeps the `301` of `/en/about` for up to an hour. Switching back leads that browser from `/about` to `/en/about` and back.
+- A signed URL sent before the switch names `/en/…`. It leads to a `301`, and the signature of the new path does not fit: the answer is a `403`.
+  URLs made after it, with `UrlSigner`, sign the address without a prefix.
+- `csrfExcept` paths are compared as the request carries them. A `POST` to `/en/unsubscribe/…` is a `404`, so the entry that covers
+  the default locale is `/unsubscribe/*`.
+- The switch is read when the app starts. Change it and restart.
+
+`marmeon route:types` and `marmeon route:list` write the same in both modes. `claimedBy()` follows the switch; see
+[Asking whether a path is taken](#asking-whether-a-path-is-taken). The
+[localization](localization.md#the-locale-in-the-url) page describes the `alternates`, `x-default` and the language switcher in this mode.
 
 ## Route model binding
 
@@ -1052,7 +1115,7 @@ locale: `/de/help` gives `''` and `/en/help/accounts/passkeys` gives `'accounts/
 language of the request, and a link built with `<Link route="help.page" params={{ path: 'accounts/passkeys' }}>` takes the
 locale of the current screen. Every rule of the path (empty segments, encoded slashes, the trailing slash) applies as above.
 
-The address without a locale, `/help/accounts/passkeys`, answers as it does for every localized route: a `302` to the
+Without the mode, the address without a locale, `/help/accounts/passkeys`, answers as it does for every localized route: a `302` to the
 visitor's preferred language, `/de/help/accounts/passkeys`, with `Cache-Control: private, no-store` and
 `Vary: accept-language, cookie`. It is part of the fallback, so it is asked after every other route. The server builds the
 target from the pattern and the path it has already checked, one encoded segment at a time, never from the request path:
@@ -1060,7 +1123,13 @@ target from the pattern and the path it has already checked, one encoded segment
 redirect keeps the path, an unknown page takes two hops to a 404: `/help/no-such-page` leads to `/de/help/no-such-page`, and
 the controller answers 404 there.
 
-- **Translated paths.** The redirect keeps the path as it came. When the pages have another path per language
+With [the default locale without a prefix](#the-default-locale-without-a-prefix) the address without a locale is the fallback of the
+default locale: `/help/accounts/passkeys` is the page, with `ctx.params.locale` set to that locale, and `/en/help/accounts/passkeys`
+leads to it with a `301`. An unknown page is a 404 at once. At the root, `Route.localized().fallback()` takes every path no route takes
+and that does not start with a locale of the app: `/de/unknown` goes to the fallback of `de`, and `/fr/unknown` is the default locale's
+page `fr/unknown`. Like every fallback, its address is registered after all routes, so the order of the route files does not matter for it.
+
+- **Translated paths.** Without the mode, the redirect keeps the path as it came. When the pages have another path per language
   (`/de/help/erste-schritte`, `/en/help/getting-started`), `/help/getting-started` leads a German visitor to
   `/de/help/getting-started`, which is a 404. The controller can recognise the other language's path and
   redirect to the page in the visitor's language. The automatic language versions (the `hreflang` links of the page and of the
@@ -1097,7 +1166,7 @@ the controller answers 404 there.
   only when its constraint is written as one of the forms that take any value: `.*`, `.+`, `[\s\S]*`, `[\s\S]+`, `[^]*`
   or `[^]+`, each also inside one `(?:…)` (`/:page{.+}`, `/help/:x{.*}`). Any other constraint leaves the fallback the paths it
   does not match, so `/:slug{[a-z0-9-]+/[a-z0-9-]+}`, `/help/:p{a/.*}` and `/:page{[^!]+}` start fine; a pattern that takes any
-  value in another spelling hides the fallback without a message. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it redirects
+  value in another spelling hides the fallback without a message. The address without a locale of a [localized](#routes-under-a-locale) rest route counts too: it answers (or redirects, without the mode)
   everything below its prefix, so it covers a fallback, localized or not, that sits there. A fallback also has to be in the `web` group: a package that loads routes
   while booting loads its fallback with `{ group: 'web' }`. A fallback under `/assets` or `/_marmeon` stops the app at start too, since the server answers those paths with a 404 first.
 
@@ -1123,6 +1192,18 @@ command gets the same answer as a request. A `health` you pass to `createHttpKer
 `@marmeon/i18n`, every first segment counts as a locale. Without `@marmeon/server`, `/up` and `/up/ready` count. The locales, the health
 paths and a route a package adds in `boot()` are only known once their provider has booted, so ask after the app started, not from another
 provider's `boot()`.
+
+With [the default locale without a prefix](#the-default-locale-without-a-prefix), `/about` is the page of the default locale and
+`/de/about`, where `de` is that locale, is taken too: it answers with a `301`. A path that starts with another locale of the app is that
+locale's. So a page of the default locale is checked with its address, `/${slug}`, and a slug whose first segment is a locale of the app
+is refused, because its address would be a page of that locale:
+
+```ts
+const taken = router.claimedBy(`/${slug}`) !== undefined || locales.find(slug.split('/')[0]) !== undefined;
+```
+
+`locales` is `Locales` of `@marmeon/i18n`, and `locales.unprefixed` is the locale whose pages have no prefix, or `undefined` while all
+have one. A page of another locale is checked with its prefix, `/de/${slug}`, as before.
 
 ### Moving from a wildcard route
 

@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineGuard, type GuardAuth } from './define-guard.ts';
 import { AccessTokenStore, Auth, AuthServiceProvider, authenticate, can, Gate, Hasher, UserProvider, type AuthUser, type PolicyClass } from './index.ts';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
+import { collectUnhandledRejections, failingLogger, SINK_FAILURES, settle } from './test-helpers/failing-logger.ts';
 import { openRoutes } from './test-helpers/open-routes.ts';
 import { accessTokenStore } from './test-helpers/stores.ts';
 import { MemoryUsers } from './test-helpers/users.ts';
@@ -192,9 +193,9 @@ function routeList(p: Policies) {
   });
 }
 
-async function running() {
+async function running(failing?: Logger) {
   const warnings: string[] = [];
-  const logger = { debug() {}, info() {}, warn: (message: string) => void warnings.push(message), error() {}, child: () => logger } as unknown as Logger;
+  const logger = failing ?? { debug() {}, info() {}, warn: (message: string) => void warnings.push(message), error() {}, child: () => logger } as unknown as Logger;
   app.rows.clear();
   office.rows.clear();
   const application = await createApplication(
@@ -288,6 +289,31 @@ describe('a policy of the app on a route of a package guard', () => {
     expect(current.seen.built, 'not built: no before() either').toBe(0);
     expect(warnings.length, 'once per policy and guard').toBe(1);
     expect(warnings[0]).toMatch(/A9.*'web'.*'office'/s);
+    await application.shutdown();
+  });
+
+  it.each(SINK_FAILURES)('says no all the same when the warning about it cannot be written: the logger %s', async (failure) => {
+    current = policies();
+    vi.stubEnv('NODE_ENV', 'development');
+    const unhandled = collectUnhandledRejections();
+    const { signedIn, application } = await running(failingLogger(failure));
+    const both = await signedIn('app', 'office');
+    for (const how of ['allows', 'authorize']) expect(await json(await both.call('/o/ask', { 'x-how': how })), how).toEqual(denied(how, 'update'));
+    expect(current.seen.app, 'the app\'s policy never saw anybody').toEqual([]);
+    await settle();
+    expect(unhandled).toEqual([]);
+    await application.shutdown();
+  });
+
+  it('tries the warning again at the next check when the logger threw', async () => {
+    current = policies();
+    vi.stubEnv('NODE_ENV', 'development');
+    let attempts = 0;
+    const throwing = { debug() {}, info() {}, warn: () => (attempts++, (() => { throw new Error('log sink down'); })()), error() {}, child: () => throwing } as unknown as Logger;
+    const { signedIn, application } = await running(throwing);
+    const both = await signedIn('app', 'office');
+    for (let i = 0; i < 2; i++) expect(await json(await both.call('/o/ask', { 'x-how': 'allows' })), 'the answer is no all the same').toEqual(denied('allows', 'update'));
+    expect(attempts, 'tried again after the sink threw').toBe(2);
     await application.shutdown();
   });
 

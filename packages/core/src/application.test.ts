@@ -1,3 +1,4 @@
+import cluster from 'node:cluster';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Application, configDefinitions, createApplication, STARTUP_STATICS, type ApplicationDefinition } from './application.ts';
 import { providerJobs } from './provider.ts';
@@ -223,6 +224,59 @@ describe('injection warnings in the log', () => {
     app.container.make(DueDates);
     expect(warnings).toEqual([]);
     expect(app.container.warnings).toHaveLength(1);
+  });
+});
+
+describe('the logger of a cluster worker', () => {
+  /** A sink whose methods return what they are given a promise for, as an async logger does. */
+  const sink = () => {
+    const returned: Promise<void>[] = [];
+    const calls: string[] = [];
+    const logger: Logger = {
+      debug() {},
+      info() {},
+      warn: (message) => {
+        calls.push(message);
+        const written = Promise.resolve();
+        returned.push(written);
+        return written as unknown as void;
+      },
+      error() {},
+      child: () => logger,
+    };
+    return { logger, returned, calls };
+  };
+  const worker = async (logger: Logger, boot?: (container: Container) => void) => {
+    vi.stubEnv('MARMEON_CLUSTER_WORKER', '1');
+    Object.defineProperty(cluster, 'isWorker', { value: true, configurable: true });
+    let held: Container | undefined;
+    class Warns implements ServiceProvider {
+      register(): void {}
+      boot(): void {
+        boot?.(held!);
+      }
+    }
+    return await createApplication({ root: import.meta.dirname, discover: false, providers: [Warns] }, { env: { NODE_ENV: 'test' }, override: (container) => ((held = container), container.instance(Logger, logger)) });
+  };
+  const original = Object.getOwnPropertyDescriptor(cluster, 'isWorker');
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    Object.defineProperty(cluster, 'isWorker', original!);
+  });
+
+  it('keeps the boot\'s warnings, and hands the sink\'s promise back to the caller afterwards, also from a child', async () => {
+    const { logger, returned, calls } = sink();
+    const app = await worker(logger, (container) => {
+      expect(container.make(Logger).warn('while booting'), 'nothing written, nothing returned').toBeUndefined();
+      expect(container.make(Logger).child({}).warn('child while booting')).toBeUndefined();
+    });
+    expect(calls).toEqual([]);
+    const written = app.container.make(Logger).warn('after boot') as unknown;
+    const writtenByChild = app.container.make(Logger).child({ channel: 'x' }).warn('child after boot') as unknown;
+    expect(returned).toHaveLength(2);
+    expect(written, 'the promise reaches the caller, which can handle a rejection').toBe(returned[0]);
+    expect(writtenByChild).toBe(returned[1]);
+    expect(calls).toEqual(['after boot', 'child after boot']);
   });
 });
 

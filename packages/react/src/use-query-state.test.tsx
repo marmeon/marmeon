@@ -121,6 +121,8 @@ const peoplePage = (url: string): PageObject => {
 };
 
 let layerView = 'app/Find';
+/** What the server adds to every page it answers (the locales of the app, in the mode without a prefix). */
+let pageExtra: Partial<PageObject> = {};
 let listView = 'app/People';
 const component = () => layerView;
 let gate: Promise<void> | undefined;
@@ -135,6 +137,7 @@ beforeEach(() => {
   requests = [];
   gate = undefined;
   layerView = 'app/Find';
+  pageExtra = {};
   listView = 'app/People';
   vi.spyOn(window, 'fetch').mockImplementation(async (input, init = {}) => {
     requests.push({ url: String(input).replace(window.location.origin, ''), headers: { ...(init.headers as Record<string, string>) } });
@@ -143,7 +146,7 @@ beforeEach(() => {
       const found = peoplePage(String(input).replace(window.location.origin, '').replace('/people/find', '/people'));
       return new Response(JSON.stringify({ ...found, component: component(), url: String(input).replace(window.location.origin, ''), layer: { key: 'app/Find', base: '/people' } }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
     }
-    return new Response(JSON.stringify(peoplePage(String(input).replace(window.location.origin, ''))), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
+    return new Response(JSON.stringify({ ...peoplePage(String(input).replace(window.location.origin, '')), ...pageExtra }), { headers: { [PAGE_HEADER]: PROTOCOL_VERSION } });
   });
 });
 
@@ -239,6 +242,14 @@ describe('useQueryState', () => {
     await mount({ ...peoplePage('/de/people'), locale: 'de' });
     typeNow('q', 'al');
     await until(() => expect(requests.map((r) => r.url)).toEqual(['/de/people?q=al']));
+  });
+
+  it('works on the page of a localized route at its address without a prefix: no refusal, the visit keeps the URL', async () => {
+    listView = 'app/LocalizedPeople';
+    pageExtra = { locale: 'de', urlLocales: { unprefixed: 'de', supported: ['en', 'de'] } };
+    await mount({ ...peoplePage('/people'), ...pageExtra });
+    typeNow('q', 'al');
+    await until(() => expect(requests.map((r) => r.url)).toEqual(['/people?q=al']));
   });
 
   it('inside a layer it is the layer’s query: typing visits the layer in place, the page beneath stays, one Back closes it', async () => {

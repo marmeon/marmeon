@@ -12,6 +12,7 @@ import { migrate, silent } from '../__fixtures__/targets.ts';
 import { QueueConnections } from '../connections.ts';
 import { Queue, QueueConfig, QueueServiceProvider } from '../index.ts';
 import { MakeQueueTableCommand, QUEUE_MIGRATION, QueueFailedCommand, QueueFlushCommand, QueueForgetCommand, QueuePruneFailedCommand, QueueRetryCommand, QueueSizeCommand } from './failed.ts';
+import { JobRegistry } from '../registry.ts';
 import { QueueWorkCommand } from './work.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
 
@@ -141,6 +142,96 @@ describe('the queue commands', () => {
       const { input: run } = input('/tmp', [], { queue: value, 'stop-when-empty': true });
       await expect(application.container.make(QueueWorkCommand).handle(run)).rejects.toMatchObject({ name: 'CommandArgumentsError', message: message.slice(2) });
     }
+  });
+
+  describe('queue:work lock-name warning', () => {
+    const job = (name: string) => class { static readonly job = name; static readonly schema = v.object({}); handle() {} };
+    const run = async (jobs: unknown[], afterRegistered?: (queue: Queue) => Promise<void>, break_?: (output: { warn: (line: string) => void }) => void) => {
+      await using application = await app({ jobs });
+      application.container.make(JobRegistry);
+      await afterRegistered?.(application.container.make(Queue));
+      const { input: run, lines } = input('/tmp', [], { 'stop-when-empty': true });
+      break_?.((run as { output: { warn: (line: string) => void } }).output);
+      const code = await application.container.make(QueueWorkCommand).handle(run);
+      return { code, lines, size: await application.container.make(QueueConnections).driver('database').size('default') };
+    };
+    const warnings = async (jobs: unknown[]) => {
+      const { code, lines } = await run(jobs);
+      expect(code).toBe(0);
+      return lines.filter((line) => line.startsWith('! '));
+    };
+    const message = (short: string, shortClass: string, long: string, longClass: string, rest: string) =>
+      `! The jobs "${short}" (${shortClass}) and "${long}" (${longClass}) can share a lock: "${short}" with the key "${rest}:<key>" and "${long}" with the key "<key>" name one lock, for a unique key as for a withoutOverlapping() key without shared. The queue refuses such a unique key of "${short}" with a QueueError at dispatch, and fails the job at once, without retrying, when its withoutOverlapping() key does: it goes to the failed jobs (on sync, the dispatch call throws). Rename one of the jobs so it does not begin with the other's name and a colon (keep the old name registered until its waiting jobs are gone), or build the keys of "${short}" so they do not start with "${rest}:". See docs/queues.md#unique-jobs.`;
+
+    it('warns once at the start, right after the start line, when one job name is another followed by a colon', async () => {
+      class ReportsJob extends job('reports') {}
+      class DailyReportsJob extends job('reports:daily') {}
+      const { lines } = await run([ReportsJob, DailyReportsJob]);
+      expect(lines).toEqual([expect.stringMatching(/^Processing jobs of the database connection: /), message('reports', 'ReportsJob', 'reports:daily', 'DailyReportsJob', 'daily')]);
+    });
+
+    it('warns for no names that only share a prefix', async () => {
+      class A extends job('reports') {}
+      class B extends job('reports-daily') {}
+      class C extends job('reportsdaily') {}
+      expect(await warnings([A, B, C])).toEqual([]);
+    });
+
+    it('warns for each pair of a, a:b and a:b:c, in order', async () => {
+      class A extends job('a') {}
+      class AB extends job('a:b') {}
+      class ABC extends job('a:b:c') {}
+      expect(await warnings([ABC, AB, A])).toEqual([
+        message('a', 'A', 'a:b', 'AB', 'b'),
+        message('a', 'A', 'a:b:c', 'ABC', 'b:c'),
+        message('a:b', 'AB', 'a:b:c', 'ABC', 'c'),
+      ]);
+    });
+
+    it('names a class whose name getter throws "(unnamed class)", and the worker still processes its jobs', async () => {
+      // The registry reads the name once when it takes the class; the getter breaks after that.
+      let broken = false;
+      class Throwing extends job('reports:daily') {
+        static override get name(): string {
+          if (broken) throw new Error('no name');
+          return 'Throwing';
+        }
+      }
+      class ReportsJob extends job('reports') {}
+      const { code, lines, size } = await run(
+        [ReportsJob, Throwing],
+        async (queue) => {
+          broken = true;
+          await queue.dispatch(ReportsJob, {});
+        },
+      );
+      expect(lines.filter((line) => line.startsWith('! '))).toEqual([message('reports', 'ReportsJob', 'reports:daily', '(unnamed class)', 'daily')]);
+      expect([code, size], 'the dispatched job was processed').toEqual([0, 0]);
+    });
+
+    it('names a class with an empty or non-string name "(unnamed class)"', async () => {
+      class Empty extends job('reports') {
+        static override name = '';
+      }
+      class Odd extends job('reports:daily') {
+        static override name = 3 as never;
+      }
+      expect(await warnings([Empty, Odd])).toEqual([message('reports', '(unnamed class)', 'reports:daily', '(unnamed class)', 'daily')]);
+    });
+
+    it('warns for the next pair when printing one warning fails', async () => {
+      class A extends job('a') {}
+      class AB extends job('a:b') {}
+      class ABC extends job('a:b:c') {}
+      const seen: string[] = [];
+      const { code } = await run([A, AB, ABC], undefined, (output) => {
+        output.warn = (line) => {
+          seen.push(line);
+          if (seen.length === 1) throw new Error('cannot print');
+        };
+      });
+      expect([code, seen]).toEqual([0, [message('a', 'A', 'a:b', 'AB', 'b').slice(2), message('a', 'A', 'a:b:c', 'ABC', 'b:c').slice(2), message('a:b', 'AB', 'a:b:c', 'ABC', 'c').slice(2)]]);
+    });
   });
 
   it('lists, retries (same id, attempts from zero), forgets, flushes and prunes failed jobs; counts queues', async () => {

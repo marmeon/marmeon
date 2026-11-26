@@ -11,7 +11,8 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider, optional, SharedData, view } from '@marmeon/http';
 import { html, Mailer, MailServiceProvider, type Mailable } from '@marmeon/mail';
 import { Queue, QueueServiceProvider } from '@marmeon/queue';
-import type { HttpContext } from '@marmeon/router';
+import type { HttpContext, RouteDefinitions } from '@marmeon/router';
+import { UrlLocales } from '@marmeon/router/internal';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
@@ -177,7 +178,7 @@ interface Booted {
   readonly tester?: DevtoolsTester;
 }
 
-async function boot(env: Record<string, string> = {}, options: { test?: boolean; config?: string; providers?: ServiceProviderClass[] } = {}): Promise<Booted> {
+async function boot(env: Record<string, string> = {}, options: { test?: boolean; config?: string; providers?: ServiceProviderClass[]; routes?: RouteDefinitions; urlLocales?: UrlLocales } = {}): Promise<Booted> {
   const root = workspaceTempDir('marmeon-devtools-');
   if (options.config) {
     mkdirSync(join(root, 'config'));
@@ -188,11 +189,12 @@ async function boot(env: Record<string, string> = {}, options: { test?: boolean;
     root,
     discover: false,
     providers: [EncryptionServiceProvider, HttpServiceProvider, ServerServiceProvider, DatabaseServiceProvider, QueueServiceProvider, MailServiceProvider, ...(options.providers ?? [DevtoolsServiceProvider])],
-    modules: [defineModule({ name: 'people', routes, jobs: [ReportJob, SecretJob], migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
+    modules: [defineModule({ name: 'people', routes: options.routes ?? routes, jobs: [ReportJob, SecretJob], migrations: new URL('./__fixtures__/migrations/', import.meta.url) })],
   }, {
     env: { NODE_ENV: 'test', APP_KEY: generateKey(), DB_DRIVER: 'sqlite', DB_DATABASE: join(root, 'db.sqlite'), QUEUE_DRIVER: 'sync', MAIL_DRIVER: 'array', ...env },
     override: (container) => {
       if (options.test) tester = enableDevtoolsForTests(container);
+      if (options.urlLocales) container.instance(UrlLocales, options.urlLocales);
     },
   });
   const connections = app.container.make(Connections);
@@ -577,6 +579,37 @@ describe('what the recorder keeps', () => {
       const shown = tester!.assertRecorded('browser').content.page;
       expect(shown).toBe(expected);
       expect(shown).not.toContain('abc');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('masks the page of a locale served without a prefix by the address it answers at: `/reset/:token`, not only `/:locale/reset/:token`', async () => {
+    const localized = openRoutes((Route) => {
+      Route.localized().get('/reset/:token', () => ({ ok: true }));
+      Route.get('/:section/:slug', () => ({ ok: true }));
+    });
+    const urlLocales: UrlLocales = { supported: ['de', 'en'], unprefixed: 'de', preferred: async () => 'de' };
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true, routes: localized, urlLocales });
+    try {
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'x', page: '/reset/s3cr3t' });
+      await tester!.settled();
+      const shown = tester!.assertRecorded('browser').content.page;
+      expect(shown).toBe('/reset/[redacted]');
+      expect(shown).not.toContain('s3cr3t');
+    } finally {
+      await app.shutdown();
+    }
+  });
+
+  it('keeps the page of a localized fallback served without a prefix: `/help/a/b` is matched, not recorded as unmatched', async () => {
+    const localized = openRoutes((Route) => void Route.localized().prefix('/help').fallback(() => ({ ok: true })));
+    const urlLocales: UrlLocales = { supported: ['de', 'en'], unprefixed: 'de', preferred: async () => 'de' };
+    const { app, tester } = await boot({ NODE_ENV: 'test' }, { test: true, routes: localized, urlLocales });
+    try {
+      channels.event('browser.log').publish({ ...messageBase(app), kind: 'console', level: 'warn', message: 'x', page: '/help/a/b' });
+      await tester!.settled();
+      expect(tester!.assertRecorded('browser').content.page).toBe('/help/a/b');
     } finally {
       await app.shutdown();
     }

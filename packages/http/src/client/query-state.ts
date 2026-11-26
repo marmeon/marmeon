@@ -7,7 +7,8 @@
  * The state (`QueryState`) is a feature (`features/query-state.ts`): in an app only when it uses it (`useQueryState`) — so its
  * code is a module of its own, apart from the helpers links and islands need of a page's query (`query.ts`).
  */
-import { matchesPath, toSearchParams } from '@marmeon/router/url';
+import { toSearchParams } from '@marmeon/router/url';
+import { matchesRoute } from './routes.ts';
 import type { PageObject } from '../protocol.ts';
 import type { Navigator, VisitOptions } from './navigation.ts';
 import { pageQueryOf, queryUrl, withoutDefaults } from './query.ts';
@@ -41,12 +42,14 @@ export interface QueryStateOptions {
 export type QueryUpdate<Q> = { readonly [K in keyof Q]?: Q[K] | undefined } | ((current: Q) => { readonly [K in keyof Q]?: Q[K] | undefined });
 
 /**
- * Whether the page on screen is one of route `name` (pattern `path`) with a query schema — query state belongs to its
- * route's page. Throws a message saying which of the two it is not.
+ * Whether the page on screen is one of route `name` (a route pattern, or its entry) with a query schema — query state belongs to its
+ * route's page. Throws a message saying which of the two it is not. `route` is the route's pattern, or its entry (`routeEntry()`):
+ * a localized one also has its page at the address without a prefix, when the page has `urlLocales`.
  */
-export function assertQueryPage(name: string, path: string, page: Pick<PageObject, 'url' | 'queryDefaults'>): void {
+export function assertQueryPage(name: string, route: string | { readonly path: string; readonly localized?: boolean | undefined }, page: Pick<PageObject, 'url' | 'queryDefaults' | 'urlLocales'>): void {
+  const path = typeof route === 'string' ? route : route.path;
   const pathname = new URL(page.url, 'http://marmeon.invalid').pathname;
-  if (!matchesPath(path, pathname)) {
+  if (!matchesRoute(typeof route === 'string' ? { path } : route, pathname, page.urlLocales)) {
     throw new Error(
       (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
         ? `[marmeon:C3] Query state of [${name}] (${path}) is used on ${pathname}, a page of another route — it belongs to the page of its route.`

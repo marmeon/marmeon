@@ -18,6 +18,67 @@ export type Query = Readonly<Record<string, QueryValue>>;
 /** @internal Where a route name leads — the router (`findByName`) or the browser's route manifest. */
 export interface RouteLookup {
   findByName(name: string): { readonly path: string; readonly localized?: boolean } | undefined;
+  /** The locale whose pages have no prefix (`/about` for `/de/about`), when the app has one; read at every call. */
+  readonly unprefixedLocale: string | undefined;
+  /** The locales of the app, when known: a page whose address without a prefix would start with one keeps its prefix. */
+  readonly locales: readonly string[] | undefined;
+}
+
+/**
+ * Whether the first segment of `path` — as a URL has it, encoded — is one of the app's locales, in any case. A segment that does
+ * not decode counts as one: the answer errs towards "named". The address of the locale without a prefix takes no such path, since
+ * the locale's own prefix is where that path belongs: the router answers it with a 404 and asks no route of it, and a page
+ * whose address without a prefix would start so (a user named `EN`) keeps its prefix (`/de/EN`).
+ *
+ * @internal
+ */
+export function namesLocaleSegment(path: string, supported: readonly string[]): boolean {
+  const first = path.split('/')[1];
+  if (first === undefined || first === '') return false;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(first);
+  } catch {
+    return true;
+  }
+  const lower = decoded.toLowerCase();
+  return supported.some((locale) => locale.toLowerCase() === lower);
+}
+
+/** @internal A localized pattern without its `/:locale`: the address of the locale that has no prefix, and the one without a locale. */
+export const withoutLocale = (pattern: string): string => pattern.replace(/^\/:locale/, '') || '/';
+
+/**
+ * The path of a localized route's page in `locale`: without the prefix for `unprefixed` and for no locale at all (`x-default`),
+ * `/<locale>/…` for any other. `params` hold the route's own parameters; a `locale` among them is replaced by the one asked for.
+ * `supported` are the app's locales: where the address without a prefix would start with one (`/EN`), or when they are not known
+ * (`undefined`) while `unprefixed` is set, the page keeps its prefix (`/<unprefixed>/EN`), since the address without a prefix never answers such a path. Nothing here throws for a value that looks like a locale.
+ *
+ * @internal
+ */
+export function localePath(name: string, pattern: string, params: Readonly<Record<string, Param | undefined>>, locale: string | undefined, unprefixed: string | undefined, supported: readonly string[] | undefined): string {
+  return localeAddress(name, pattern, params, locale, unprefixed, supported).path;
+}
+
+/** @internal What {@link localePath} fills, with the pattern it filled (to check the path against) and the parameters that did not fit it. */
+export function localeAddress(name: string, pattern: string, params: Readonly<Record<string, Param | undefined>>, locale: string | undefined, unprefixed: string | undefined, supported: readonly string[] | undefined): { path: string; rest: Record<string, Param>; pattern: string } {
+  return fillLocalized(name, pattern, params, locale, unprefixed, supported);
+}
+
+/**
+ * Fills the address of one locale. `locale` must not come back in `rest`, where it would land in the query; a `locale` in `params` is
+ * replaced by `locale` (or by `unprefixed`, for a page that keeps its prefix because its address without one would start with one of `supported`).
+ */
+function fillLocalized(name: string, pattern: string, params: Readonly<Record<string, Param | undefined>>, locale: string | undefined, unprefixed: string | undefined, supported: readonly string[] | undefined): { path: string; rest: Record<string, Param>; pattern: string } {
+  if (locale === undefined || locale === unprefixed) {
+    const bare = withoutLocale(pattern);
+    const filled = fillPath(name, bare, { ...params, locale: undefined });
+    // A path that starts with a locale is that locale's own, which the address without a prefix never answers: the page keeps its prefix.
+    // Without the locales to compare with, a locale without a prefix keeps its prefix: that is at worst a 301, never another locale's page.
+    if (unprefixed === undefined || (supported !== undefined && !namesLocaleSegment(filled.path, supported))) return { ...filled, pattern: bare };
+    return { ...fillPath(name, pattern, { ...params, locale: unprefixed }), pattern };
+  }
+  return { ...fillPath(name, pattern, { ...params, locale }), pattern };
 }
 
 /**
@@ -100,7 +161,9 @@ export function urlFor(routes: RouteLookup, name: string, params: Readonly<Recor
   const route = routes.findByName(name);
   // The code is written out: this file loads in the browser and imports no server code.
   if (!route) throw new Error(`[marmeon:H4] Route [${name}] is not defined.`);
-  const { path, rest } = fillPath(name, route.path, params);
+  // The locale without a prefix has the address of the pattern without `/:locale`; any other keeps it.
+  const bare = route.localized && typeof params.locale === 'string' && params.locale === routes.unprefixedLocale;
+  const { path, rest } = bare ? localeAddress(name, route.path, params, params.locale as string, routes.unprefixedLocale, routes.locales) : fillPath(name, route.path, params);
   const search = toSearchParams(rest, query).toString();
   return search ? `${path}?${search}` : path;
 }

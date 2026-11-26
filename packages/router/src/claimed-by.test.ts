@@ -5,11 +5,13 @@ import { namesOtherLocale } from './router.ts';
 
 const open = (register: (Route: Parameters<RouteDefinitions['register']>[0]) => void): RouteDefinitions => defineRoutes((Route) => register(Route.authorize(everyone)));
 const web = (...files: RouteDefinitions[]) => new Router().load({ group: 'web' }, ...files);
-const locales = (supported: readonly string[]): UrlLocales => ({ supported, preferred: async () => supported[0]! });
+const locales = (supported: readonly string[]): UrlLocales => ({ supported, unprefixed: undefined, preferred: async () => supported[0]! });
 const routeAt = (router: Router, path: string) => {
   const claim = router.claimedBy(path);
   return claim?.by === 'route' ? claim.route.path : claim;
 };
+
+const about = open((Route) => void Route.localized().get('/about', () => 'about'));
 
 describe('Router.claimedBy()', () => {
   it('names the route that answers a GET path, and nothing for a free one', () => {
@@ -135,8 +137,6 @@ describe('Router.claimedBy()', () => {
   });
 
   describe('a localized route', () => {
-    const about = open((Route) => void Route.localized().get('/about', () => 'about'));
-
     it('is answered per locale once the locales are bound, and by its address without a locale', () => {
       const router = web(about);
       router.bindUrlLocales(locales(['de', 'en']));
@@ -155,7 +155,7 @@ describe('Router.claimedBy()', () => {
       const router = web(about);
       expect(router.claimedBy('/fr/about')).toMatchObject({ by: 'route' });
       expect(router.claimedBy('/up')).toEqual({ by: 'framework', reason: 'health' });
-      router.bindUrlLocales({ get supported() { return list; }, preferred: async () => 'de' });
+      router.bindUrlLocales({ get supported() { return list; }, unprefixed: undefined, preferred: async () => 'de' });
       expect(router.claimedBy('/fr/about')).toBeUndefined();
       list = [...list, 'fr'];
       expect(router.claimedBy('/fr/about')).toMatchObject({ by: 'route' });
@@ -173,6 +173,54 @@ describe('Router.claimedBy()', () => {
       const router = web(open((Route) => void Route.get('/legal', () => 'l')), about);
       router.bindUrlLocales(locales(['de']));
       expect(router.claimedBy('/legal')).toMatchObject({ by: 'route' });
+    });
+  });
+
+  describe('the locale without a prefix', () => {
+    const unprefixed = (value: string | undefined): UrlLocales => ({ supported: ['de', 'en'], unprefixed: value, preferred: async () => 'de' });
+
+    it('claims the page under its own address and under the prefix', () => {
+      const router = web(about);
+      router.bindUrlLocales(unprefixed('de'));
+      expect(routeAt(router, '/about')).toBe('/:locale/about');
+      expect(routeAt(router, '/de/about')).toBe('/:locale/about');
+      expect(routeAt(router, '/en/about')).toBe('/:locale/about');
+    });
+
+    it('leaves a path that starts with a locale to that locale, and claims a slug no locale of the app has', () => {
+      const router = web(open((Route) => void Route.localized().get('/:slug', () => 's')));
+      router.bindUrlLocales(unprefixed('de'));
+      expect(router.claimedBy('/en')).toBeUndefined();
+      expect(router.claimedBy('/EN')).toBeUndefined();
+      expect(router.claimedBy('/fr')).toMatchObject({ by: 'route' });
+      expect(router.claimedBy('/de/fr')).toMatchObject({ by: 'route' });
+    });
+
+    it('skips the address of a route whose path begins with a locale, in any case', () => {
+      const router = web(open((Route) => void Route.localized().get('/:slug/x', () => 'x')));
+      router.bindUrlLocales(unprefixed('de'));
+      expect(router.claimedBy('/EN/x')).toBeUndefined();
+      expect(router.claimedBy('/en/x')).toBeUndefined();
+      expect(router.claimedBy('/other/x')).toMatchObject({ by: 'route' });
+    });
+
+    it('answers for both views while nothing is bound: the page at both addresses', () => {
+      const router = web(about);
+      expect(router.claimedBy('/about')).toMatchObject({ by: 'route' });
+      expect(router.claimedBy('/de/about')).toMatchObject({ by: 'route' });
+    });
+
+    it('reads the value at every call, never keeps what it saw first', () => {
+      let current: string | undefined;
+      const router = web(open((Route) => void Route.localized().get('/:slug', () => 's')));
+      router.bindUrlLocales({ supported: ['de', 'en'], get unprefixed() { return current; }, preferred: async () => 'de' });
+      // Asked before the mode is on: the routes are listed, which must not hold the view without the mode.
+      expect(router.routes).toHaveLength(1);
+      expect(router.claimedBy('/en')).toMatchObject({ by: 'route' });
+      current = 'de';
+      expect(router.claimedBy('/en')).toBeUndefined();
+      current = undefined;
+      expect(router.claimedBy('/en')).toMatchObject({ by: 'route' });
     });
   });
 

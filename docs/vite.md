@@ -389,8 +389,7 @@ What changes with the import:
 - The provider class your test imports is the one the app boots, and so are its tokens and singletons.
 - A `vi.mock` of a module of the package reaches the boot, except where [one variant per test file](#packages-of-your-workspace) says otherwise.
 - A mock of an entry must export what discovery needs: the providers, the classes with constructor dependencies and what they inject.
-  A mock that leaves one out fails the boot with Vitest's error, which names the export. An export that is `undefined`, a provider that is
-  no function, and a class to inject that is `null` or a primitive fail it with [K7](errors.md#server-error-codes).
+  A mock that leaves one out fails the boot with Vitest's error, which names the export. An export that is `undefined` and a class to inject that is `null` or a primitive fail it with [K7](errors.md#server-error-codes).
 - To change a mock between two boots, use `vi.resetModules()` with `vi.doMock()`, and then import the app's definition and the classes again
   with `await import()`: what the file imported before the reset keeps the first variant. [One variant per test file](#packages-of-your-workspace) names the classes
   that this does not change.

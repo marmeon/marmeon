@@ -46,7 +46,7 @@ export function useQueryState<const N extends BrowserRouteNameInput>(
   const manifest = useContext(RoutesContext);
   const { page } = router;
   // Only the route's pattern is needed: the URL to visit is the page's own, so parameters and locale are never filled in.
-  assertQueryPage(name, routeEntry(manifest, name).path, page);
+  assertQueryPage(name, routeEntry(manifest, name), page);
 
   const latest = useRef(options);
   latest.current = options;

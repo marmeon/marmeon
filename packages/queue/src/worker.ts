@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { durationToSeconds, outsideTransaction, Redactor, type Clock, type Duration, type ErrorReports, type Logger } from '@marmeon/core';
-import { describeError, withCode, withoutCode } from '@marmeon/core/internal';
+import { describeError, guardedLog, withCode, withoutCode } from '@marmeon/core/internal';
 import { backoffDelay, type FailedJobStore, type JobRecord, type QueueDriver, type ReservedJob } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, JobReleased, type JobEvents } from './events.ts';
 import { JobOnceBusyError, ONCE_BUSY_DELAY, releaseUnique } from './locks.ts';
@@ -240,14 +240,15 @@ export class Worker {
         // Asked to stop and the job did not finish in time: back to the queue at once, for another worker. The stop was the
         // worker's, not the job's: the attempt is given back, or a job with a single try would fail on the next worker.
         await this.#deps.driver.release(reserved, 0, { refund: true });
-        logger.warn(`Released ${record.job}: the worker is stopping and the job did not finish within the stop timeout`, context);
+        guardedLog(() => logger.warn(`Released ${record.job}: the worker is stopping and the job did not finish within the stop timeout`, context));
         await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: 0, reason: 'stopping', ms }));
         return 'interrupted';
       case 'error':
         // `job.once` on a key another attempt runs right now: this attempt never got to it — back to the queue, the attempt given back.
         if (settled.error instanceof JobOnceBusyError) {
           await this.#deps.driver.release(reserved, ONCE_BUSY_DELAY, { refund: true });
-          logger.info(`Released ${record.job}: ${this.#message(settled.error)} It runs again in ${ONCE_BUSY_DELAY}s, without using up a try.`, context);
+          const { error } = settled;
+          guardedLog(() => logger.info(`Released ${record.job}: ${this.#message(error)} It runs again in ${ONCE_BUSY_DELAY}s, without using up a try.`, context));
           await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: ONCE_BUSY_DELAY, reason: 'busy', ms }));
           return 'released';
         }
@@ -264,7 +265,7 @@ export class Worker {
         return 'failed';
       }
       await this.#deps.driver.release(reserved, requested.delay, { availableAt: this.#deps.clock.now() + Math.round(requested.delay * 1000) });
-      logger.info(`Released ${record.job} (by the job), again in ${requested.delay}s`, context);
+      guardedLog(() => logger.info(`Released ${record.job} (by the job), again in ${requested.delay}s`, context));
       await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: requested.delay, reason: 'job', ms }));
       return 'released';
     }
@@ -404,7 +405,7 @@ export class Worker {
     try {
       await releaseUnique(this.#deps.runner.cache, record, moment);
     } catch (error) {
-      this.#deps.logger.child({ job: record.job, jobId: record.uuid }).warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${this.#message(error)}`);
+      guardedLog(() => this.#deps.logger.child({ job: record.job, jobId: record.uuid }).warn(`Could not free the unique lock of ${record.job} (it expires after ${record.unique?.for}s): ${this.#message(error)}`));
     }
   }
 
@@ -416,7 +417,7 @@ export class Worker {
     } catch (error) {
       // A `JobQueued` names the job handed on, which is not the one running.
       const bindings = event instanceof JobQueued ? { dispatched: event.job, dispatchedId: event.jobId } : { job: event.job, jobId: event.jobId, attempt: event.attempt };
-      this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`);
+      guardedLog(() => this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#message(error)}`));
     }
   }
 
@@ -471,7 +472,8 @@ export class Worker {
           `${prepared.record.job} ignored its timeout of ${timeout}s and did not stop within ${grace}s more (job.signal aborted). ` +
             `Node cannot cancel a running promise, so this worker must end; the job runs again once retryAfterSeconds is over (attempt ${reserved.attempts} of ${prepared.record.tries}).`,
         );
-        this.#deps.logger.child({ job: prepared.record.job, jobId: prepared.record.uuid, attempt: reserved.attempts }).error(error.message);
+        // A sink that fails must not keep onStuck from running, nor the run from ending with this error.
+        guardedLog(() => this.#deps.logger.child({ job: prepared.record.job, jobId: prepared.record.uuid, attempt: reserved.attempts }).error(error.message));
         if (options.onStuck) options.onStuck(reserved, error);
         throw error;
       }
@@ -517,7 +519,7 @@ export class Worker {
     const release = async () => {
       await this.#deps.driver.release(reserved, delay, { refund: true });
       if (!this.#warnedAbout(id)) {
-        this.#deps.logger.child({ job: name, jobId: id, attempt: reserved.attempts }).warn(`Holding ${name}: ${this.#message(error)} It waits for a worker that can run it, again in ${delay}s.`, { queue: reserved.queue });
+        guardedLog(() => this.#deps.logger.child({ job: name, jobId: id, attempt: reserved.attempts }).warn(`Holding ${name}: ${this.#message(error)} It waits for a worker that can run it, again in ${delay}s.`, { queue: reserved.queue }));
       }
       await this.#emit(new JobReleased({ connection: this.#deps.connection, queue: reserved.queue, job: name, jobId: id, attempt: reserved.attempts, delaySeconds: delay, reason: 'unknown' }));
     };
@@ -539,7 +541,7 @@ export class Worker {
     if (reserved.attempts < record.tries) {
       const delay = backoffDelay(record.backoff, reserved.attempts);
       await this.#deps.driver.release(reserved, delay, { availableAt: this.#deps.clock.now() + Math.round(delay * 1000) });
-      this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: reserved.attempts }).warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${this.#message(error)}`, context);
+      guardedLog(() => this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: reserved.attempts }).warn(`Attempt ${reserved.attempts} of ${record.tries} of ${record.job} failed, again in ${delay}s: ${this.#message(error)}`, context));
       await this.#emit(new JobReleased({ ...this.#about(reserved, record), attempt: reserved.attempts, delaySeconds: delay, reason, ...(ms === undefined ? {} : { ms }) }));
       return 'released';
     }
@@ -568,13 +570,15 @@ export class Worker {
     const bindings = { job: name, ...(record || identity?.uuid ? { jobId: uuid } : {}), attempt: reserved.attempts };
     const fields = { queue: reserved.queue, ...(ms === undefined ? {} : { ms }) };
     const line = `Failed ${name}${how}${dropped}: ${this.#message(error)}`;
-    if (this.#deps.errors && record?.fromReporter !== true) {
-      // The payload is not in the context: only who ran where.
-      const context = { job: name, jobId: uuid, queue: reserved.queue, connection: this.#deps.connection, attempt: String(reserved.attempts) };
-      this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, bindings, fields: { channel: 'queue', ...fields } } });
-    } else {
-      this.#deps.logger.child(bindings).error(line, fields);
-    }
+    guardedLog(() => {
+      if (this.#deps.errors && record?.fromReporter !== true) {
+        // The payload is not in the context: only who ran where.
+        const context = { job: name, jobId: uuid, queue: reserved.queue, connection: this.#deps.connection, attempt: String(reserved.attempts) };
+        this.#deps.errors.report(reported ?? withoutValues(name, error), { source: 'job', context, log: { message: line, bindings, fields: { channel: 'queue', ...fields } } });
+      } else {
+        return this.#deps.logger.child(bindings).error(line, fields);
+      }
+    });
     // A unique job that failed for good is done: a new one with its key may be queued.
     const locked = record ?? (identity?.unique ? ({ uuid, job: name, unique: identity.unique } as JobRecord) : undefined);
     if (removed && locked) await this.#releaseUnique(locked, 'done');
@@ -591,12 +595,13 @@ export class Worker {
     const timeout = timeoutOf(prepared.job);
     const abort = new AbortController();
     const timers = new AbortController();
-    const logger = this.#deps.logger.child(bindings);
+    // The child logger is built inside the guard: a logger whose child() throws costs neither failed() nor JobFailed.
+    const log = (message: string): void => guardedLog(() => this.#deps.logger.child(bindings).error(message, { queue: reserved.queue }));
     const running = this.#deps.runner
       .failed(prepared, { attempt: reserved.attempts, queue: reserved.queue, connection: this.#deps.connection, signal: abort.signal }, error)
       .then(
         () => undefined,
-        (thrown: unknown) => logger.error(`failed() of ${name} threw: ${this.#message(thrown)}`, { queue: reserved.queue }),
+        (thrown: unknown) => log(`failed() of ${name} threw: ${this.#message(thrown)}`),
       );
     const wait = (ms: number) => sleep(ms, undefined, { signal: timers.signal }).then(
       () => true,
@@ -617,7 +622,7 @@ export class Worker {
       });
     try {
       const waited = await Promise.race([running.then(() => undefined), late.then((v) => v ?? never<number>()), stopped.then((v) => v ?? never<number>())]);
-      if (waited !== undefined) logger.error(`failed() of ${name} did not finish within ${waited === 0 ? `${grace}s of the stop request` : `its timeout of ${timeout}s and ${grace}s more`}; the worker does not wait for it`, { queue: reserved.queue });
+      if (waited !== undefined) log(`failed() of ${name} did not finish within ${waited === 0 ? `${grace}s of the stop request` : `its timeout of ${timeout}s and ${grace}s more`}; the worker does not wait for it`);
     } finally {
       timers.abort();
     }

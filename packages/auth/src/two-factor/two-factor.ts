@@ -6,6 +6,7 @@ import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
 import { Session, SessionConfig } from '@marmeon/session';
 import { ACCOUNT_STILL_CLAIMED, type Auth, CLAIM_ACCOUNT, COMPLETE_PENDING, DROP_REMEMBER_TOKEN, PENDING_MAX_FAILURES, READ_PENDING, RECORD_PENDING_FAILURE } from '../auth.ts';
+import { logQuietly } from '../quiet-log.ts';
 import { writeAuth } from '../session-keys.ts';
 import { claimRefused } from '../account-sessions.ts';
 import type { AuthConfig } from '../config.ts';
@@ -271,7 +272,7 @@ export class TwoFactor {
       try {
         await this.#store.removeTotp(id, { lastFactor: (await this.#state.factors(id)).every((factor) => factor === 'totp') });
       } catch (error) {
-        this.#logger.error('Two-factor authentication was turned on for a session that had ended, and taking it out again failed: the factor may be on without its owner having set it up', { user: id, error });
+        logQuietly(this.#logger, 'error', 'Two-factor authentication was turned on for a session that had ended, and taking it out again failed: the factor may be on without its owner having set it up', { user: id, error });
         throw error;
       }
       return err({ kind: 'signed-out' });
@@ -284,7 +285,7 @@ export class TwoFactor {
       await this.#auth[DROP_REMEMBER_TOKEN]();
     } catch (error) {
       // The factor stays on (later sign-ins are asked for it); what is left to end are sessions that raced the activation: tell the operators.
-      this.#logger.error('Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error });
+      logQuietly(this.#logger, 'error', 'Two-factor authentication was turned on, but signing out the other devices a second time failed: sessions made while it was turned on may be open', { user: id, error });
       throw error;
     }
     this.#cookies.delete(this.#rememberCookie);
@@ -406,7 +407,7 @@ export class TwoFactor {
       return await this.#encrypter.decrypt(payload, this.#names.factorSecretContext(userId));
     } catch (error) {
       if (!(error instanceof DecryptError)) throw error;
-      this.#logger.warn('The two-factor secret of a user cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS — was the key it was encrypted with removed?', { user: userId });
+      logQuietly(this.#logger, 'warn', 'The two-factor secret of a user cannot be decrypted with APP_KEY or APP_PREVIOUS_KEYS — was the key it was encrypted with removed?', { user: userId });
       return undefined;
     }
   }

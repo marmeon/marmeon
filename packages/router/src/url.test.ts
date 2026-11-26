@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { fillPath, urlFor } from './url.ts';
+import { fillPath, localePath, urlFor, withoutLocale } from './url.ts';
 
 describe('fillPath / urlFor', () => {
   const routes = new Map([
     ['teams.show', { path: '/teams/:team{[a-z]+}/:tab?' }],
     ['home', { path: '/' }],
   ]);
-  const lookup = { findByName: (name: string) => routes.get(name) };
+  const lookup = { findByName: (name: string) => routes.get(name), unprefixedLocale: undefined, locales: undefined };
 
   it('refuses `.` and `..` as parameter values, since a link ending in one resolves to another route', () => {
     expect(() => fillPath('posts.show', '/posts/:slug', { slug: '..' })).toThrow('Parameter [slug] of route [posts.show] cannot be [..]');
     expect(() => fillPath('posts.show', '/posts/:slug', { slug: '.' })).toThrow('cannot be [.]');
-    expect(() => urlFor({ findByName: () => ({ path: '/posts/:slug' }) }, 'posts.show', { slug: '..' })).toThrow('cannot be [..]');
+    expect(() => urlFor({ findByName: () => ({ path: '/posts/:slug' }), unprefixedLocale: undefined, locales: undefined }, 'posts.show', { slug: '..' })).toThrow('cannot be [..]');
     for (const slug of ['...', '.a', 'a.', 'a..b']) expect(fillPath('posts.show', '/posts/:slug', { slug }).path).toBe(`/posts/${slug}`);
   });
 
@@ -68,5 +68,61 @@ describe('fillPath with the rest of the path', () => {
 
   it('leaves a {.+} parameter as it was: the / of its value is encoded', () => {
     expect(fillPath('x', '/files/:path{.+}', { path: 'a/b' }).path).toBe('/files/a%2Fb');
+  });
+});
+
+describe('the locale without a prefix', () => {
+  const routes = new Map([
+    ['about', { path: '/:locale/about', localized: true }],
+    ['help', { path: '/:locale/help/:path*', localized: true }],
+    ['home', { path: '/:locale', localized: true }],
+    ['legal', { path: '/legal' }],
+  ]);
+  const lookup = (unprefixedLocale?: string) => ({ findByName: (name: string) => routes.get(name), unprefixedLocale, locales: ['de', 'en'] });
+
+  it('builds the page of that locale without its prefix, and the others with theirs', () => {
+    expect(urlFor(lookup('de'), 'about', { locale: 'de' })).toBe('/about');
+    expect(urlFor(lookup('de'), 'about', { locale: 'en' })).toBe('/en/about');
+    expect(urlFor(lookup('de'), 'home', { locale: 'de' })).toBe('/');
+    expect(urlFor(lookup('de'), 'home', { locale: 'en' })).toBe('/en');
+    expect(urlFor(lookup('de'), 'help', { locale: 'de', path: 'a/b' })).toBe('/help/a/b');
+  });
+
+  it('never puts the locale into the query, and keeps the other values there', () => {
+    expect(urlFor(lookup('de'), 'about', { locale: 'de', ref: 'x' }, { q: '1' })).toBe('/about?ref=x&q=1');
+    expect(urlFor(lookup('de'), 'about', { locale: 'de' })).not.toContain('locale');
+  });
+
+  it('keeps the prefix of every locale when none is unprefixed', () => {
+    expect(urlFor(lookup(), 'about', { locale: 'de' })).toBe('/de/about');
+    expect(urlFor(lookup(undefined), 'home', { locale: 'de' })).toBe('/de');
+  });
+
+  it('leaves a route that is not localized alone', () => {
+    expect(urlFor(lookup('de'), 'legal', { locale: 'de' })).toBe('/legal?locale=de');
+  });
+
+  it('builds a localized path for one locale: no prefix for the unprefixed one and for no locale at all', () => {
+    expect(withoutLocale('/:locale/about')).toBe('/about');
+    expect(withoutLocale('/:locale')).toBe('/');
+    expect(localePath('about', '/:locale/about', {}, undefined, 'de', ['de', 'en'])).toBe('/about');
+    expect(localePath('about', '/:locale/about', {}, 'en', 'de', ['de', 'en'])).toBe('/en/about');
+    expect(localePath('about', '/:locale/about', {}, 'de', undefined, ['de', 'en'])).toBe('/de/about');
+    expect(localePath('help', '/:locale/help/:slug', { slug: 'a b', locale: 'fr' }, 'de', 'de', ['de', 'en'])).toBe('/help/a%20b');
+  });
+
+  it('keeps the prefix of a page whose address without one would start with a locale, without throwing', () => {
+    const supported = ['de', 'en'];
+    for (const [slug, path] of [['EN', '/de/EN'], ['De', '/de/De'], ['en', '/de/en'], ['english', '/english']] as const) {
+      expect(localePath('page', '/:locale/:slug', { slug }, 'de', 'de', supported), slug).toBe(path);
+    }
+    // The address without a locale (x-default) is the page of the unprefixed locale: it keeps the prefix as well.
+    expect(localePath('page', '/:locale/:slug', { slug: 'en' }, undefined, 'de', supported)).toBe('/de/en');
+    // Without a locale without a prefix there is nothing to keep.
+    expect(localePath('page', '/:locale/:slug', { slug: 'en' }, undefined, undefined, supported)).toBe('/en');
+    expect(urlFor({ findByName: () => ({ path: '/:locale/:slug', localized: true }), unprefixedLocale: 'de', locales: supported }, 'page', { locale: 'de', slug: 'EN' })).toBe('/de/EN');
+    // Locales not known: the prefix stays, so `en` is never read as the home of another locale.
+    expect(urlFor({ findByName: () => ({ path: '/:locale/:slug', localized: true }), unprefixedLocale: 'de', locales: undefined }, 'page', { locale: 'de', slug: 'en' })).toBe('/de/en');
+    expect(localePath('page', '/:locale/:slug', { slug: 'en' }, 'de', 'de', undefined)).toBe('/de/en');
   });
 });

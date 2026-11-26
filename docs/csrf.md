@@ -118,7 +118,8 @@ export default defineModule({
 ```
 
 A placeholder stands only after a fixed first segment: `/*`, `/*/unsubscribe/*` and `/**/x` are refused, because they would cover routes such as
-`/login`. Write each locale out (`/de/abmelden/*`, `/en/unsubscribe/*`). A `*` covers every value of its segment, slugs that users choose
+`/login`. Write each locale out (`/de/abmelden/*`, `/en/unsubscribe/*`). With
+[the default locale without a prefix](routing.md#the-default-locale-without-a-prefix) that locale has none (`/unsubscribe/*`): a `POST` to its prefixed address is a 404. A `*` covers every value of its segment, slugs that users choose
 themselves included, so `/w/*/unsubscribe` leaves `/w/a/b/unsubscribe` protected but not `/w/anything/unsubscribe`. The path is compared as
 the request carries it, with the query string left out and an encoded slash (`%2F`) not counting as a separator.
 

@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DeclarationReader, type Location } from './declarations.ts';
 import { DiscoveryError } from './error.ts';
 import { importModule } from './import-package.ts';
+import { findLockfile, trustedTop } from './trusted-folders.ts';
 import { checkExportKeys, isNamespace, resolveSurface, resolveSurfaceEntry, resolveSurfaceTexts, type PackageSurface, type PackageUiField } from './surface.ts';
 
 export { DiscoveryError };
@@ -23,7 +24,6 @@ import {
   exportedSubpaths,
   lookupPackage,
   printable,
-  trusted,
   resolveExports,
   resolveTypes,
   runtimeConditions,
@@ -36,7 +36,7 @@ import {
 /** Bump when the manifest format changes, so old manifests are regenerated. */
 const MANIFEST_VERSION = '5';
 const UNRESOLVABLE = Symbol.for('marmeon.injection.unresolvable');
-const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'];
+const LOCKFILES = ['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'bun.lock'] as const;
 
 /** The entry a package names, which must lie in the package (also by its real path): discovery imports it and reads its types. */
 function contained(pkg: PackageInfo, entry: string | undefined): string | undefined {
@@ -573,8 +573,8 @@ export function manifestHash(root: string, conditions: readonly string[]): strin
   hash.update(readFileSync(join(root, 'package.json')));
   // The same rule as the way up to the workspace: a lockfile above the last trusted folder counts as absent, and so does one that is no regular file.
   const app = realRoot(root);
-  const { limit, refusedAt, top } = workspaceLookup(root);
-  const lockfile = findLockfile(app, top);
+  const { limit, refusedAt } = workspaceLookup(root);
+  const lockfile = findLockfile(app, LOCKFILES);
   hash.update(lockfile !== undefined && isFileAfterLinks(lockfile) ? readFileSync(lockfile) : 'no lockfile');
   // The boundary the package lookup uses: a marker added, moved or removed changes which packages are in reach, though neither package.json
   // nor the lockfile did, and so does the folder the way up ends below. Relative to the app, so a copy of the app at another path hashes alike.
@@ -623,26 +623,6 @@ function declaresWorkspace(dir: string): boolean {
   }
 }
 
-/** The user that owns the app folder: a folder of that user is as trusted as one of the process's user. */
-function appOwner(app: string): number | undefined {
-  try {
-    return statSync(app).uid;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * The last folder of the way up from the app that can be trusted: the way ends below the first folder above the app that `trusted`
- * refuses, so markers and lockfiles are looked for only up to here. The app folder itself is always accepted.
- */
-function trustedTop(app: string): string {
-  const owner = appOwner(app);
-  let top = app;
-  for (let dir = dirname(app); dir !== top && trusted(dir, owner); dir = dirname(dir)) top = dir;
-  return top;
-}
-
 /** Whether `dir` holds a lockfile. */
 function hasLockfile(dir: string): boolean {
   return LOCKFILES.some((name) => existsSync(join(dir, name)));
@@ -658,13 +638,13 @@ function workspaceRoot(root: string): string {
   return workspaceLookup(root).limit;
 }
 
-/** {@link workspaceRoot}, the refused folder when the app has no workspace marker or lockfile below it (the limit shrank to the app there), and the last trusted folder of the way up. */
-function workspaceLookup(root: string): { limit: string; refusedAt?: string; top: string } {
+/** {@link workspaceRoot}, and the refused folder when the app has no workspace marker or lockfile below it (the limit shrank to the app there). */
+function workspaceLookup(root: string): { limit: string; refusedAt?: string } {
   const app = realRoot(root);
   const top = trustedTop(app);
   for (let dir = app; ; dir = dirname(dir)) {
-    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir, top };
-    if (dir === top) return dirname(top) === top ? { limit: app, top } : { limit: app, refusedAt: dirname(top), top };
+    if (declaresWorkspace(dir) || hasLockfile(dir)) return { limit: dir };
+    if (dir === top) return dirname(top) === top ? { limit: app } : { limit: app, refusedAt: dirname(top) };
   }
 }
 
@@ -734,15 +714,6 @@ export function combineDigests(digests: readonly (string | undefined)[]): string
   const hash = createHash('sha256');
   for (const digest of digests) hash.update(digest ?? 'missing').update('\0');
   return hash.digest('hex').slice(0, 16);
-}
-
-function findLockfile(root: string, top: string): string | undefined {
-  for (let dir = root; ; dir = dirname(dir)) {
-    for (const name of LOCKFILES) {
-      if (existsSync(join(dir, name))) return join(dir, name);
-    }
-    if (dir === top || dirname(dir) === dir) return undefined;
-  }
 }
 
 /**
@@ -866,14 +837,32 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
     return value;
   };
 
-  // Before anything is written: a routed provider or target that cannot be used refuses the boot. An undefined injected value refuses while
-  // the lists are written.
-  if (routed.some(Boolean)) {
-    for (const ref of manifest!.providers) {
-      if (!routed[ref[0]]) continue;
-      const provider = resolve(ref);
-      if (typeof provider !== 'function') throw new DiscoveryError(`${file(ref[0])} exports "${ref[1]}", which is no function, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.`);
+  // Before anything is written: a provider that is no class refuses the boot, routed or not (a package resolved to TypeScript sources lists
+  // its providers unchecked, and a `.d.ts` may name a type that has no value). A routed injection target that cannot be used refuses too.
+  // An undefined injected value refuses while the lists are written, for routed modules only: unrouted targets are not checked here.
+  const refuse = (ref: ExportRef) =>
+    new DiscoveryError(
+      `${file(ref[0])} ${routed[ref[0]] ? `exports "${ref[1]}", which is no class, so it cannot be a service provider. If a test mocks it, the mock must export the provider class.` : `lists "${ref[1]}" as a service provider, but the module has no export of that name that is a class. Fix the package, or report it to its author.`}`,
+    );
+  const unusable = () => manifest!.providers.find((ref) => !isConstructor(resolve(ref)));
+  let bad = unusable();
+  // The manifest may be stale (a package renamed a provider while package.json and the lockfile stayed): discover again once, as above.
+  if (bad !== undefined && !regenerated && !routed[bad[0]]) {
+    const refusal = refuse(bad);
+    try {
+      manifest = discover();
+    } catch (error) {
+      // The first refusal names the provider; what the second discovery met on the way is its cause. Loading the fresh manifest
+      // stays outside: its failures belong to the current install and surface as themselves.
+      refusal.cause = error;
+      throw refusal;
     }
+    regenerated = true;
+    modules = await load(manifest);
+    bad = unusable();
+  }
+  if (bad !== undefined) throw refuse(bad);
+  if (routed.some(Boolean)) {
     for (const { class: ref } of manifest!.injections) {
       if (!routed[ref[0]]) continue;
       const target = resolve(ref);
@@ -907,6 +896,17 @@ export async function loadDiscoveredPackages(options: DiscoverOptions & { force?
   }
   const warning = lines.length > 0 ? lines.join('\n') : undefined;
   return { providers: manifest!.providers.map(resolve), packages: manifest!.packages, regenerated, ...(warning ? { warning } : {}) };
+}
+
+/** Whether a value can be called with `new`, found without running it. */
+function isConstructor(value: unknown): boolean {
+  if (typeof value !== 'function') return false;
+  try {
+    Reflect.construct(String, [], value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readManifest(path: string): Manifest | undefined {

@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { Application, defineConfig, env, Logger, token, type ConfigOf, type Container, type ServiceProvider } from '@marmeon/core';
 import { canonicalTimeZone, packageTexts, PreferredLocale } from '@marmeon/core/internal';
 import { editableResponse, HttpError, MiddlewarePriority, Router, translatable, type HttpContext, type Next } from '@marmeon/router';
-import { fillPath, PageAlternates, UrlLocales, type PageAlternatesSource } from '@marmeon/router/internal';
+import { localeAddress, PageAlternates, UrlLocales, type PageAlternatesSource } from '@marmeon/router/internal';
 import { Session } from '@marmeon/session';
 import { Catalog, MessageError } from './catalog.ts';
 import frameworkDe from './lang/de.ts';
@@ -37,6 +37,13 @@ export const I18nConfig = defineConfig('i18n', {
     /** Where a message missing in a locale comes from (the language of the source files, `lang/en.ts`). */
     APP_FALLBACK_LOCALE: tag.default('en'),
     /**
+     * Whether the default locale's pages have a prefix too (`/de/about`); `true` by default. `false`: they answer without one (`/about`),
+     * the other locales keep theirs (`/en/about`), and `GET`/`HEAD` of `/de/about` is redirected there with a `301` (any other method is a
+     * 404). A page whose address without a prefix would start with a locale (`/de/EN`) keeps its prefix. Only `true`, `false`, `1` and `0`
+     * are values: any other stops the start. See `docs/localization.md#configuration`.
+     */
+    APP_LOCALE_PREFIX: env.boolean().default(true),
+    /**
      * The supported locales, comma-separated (`en,de`). Default: every locale the app has language files for
      * (`modules/<module>/lang/<locale>.ts`, `lang/<locale>.ts`), plus APP_LOCALE and APP_FALLBACK_LOCALE.
      */
@@ -63,7 +70,7 @@ export const I18nConfig = defineConfig('i18n', {
     const explicit = e.APP_LOCALES.length > 0 ? e.APP_LOCALES : undefined;
     // In the spelling of the list, when there is one.
     const spell = (locale: string) => (explicit ? supportedLocale(locale, explicit)! : locale);
-    return { locale: spell(e.APP_LOCALE), fallback: spell(e.APP_FALLBACK_LOCALE), locales: explicit, timeZone: e.APP_TIMEZONE === undefined ? undefined : canonicalTimeZone(e.APP_TIMEZONE) };
+    return { locale: spell(e.APP_LOCALE), fallback: spell(e.APP_FALLBACK_LOCALE), locales: explicit, prefixDefault: e.APP_LOCALE_PREFIX, timeZone: e.APP_TIMEZONE === undefined ? undefined : canonicalTimeZone(e.APP_TIMEZONE) };
   },
 });
 export type I18nConfig = ConfigOf<typeof I18nConfig>;
@@ -80,6 +87,8 @@ export class Locales {
   readonly fallback: string;
   /** Whether `APP_LOCALES` names them (else the language files do). */
   readonly explicit: boolean;
+  /** The locale whose pages have no prefix (`/about`, not `/de/about`): the default with `APP_LOCALE_PREFIX=false`, else none. */
+  readonly unprefixed: string | undefined;
   #supported: readonly string[];
 
   /** @internal Built by the container. */
@@ -87,6 +96,7 @@ export class Locales {
     this.default = config.locale;
     this.fallback = config.fallback;
     this.explicit = config.locales !== undefined;
+    this.unprefixed = config.prefixDefault === false ? config.locale : undefined;
     this.#supported = Object.freeze([...new Set([config.locale, ...(config.locales ?? [config.fallback])])]);
   }
 
@@ -168,8 +178,8 @@ export interface LocalePreference {
 export const LocalePreference = token<LocalePreference>('LocalePreference');
 
 /**
- * What a request's chain chose, by request: the unprefixed address of a localized route (a redirect) asks the visitor's locale
- * from the root, where no scoped service is at hand. Keyed by the request object, so it dies with it.
+ * What a request's chain chose, by request: the redirect from the address without a locale of a localized route asks the
+ * visitor's locale from the root, where no scoped service is at hand. Keyed by the request object, so it dies with it.
  */
 const preferredOf = new WeakMap<Request, string>();
 
@@ -229,7 +239,8 @@ export class SetLocale {
     const locales = this.#locales;
     // No route: the 404 of a path that matches none runs the global middleware only.
     const localized = ctx.route?.localized === true;
-    // A route that is localized has its locale in the URL (its constraint admits only supported ones — this is the guard).
+    // A route that is localized has its locale in `params.locale` — from the URL (its constraint admits only supported ones — this is the
+    // guard), or, for the address of the default locale without a prefix, set by the router.
     const fromUrl = localized ? locales.find((ctx.params as Record<string, unknown>).locale) : undefined;
     if (localized && fromUrl === undefined) throw new HttpError(404);
     let locale: string;
@@ -248,7 +259,7 @@ export class SetLocale {
     this.#current.set(locale);
     this.#current.localized = localized;
     // Also when no path can be derived: a controller may still name the versions itself (`PageAlternates.replace()`).
-    if (fromUrl !== undefined) this.#alternates(alternatesOf(ctx, locales.supported), { name: ctx.route.routeName ?? ctx.route.path, pattern: ctx.route.path, search: new URL(ctx.request.url).search, locales: locales.supported });
+    if (fromUrl !== undefined) this.#alternates(alternatesOf(ctx, locales), { name: ctx.route.routeName ?? ctx.route.path, pattern: ctx.route.path, search: new URL(ctx.request.url).search, locales: locales.supported, unprefixed: locales.unprefixed });
 
     const response = editableResponse(await next());
     // Read again: `RequestLocale` may have changed it since.
@@ -295,17 +306,19 @@ export class RequestLocale {
 
 /**
  * The page of a localized route in every locale: locale to path, the query as it came, plus `x-default` (the path without a
- * locale, which redirects to the visitor's). Built from the route's pattern and the matched parameters — each encoded — never
- * from the request's path. Undefined for a parameter that no path can hold (`..`).
+ * locale: the visitor's redirect, or the default locale's page with `APP_LOCALE_PREFIX=false`). Built from the route's pattern
+ * and the matched parameters — each encoded — never from the request's path. Undefined for a parameter that no path can hold (`..`).
  */
-function alternatesOf(ctx: HttpContext, supported: readonly string[]): Record<string, string> | undefined {
+function alternatesOf(ctx: HttpContext, locales: Locales): Record<string, string> | undefined {
   const search = new URL(ctx.request.url).search;
   const name = ctx.route.routeName ?? ctx.route.path;
   const params = ctx.params as Record<string, string>;
   try {
     const alternates: Record<string, string> = {};
-    for (const locale of supported) alternates[locale] = fillPath(name, ctx.route.path, { ...params, locale }).path + search;
-    alternates['x-default'] = fillPath(name, ctx.route.path.replace(/^\/:locale/, '') || '/', params).path + search;
+    // By the pattern and `supported`, so the default locale's version has no prefix in the mode — and keeps it where the address without one would start with a locale.
+    const addressOf = (locale: string | undefined) => localeAddress(name, ctx.route.path, params, locale, locales.unprefixed, locales.supported).path + search;
+    for (const locale of locales.supported) alternates[locale] = addressOf(locale);
+    alternates['x-default'] = addressOf(undefined);
     return alternates;
   } catch {
     return undefined;
@@ -514,6 +527,9 @@ export class I18nServiceProvider implements ServiceProvider {
     container.instance(UrlLocales, {
       get supported() {
         return locales.supported;
+      },
+      get unprefixed() {
+        return locales.unprefixed;
       },
       // `SetLocale` ran in the route's group and chose; a group without it falls back to the browser's languages.
       preferred: async (ctx) => preferredOf.get(ctx.request) ?? negotiateLocale(ctx.request.headers.get('accept-language'), locales.supported) ?? locales.default,

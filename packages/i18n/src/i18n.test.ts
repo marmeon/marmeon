@@ -322,6 +322,21 @@ describe('I18nConfig', () => {
     await expect(boot({ env: { APP_LOCALES: 'en,../x' } })).rejects.toThrow(/language tags/);
   });
 
+  it('APP_LOCALE_PREFIX is a boolean: a word that is none stops the start', async () => {
+    await expect(boot({ env: { APP_LOCALE_PREFIX: 'nein' } })).rejects.toThrow(ConfigError);
+  });
+
+  it('Locales.unprefixed is the default locale in the spelling of APP_LOCALES with APP_LOCALE_PREFIX=false, else none', async () => {
+    const off = await boot({ env: { APP_LOCALE_PREFIX: 'false', APP_LOCALE: 'de-at', APP_LOCALES: 'de-AT,en' } });
+    expect(off.application.container.make(Locales).unprefixed).toBe('de-AT');
+    expect((await boot({ env: { APP_LOCALES: 'en,de' } })).application.container.make(Locales).unprefixed).toBeUndefined();
+    expect((await boot({ env: { APP_LOCALE_PREFIX: 'true', APP_LOCALES: 'en,de' } })).application.container.make(Locales).unprefixed).toBeUndefined();
+  });
+
+  it('Locales built without the field of the switch keeps every prefix (the default is true)', () => {
+    expect(new Locales({ locale: 'en', fallback: 'en', locales: ['en', 'de'], timeZone: undefined } as never).unprefixed).toBeUndefined();
+  });
+
   it('forLocale: a translator for someone else — a mail in the recipient’s language', async () => {
     const { application } = await boot();
     const scope = application.container.createScope();

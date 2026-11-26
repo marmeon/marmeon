@@ -58,6 +58,11 @@ export interface PageObject {
    */
   alternates?: Record<string, string>;
   /**
+   * How the app prefixes its locales, sent only while one locale has no prefix: `unprefixed` is that locale (`/about`, not `/de/about`),
+   * `supported` are all of them. The browser builds the address of a localized route by it, on every page.
+   */
+  urlLocales?: { unprefixed: string; supported: string[] };
+  /**
    * Props the response left out to load next (`defer()`), by group: the client fetches each group with a partial
    * reload right after showing the page. Only in full responses.
    */
@@ -370,9 +375,9 @@ export function regionOf(request: Request): RegionKind | undefined {
 
 /**
  * The wire format of a region (an island): the page object of the route it shows — its component, props, URL and query,
- * deferred and merged props — without the page's language and zone (`locale`, `fallbackLocale`, `timeZone`): it renders in the page's.
+ * deferred and merged props — without the page's language, zone and address form (`locale`, `fallbackLocale`, `timeZone`, `urlLocales`): it renders in the page's.
  */
-export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
+export type RegionObject = Omit<PageObject, 'locale' | 'fallbackLocale' | 'timeZone' | 'urlLocales' | 'alternates' | 'streamedProps' | 'layer' | 'layers' | 'flash'>;
 
 /** Id of the `<script type="application/json">` that carries the initial page. */
 export const PAGE_SCRIPT_ID = 'marmeon-page';

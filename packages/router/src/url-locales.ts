@@ -8,6 +8,8 @@ import type { HttpContext } from './types.ts';
 export interface UrlLocales {
   /** The locales of the app, each in the spelling its URL uses (`en`, `de-AT`). */
   readonly supported: readonly string[];
+  /** One of `supported`: the locale whose pages have no prefix (`/about`, not `/de/about`). Read at every call; none when every locale has one. Turning it off after the server started needs a restart: the address of the locale then answers a 404. */
+  readonly unprefixed: string | undefined;
   /** The preferred locale of a request: always one of `supported`. */
   preferred(ctx: HttpContext): Promise<string>;
 }

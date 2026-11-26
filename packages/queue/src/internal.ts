@@ -4,4 +4,5 @@
  */
 export { QUEUE_MIGRATION } from './commands/failed.ts';
 export { RECORD_OPTIONS } from './queue.ts';
+export { JobKeyLockError } from './registry.ts';
 export { parseRecord, TARGET_UNKNOWN } from './runner.ts';

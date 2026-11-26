@@ -19,7 +19,7 @@ import type {
 } from '@marmeon/http/page';
 import { useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useRouterContext } from './app.tsx';
-import { RoutesContext } from './routes.ts';
+import { pageUrlOptions, RoutesContext } from './routes.ts';
 import type { ActionFields, RouteFormFields } from './use-form.ts';
 
 export type { ActionError } from '@marmeon/http/client';
@@ -157,7 +157,7 @@ export function useAction(name: string, params?: Readonly<Record<string, Param>>
       if (!navigator) {
         throw new Error(process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test' ? `[marmeon:R7] useAction('${name}'): actions run in the browser, not while rendering on the server.` : `[marmeon:R7] ${name}`);
       }
-      const target = resolveRoute(manifest, name, { params: { ...boundParams.current, ...options.params }, query: options.query, pageLocale: router.page.locale });
+      const target = resolveRoute(manifest, name, { params: { ...boundParams.current, ...options.params }, query: options.query, ...pageUrlOptions(router.page) });
       const method = target.method.split(',')[0]!.toLowerCase() as ActionMethod;
       const body = options.data as Record<string, unknown> | undefined;
       const id = ++nextCall.current;
