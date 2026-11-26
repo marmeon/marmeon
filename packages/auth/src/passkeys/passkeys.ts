@@ -254,7 +254,7 @@ export class Passkeys {
       try {
         await this.#store.remove(id, created.value.id, { lastFactorAllowed: true });
       } catch (error) {
-        this.#logger.error('A passkey was registered for a session that had ended, and taking it out again failed: the passkey may be on without its owner having added it', { user: id, error });
+        logQuietly(this.#logger, 'error', 'A passkey was registered for a session that had ended, and taking it out again failed: the passkey may be on without its owner having added it', { user: id, error });
         throw error;
       }
       return err({ kind: 'signed-out' });
@@ -266,7 +266,7 @@ export class Passkeys {
         await this.#auth.updateSessionKey();
         await this.#auth[DROP_REMEMBER_TOKEN]();
       } catch (error) {
-        this.#logger.error('A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error });
+        logQuietly(this.#logger, 'error', 'A passkey was registered as the first factor, but signing out the other devices a second time failed: sessions made meanwhile may be open', { user: id, error });
         throw error;
       }
       this.#cookies.delete(this.#rememberCookie);

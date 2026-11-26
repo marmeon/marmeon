@@ -41,6 +41,7 @@ import { PasskeyServiceProvider } from './provider.ts';
 import { AccountSessions } from '../account-sessions.ts';
 import { PASSKEYS_TABLE, PasskeyStore } from './store.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
+import { collectUnhandledRejections, failingLogger, SINK_FAILURES, settle } from '../test-helpers/failing-logger.ts';
 import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
 
 interface TestUser {
@@ -2162,5 +2163,48 @@ describe('Passkeys: the events', () => {
     expect(await validate(PasskeySignInFailed, { userId: 1, ip: null, userAgent: null })).toMatchObject({ userId: 1, at: expect.any(String) });
     const at = new Date('2030-01-02T03:04:05.000Z');
     expect(await validate(PasskeySignInFailed, new PasskeySignInFailed(ada, {}, at))).toMatchObject({ at: at.toISOString() });
+  });
+});
+
+describe('Passkeys: a failing log sink changes no outcome on a failure path', () => {
+  it.each(SINK_FAILURES)('rethrows the removal error when taking the passkey out of an ended session fails, with a logger that %s', async (failure) => {
+    const users = new MemoryUsers();
+    const booted = await boot({}, { users, logger: failingLogger(failure) });
+    const unhandled = collectUnhandledRejections();
+    const b = booted.browser();
+    await b.login();
+    const create = PasskeyStore.prototype.create;
+    vi.spyOn(PasskeyStore.prototype, 'create').mockImplementation(async function (this: PasskeyStore, ...args) {
+      const created = await create.apply(this, args);
+      users.keys.set(1, 'ended-elsewhere'); // AccountSessions.end() commits before the check that follows the transaction
+      return created;
+    });
+    vi.spyOn(PasskeyStore.prototype, 'remove').mockRejectedValue(new Error('the database went away'));
+    try {
+      expect(await addPasskey(b, device())).toMatchObject({ thrown: 'the database went away' });
+    } finally {
+      vi.restoreAllMocks();
+    }
+    await settle();
+    expect(unhandled).toEqual([]);
+  });
+
+  it.each(SINK_FAILURES)('rethrows the sign-out error when the second sign-out of the first factor fails, with a logger that %s', async (failure) => {
+    const users = new MemoryUsers();
+    const booted = await boot({}, { users, logger: failingLogger(failure) });
+    const unhandled = collectUnhandledRejections();
+    const b = booted.browser();
+    await b.login();
+    const write = users.updateSessionKey.bind(users);
+    let calls = 0;
+    users.updateSessionKey = async (id, key, expected) => {
+      if (++calls === 3) throw new Error('the database went away'); // the sign-out before the transaction, the lock inside it, then the one after the commit
+      return write(id, key, expected);
+    };
+    expect(await addPasskey(b, device())).toMatchObject({ thrown: 'the database went away' });
+    expect(calls, 'the second sign-out was reached').toBe(3);
+    expect(await rows(booted, PASSKEYS_TABLE), 'the passkey stays on').toHaveLength(1);
+    await settle();
+    expect(unhandled).toEqual([]);
   });
 });

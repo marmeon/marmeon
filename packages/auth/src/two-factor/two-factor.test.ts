@@ -16,6 +16,7 @@ import { TWO_FACTOR_TABLE, RECOVERY_CODES_TABLE, type RecoveryCodeTable, type Tw
 import { SessionFingerprints } from '../fingerprint.ts';
 import { twoFactor } from './middleware.ts';
 import { TwoFactor, type ConfirmError } from './two-factor.ts';
+import { collectUnhandledRejections, failingLogger, SINK_FAILURES, settle } from '../test-helpers/failing-logger.ts';
 import { openRoutes } from '../test-helpers/open-routes.ts';
 import { twoFactorState } from '../test-helpers/stores.ts';
 import { workspaceTempDir } from '../../../../scripts/test/temp-dir.js';
@@ -191,7 +192,7 @@ const ada: TestUser = { id: 1, name: 'Ada', email: 'ada@example.com' };
 const bob: TestUser = { id: 2, name: 'Bob', email: 'bob@example.com' };
 const CHEAP = { HASH_ARGON_MEMORY_KB: '1024', HASH_ARGON_TIME: '1' };
 
-async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState; users?: MemoryUsers; clock?: TestClock } = {}) {
+async function boot(env: Record<string, string> = {}, options: { state?: 'unbound' | TwoFactorState; users?: MemoryUsers; clock?: TestClock; logger?: Logger } = {}) {
   const users = options.users ?? new MemoryUsers();
   const appKey = env.APP_KEY ?? generateKey();
   const application = await createApplication({
@@ -211,6 +212,7 @@ async function boot(env: Record<string, string> = {}, options: { state?: 'unboun
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       if (options.clock) container.instance(Clock, options.clock);
+      if (options.logger) container.instance(Logger, options.logger);
       container.instance(UserProvider, users as UserProvider);
       if (options.state === undefined) container.bind(TwoFactorState, TwoFactorStore);
       else if (options.state !== 'unbound') container.instance(TwoFactorState, options.state);
@@ -1600,5 +1602,65 @@ describe('TwoFactor: the session must still fit the account when the factor is s
       }
     };
     expect(label({ kind: 'signed-out' })).toEqual({ kind: 'signed-out' });
+  });
+});
+
+describe('TwoFactor: a failing log sink changes no outcome on a failure path', () => {
+  it.each(SINK_FAILURES)('rethrows the removal error when taking the factor out of an ended session fails, with a logger that %s', async (failure) => {
+    const users = new MemoryUsers();
+    const booted = await boot({}, { users, logger: failingLogger(failure) });
+    const unhandled = collectUnhandledRejections();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const confirm = TwoFactorStore.prototype.confirm;
+    vi.spyOn(TwoFactorStore.prototype, 'confirm').mockImplementation(async function (this: TwoFactorStore, ...args) {
+      const stored = await confirm.apply(this, args);
+      users.keys.set(1, 'ended-elsewhere'); // AccountSessions.end() commits before the check that follows the transaction
+      return stored;
+    });
+    vi.spyOn(TwoFactorStore.prototype, 'removeTotp').mockRejectedValue(new Error('the database went away'));
+    try {
+      expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: 'the database went away' });
+    } finally {
+      vi.restoreAllMocks();
+    }
+    await settle();
+    expect(unhandled).toEqual([]);
+  });
+
+  it.each(SINK_FAILURES)('rethrows the sign-out error when the second sign-out after the commit fails, with a logger that %s', async (failure) => {
+    const booted = await boot({}, { logger: failingLogger(failure) });
+    const unhandled = collectUnhandledRejections();
+    const b = booted.browser();
+    await b.login();
+    const setup = await b.tf('begin');
+    const signIns = booted.application.container.make(SignInStore);
+    const endAll = signIns.endAll.bind(signIns);
+    let calls = 0;
+    vi.spyOn(signIns, 'endAll').mockImplementation(async (...args) => {
+      if (++calls === 3) throw new Error('the database went away');
+      return endAll(...args);
+    });
+    try {
+      expect(await b.tf('confirm', { code: twoFactorCode(setup.secret), password: 'secret' })).toMatchObject({ thrown: 'the database went away' });
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(await booted.store.factors(1)).toEqual(['totp']);
+    await settle();
+    expect(unhandled).toEqual([]);
+  });
+
+  it.each(SINK_FAILURES)('answers invalid-code for a secret under a removed key, with a logger that %s', async (failure) => {
+    const booted = await boot({}, { logger: failingLogger(failure) });
+    const unhandled = collectUnhandledRejections();
+    const { secret: key } = await enable(booted);
+    const removed = new AesGcmEncrypter(Buffer.from(generateKey().replace('base64:', ''), 'base64'));
+    await booted.connections.get<any>().updateTable(TWO_FACTOR_TABLE).set({ secret: await removed.encrypt(key, 'marmeon-auth:two-factor:1'), last_used_step: null }).execute();
+    const b = await waiting(booted);
+    expect(await b.tf('challenge', { code: twoFactorCode(key, inSeconds(30)) })).toMatchObject({ ok: false, kind: 'invalid-code' });
+    await settle();
+    expect(unhandled).toEqual([]);
   });
 });

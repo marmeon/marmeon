@@ -278,7 +278,7 @@ function quietWhileBooting(container: Container): { end(): void } {
   const quiet = (inner: Logger): Logger => ({
     debug: (message, context) => inner.debug(message, context),
     info: (message, context) => inner.info(message, context),
-    warn: (message, context) => void (booting || inner.warn(message, context)),
+    warn: (message, context) => (booting ? undefined : inner.warn(message, context)),
     error: (message, context) => inner.error(message, context),
     child: (bindings) => quiet(inner.child(bindings)),
     enabled: (level) => (level === 'warn' && booting ? false : (inner.enabled?.(level) ?? true)),
