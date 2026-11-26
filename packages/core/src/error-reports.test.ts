@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest';
 import { createApplication } from './application.ts';
 import { currentTransaction, runTransaction } from './transaction-context.ts';
 import { Container } from './container.ts';
@@ -145,6 +145,176 @@ describe('ErrorReports — what a reporter sees', () => {
     await settle();
     expect(seen).toEqual([true, true]);
     expect(startedByReporter()).toBe(false);
+  });
+});
+
+describe('ErrorReports — a log sink that misbehaves', () => {
+  it('still hands the report to the reporters when the logger error() throws', async () => {
+    const { errorReports, logger } = setup(Collecting);
+    logger.error = () => {
+      throw new Error('log sink down');
+    };
+    expect(() => errorReports.report(new Error('x'), request)).not.toThrow();
+    await settle();
+    expect(reports).toHaveLength(1);
+  });
+});
+
+/** Rejections nobody handled while a test ran. */
+const unhandled = () => {
+  const seen: unknown[] = [];
+  const listener = (reason: unknown) => void seen.push(reason);
+  process.on('unhandledRejection', listener);
+  onTestFinished(() => void process.off('unhandledRejection', listener));
+  return async () => {
+    // Only setImmediate: a test may have faked the timers.
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    return seen;
+  };
+};
+const rejected = () => Promise.reject(new Error('log sink down')) as unknown as void;
+
+
+describe('ErrorReports — a log sink that rejects', () => {
+  it('still hands the report to the reporters and leaves no unhandled rejection when the logger error() returns a rejected promise', async () => {
+    const { errorReports, logger } = setup(Collecting);
+    logger.error = rejected;
+    const seen = unhandled();
+    errorReports.report(new Error('x'), request);
+    expect(await seen()).toEqual([]);
+    expect(reports).toHaveLength(1);
+  });
+
+  it('does the same for the caller\'s own log line written through a child logger with bindings', async () => {
+    const { errorReports, logger } = setup(Collecting);
+    const calls: unknown[][] = [];
+    const child = { error: (...args: unknown[]) => (calls.push(args), rejected()) };
+    logger.child = () => child as unknown as Logger;
+    const seen = unhandled();
+    errorReports.report(new Error('x'), { ...request, log: { message: 'Failed job', fields: { channel: 'queue' }, bindings: { job: 'test.job' } } });
+    expect(await seen()).toEqual([]);
+    expect(calls).toEqual([['Failed job', { channel: 'queue' }]]);
+    expect(reports).toHaveLength(1);
+  });
+
+  it('does not loop when the logger forwards error() back into report()', async () => {
+    const { errorReports, logger } = setup(Collecting);
+    let written = 0;
+    logger.error = () => {
+      written += 1;
+      errorReports.report(new Error('from the sink'), request);
+    };
+    expect(() => errorReports.report(new Error('x'), request)).not.toThrow();
+    await settle();
+    // The nested report skips its own log line: one line, and the outer and the nested report reach the reporters.
+    expect(written).toBe(1);
+    expect(reports).toHaveLength(2);
+  });
+});
+
+describe('ErrorReports — a log sink that fails on its warnings', () => {
+  const hanging = class implements ErrorReporter {
+    report(): Promise<void> {
+      return new Promise(() => {});
+    }
+  };
+  class Failing implements ErrorReporter {
+    report(): void {
+      throw new Error('no network');
+    }
+  }
+  /** A logger whose warn() throws, or returns a rejected promise nobody handles; what it was told is in `told`. */
+  const badWarn = (logger: Logger, how: 'throws' | 'rejects') => {
+    const told: string[] = [];
+    logger.warn = (message: string) => {
+      told.push(message);
+      if (how === 'throws') throw new Error('log sink down');
+      return Promise.reject(new Error('log sink down')) as unknown as void;
+    };
+    return told;
+  };
+  const fakeClock = () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    onTestFinished(() => void vi.useRealTimers());
+  };
+
+  describe.each(['throws', 'rejects'] as const)('when warn() %s', (how) => {
+    it('still gives the next reporter the report when a reporter is at its open limit', async () => {
+      const { errorReports, logger } = setup(hanging, Collecting);
+      const told = badWarn(logger, how);
+      const seen = unhandled();
+      // One turn per report, so only the hanging reporter has its limit of open reports.
+      for (let index = 0; index < MAX_OPEN_REPORTS; index++) {
+        errorReports.report(new Error('x'), request);
+        await settle();
+      }
+      expect(() => errorReports.report(new Error('over the limit'), request)).not.toThrow();
+      expect(told.some((line) => line.includes('reports open'))).toBe(true);
+      await settle();
+      expect(reports).toHaveLength(MAX_OPEN_REPORTS + 1);
+      expect(await seen()).toEqual([]);
+    });
+
+    it('still gives the other reporters the report when a reporter fails', async () => {
+      const { errorReports, logger } = setup(Failing, Collecting);
+      const told = badWarn(logger, how);
+      const seen = unhandled();
+      errorReports.report(new Error('x'), request);
+      await settle();
+      expect(told.some((line) => line.includes('Failing failed'))).toBe(true);
+      expect(reports).toHaveLength(1);
+      expect(await seen()).toEqual([]);
+    });
+
+    it('still says no more than it can when it counts the dropped reports', async () => {
+      fakeClock();
+      class Late implements ErrorReporter {
+        report(): Promise<void> {
+          return new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      const { errorReports, logger } = setup(Late);
+      const told = badWarn(logger, how);
+      const seen = unhandled();
+      for (let index = 0; index < MAX_OPEN_REPORTS + 7; index++) errorReports.report(new Error('x'), request);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(told.some((line) => line.includes('were dropped'))).toBe(true);
+      expect(await seen()).toEqual([]);
+    });
+
+    it('still ends the flush when the shutdown timeout is reported', async () => {
+      fakeClock();
+      class Stuck implements ErrorReporter {
+        report(): void {}
+        flush(): Promise<void> {
+          return new Promise(() => {});
+        }
+      }
+      const { errorReports, logger } = setup(Stuck);
+      const told = badWarn(logger, how);
+      const seen = unhandled();
+      const flushing = errorReports.flush();
+      await vi.advanceTimersByTimeAsync(FLUSH_TIMEOUT);
+      await expect(flushing).resolves.toBeUndefined();
+      expect(told.some((line) => line.includes('did not finish'))).toBe(true);
+      expect(await seen()).toEqual([]);
+    });
+  });
+
+  it('does not loop when the logger awaits before it forwards error() back into report()', async () => {
+    const { errorReports, logger } = setup(Collecting);
+    let written = 0;
+    logger.error = async () => {
+      written += 1;
+      if (written > 20) return;
+      await new Promise((resolve) => setImmediate(resolve));
+      errorReports.report(new Error('from the sink'), request);
+    };
+    errorReports.report(new Error('x'), request);
+    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve));
+    expect(written).toBe(1);
+    expect(reports).toHaveLength(2);
   });
 });
 

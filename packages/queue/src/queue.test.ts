@@ -10,7 +10,7 @@ import { Connections, DatabaseServiceProvider, sql, TransactionFinishedError } f
 import { EncryptionServiceProvider } from '@marmeon/encryption';
 import { createPinoLogger } from '@marmeon/log';
 import * as v from 'valibot';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { migrate, silent } from './__fixtures__/targets.ts';
 import { checkTimeouts, QueueConnections } from './connections.ts';
 import type { JobRecord, QueueDriver } from './driver.ts';
@@ -125,6 +125,17 @@ class RudeSlowJob {
 
   async handle(): Promise<void> {
     await sleep(2000);
+  }
+}
+
+/** Finds its `job.once` key busy at once, as a job does while another attempt holds the key. */
+class BusyJob {
+  static readonly job = 'test.busy';
+  static readonly schema = v.object({});
+  static readonly tries = 2;
+
+  handle(): void {
+    throw new JobOnceBusyError('test-once:1 is busy');
   }
 }
 
@@ -258,10 +269,10 @@ async function app(options: { env?: Record<string, string>; modules?: ModuleDefi
   return Object.assign(application, { seen, clock });
 }
 
-function worker(application: Application, driver = new MemoryQueueDriver({ clock: application.container.make(Clock) }), failed = new MemoryFailedJobStore()) {
+function worker(application: Application, driver = new MemoryQueueDriver({ clock: application.container.make(Clock) }), failed = new MemoryFailedJobStore(), logger: Logger = silent) {
   const container = application.container;
   const runner = new JobRunner(container, container.make(JobRegistry), async () => container.make((await import('@marmeon/encryption')).Encrypter));
-  return { driver, failed, worker: new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger: silent }) };
+  return { driver, failed, worker: new Worker({ driver, connection: 'memory', runner, failed, clock: container.make(Clock), logger }) };
 }
 
 async function push(application: Application, driver: MemoryQueueDriver, job: string, data: unknown, extra: Record<string, unknown> = {}): Promise<string> {
@@ -563,6 +574,91 @@ describe('a job that fails for good', () => {
     expect(logged.join('\n')).not.toContain('hunter2');
   });
 
+  /** Rejections nobody handled while a test ran: the process would end on them. */
+  const unhandledRejections = () => {
+    const seen: unknown[] = [];
+    const listener = (reason: unknown) => void seen.push(reason);
+    process.on('unhandledRejection', listener);
+    // Removed even when an assertion fails before done() is reached.
+    onTestFinished(() => void process.off('unhandledRejection', listener));
+    return {
+      // The event fires after the microtasks of a turn: one macrotask later is enough.
+      async done() {
+        await new Promise((resolve) => setImmediate(resolve));
+        return seen;
+      },
+    };
+  };
+
+  /** A logger whose error() returns a rejected promise nobody handles, as `async error() {}` over a dead sink does. */
+  const rejecting = (logged: string[] = []): Logger => {
+    const broken: Logger = {
+      debug() {},
+      info() {},
+      warn() {},
+      error: (message) => {
+        logged.push(message);
+        return Promise.reject(new Error('log sink down')) as unknown as void;
+      },
+      child: () => broken,
+    };
+    return broken;
+  };
+
+  it('still emits JobFailed when the logger error() of a failed() that throws returns a rejected promise', async () => {
+    // The logger's return value is ignored: a rejecting error() must not skip JobFailed, nor end the process unhandled.
+    const logged: string[] = [];
+    const rejections = unhandledRejections();
+    await using application = await app({ logger: rejecting(logged), modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    await application.container.make(Queue).dispatch(FinalJob, { how: 'fail', failedThrows: true });
+    const { run } = await workerOf(application);
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+    expect(logged.filter((line) => line.startsWith('failed() of'))).toEqual(['failed() of test.final threw: could not write the log: password=[redacted]']);
+    expect(await rejections.done()).toEqual([]);
+  });
+
+  /** A logger whose error() throws, as a broken sink does. */
+  const throwing = (): Logger => {
+    const broken: Logger = {
+      debug() {},
+      info() {},
+      warn() {},
+      error: () => {
+        throw new Error('log sink down');
+      },
+      child: () => broken,
+    };
+    return broken;
+  };
+
+  it('still releases the unique lock and emits JobFailed when the logger error() throws', async () => {
+    await using application = await app({ logger: throwing(), cache: true, modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    const queue = application.container.make(Queue);
+    // A fresh key: the cache's store outlives a test.
+    const once = { unique: `once-${crypto.randomUUID()}`, uniqueUntil: 'done' } as const;
+    expect(await queue.dispatch(FinalJob, { how: 'fail', failedThrows: true }, once)).toEqual(expect.any(String));
+    expect(await queue.dispatch(FinalJob, { how: 'fail' }, once)).toBeUndefined();
+    const { run } = await workerOf(application);
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+    expect(await queue.dispatch(FinalJob, { how: 'fail' }, once)).toEqual(expect.any(String));
+  });
+
+  it('rejects a sync dispatch with the job\'s own error and emits JobFailed when the logger error() returns a rejected promise', async () => {
+    const rejections = unhandledRejections();
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: rejecting(), modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    await expect(application.container.make(Queue).dispatch(FinalJob, { how: 'throw', failedThrows: true })).rejects.toThrow('delivery refused');
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+    expect(await rejections.done()).toEqual([]);
+  });
+
+  it('rejects a sync dispatch with the job\'s own error and emits JobFailed when the logger error() throws', async () => {
+    await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: throwing(), modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder)] }] });
+    await expect(application.container.make(Queue).dispatch(FinalJob, { how: 'throw', failedThrows: true })).rejects.toThrow('delivery refused');
+    expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+  });
+
   /** A worker on the memory driver whose claims expire after a minute. */
   const memoryWorker = (application: Application, logger: Logger = silent) => {
     const clock = application.container.make(Clock);
@@ -630,6 +726,215 @@ describe('a job that fails for good', () => {
     hangs.controller = new AbortController();
   });
 
+  it('still emits JobFailed with the same result when the logger error() throws while a hanging failed() is given up on', async () => {
+    await using application = await app({ logger: throwing() });
+    const { driver, events, run } = memoryWorker(application, throwing());
+    await push(application, driver, 'test.one-try', { how: 'hang' });
+    expect(await run({ stopTimeout: 0.1 })).toMatchObject({ failed: 1 });
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    hangs.controller.abort();
+    hangs.controller = new AbortController();
+  });
+
+  it('still emits JobFailed with the same result when the logger error() throws on a failure without an error reporter', async () => {
+    await using application = await app({ logger: throwing() });
+    const { driver, events, run } = memoryWorker(application, throwing());
+    await push(application, driver, 'test.one-try', { how: 'release' });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toHaveLength(1);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+  });
+
+  it('still emits JobFailed and leaves no unhandled rejection when the logger error() returns a rejected promise on a failure without an error reporter', async () => {
+    const rejections = unhandledRejections();
+    await using application = await app();
+    const { driver, events, run } = memoryWorker(application, rejecting());
+    await push(application, driver, 'test.one-try', { how: 'release' });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    expect(await rejections.done()).toEqual([]);
+  });
+
+  it('still calls failed() and emits JobFailed when the logger child() throws', async () => {
+    // The attempt's own child logger is built before the job runs; every later one is on the failure path.
+    let children = 0;
+    const broken: Logger = { ...silent, child: () => { if (children++ === 0) return silent; throw new Error('log sink down'); } };
+    await using application = await app();
+    const { driver, events, run } = memoryWorker(application, broken);
+    await push(application, driver, 'test.one-try', { how: 'release' });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toHaveLength(1);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+  });
+
+  it.each([
+    ['throws', (): void => { throw new Error('log sink down'); }],
+    ['returns a rejected promise', (): void => Promise.reject(new Error('log sink down')) as unknown as void],
+  ])('still calls failed() and emits JobFailed when the unique lock cannot be freed and the logger warn() %s', async (_how, warn) => {
+    const rejections = unhandledRejections();
+    await using application = await app();
+    const { driver, events, run } = memoryWorker(application, { ...silent, warn, child: () => ({ ...silent, warn }) });
+    // The runner has no cache: freeing the lock fails, and the worker logs it.
+    await push(application, driver, 'test.one-try', { how: 'release' }, { unique: { lock: 'queue:unique:test.one-try:k', key: 'k', for: 60, until: 'done' } });
+    expect(await run()).toMatchObject({ failed: 1 });
+    expect(application.seen.finals).toHaveLength(1);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    expect(await rejections.done()).toEqual([]);
+  });
+
+  it('ends with JobStuckError and calls onStuck when the logger error() throws', async () => {
+    await using application = await app();
+    const { driver, worker: w } = worker(application, undefined, undefined, throwing());
+    await push(application, driver, 'test.rude-slow', {});
+    let stuck: unknown;
+    await expect(w.run({ queues: ['default'], stopWhenEmpty: true, stopTimeout: 0.1, onStuck: (_job, error) => void (stuck = error) })).rejects.toThrow(JobStuckError);
+    expect(stuck).toBeInstanceOf(JobStuckError);
+  });
+
+  it('logs that it stopped waiting for a failed() through a logger whose error() returns a rejected promise, with no unhandled rejection', async () => {
+    onTestFinished(() => {
+      hangs.controller.abort();
+      hangs.controller = new AbortController();
+    });
+    const rejections = unhandledRejections();
+    const logged: string[] = [];
+    await using application = await app();
+    const { driver, events, run } = memoryWorker(application, rejecting(logged));
+    await push(application, driver, 'test.one-try', { how: 'hang' });
+    expect(await run({ stopTimeout: 0.1 })).toMatchObject({ failed: 1 });
+    expect(logged.some((line) => line.startsWith('failed() of test.one-try did not finish within its timeout of 0.1s'))).toBe(true);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    expect(await rejections.done()).toEqual([]);
+  });
+
+  it('logs that it stopped waiting for a failed() at the stop request through a logger whose error() returns a rejected promise, with no unhandled rejection', async () => {
+    onTestFinished(() => {
+      hangs.controller.abort();
+      hangs.controller = new AbortController();
+    });
+    const rejections = unhandledRejections();
+    const logged: string[] = [];
+    await using application = await app();
+    const { driver, events, run } = memoryWorker(application, rejecting(logged));
+    await push(application, driver, 'test.stop', {});
+    const stop = new AbortController();
+    const running = run({ stopTimeout: 0.6, signal: stop.signal });
+    await sleep(50);
+    stop.abort();
+    expect(await running).toMatchObject({ failed: 1 });
+    expect(logged.some((line) => line.startsWith('failed() of test.stop did not finish within 0.6s of the stop request'))).toBe(true);
+    expect(events.some((event) => event instanceof JobFailed)).toBe(true);
+    expect(await rejections.done()).toEqual([]);
+  });
+
+  /** A logger whose `level` call throws, or returns a rejected promise nobody handles; what it was told is in `told`. */
+  const failingAt = (level: 'warn' | 'info', how: 'throws' | 'rejects', told: string[] = [], only = ''): Logger => {
+    const broken: Logger = {
+      ...silent,
+      [level]: (message: string) => {
+        // Only the lines under test fail: the lines around them (`Processing …`) would end the job before the step.
+        if (!message.startsWith(only)) return;
+        told.push(message);
+        if (how === 'throws') throw new Error('log sink down');
+        return Promise.reject(new Error('log sink down')) as unknown as void;
+      },
+      child: () => broken,
+    };
+    return broken;
+  };
+
+  describe.each(['throws', 'rejects'] as const)('when the logger %s on a line that comes before the next step', (how) => {
+    it('records JobFailed and ends the job the same way when a listener fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app({ logger: failingAt('warn', how, told), modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder), listen(JobFailed, ThrowingFailedListener)] }] });
+      await application.container.make(Queue).dispatch(FinalJob, { how: 'fail' });
+      const { run } = await workerOf(application);
+      expect(await run()).toMatchObject({ failed: 1 });
+      expect(told.some((line) => line.startsWith('A listener of JobFailed failed'))).toBe(true);
+      expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+      expect(await rejections.done()).toEqual([]);
+    });
+
+    it('records JobFailed and rejects a sync dispatch with the job\'s own error when a listener fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app({ env: { QUEUE_DRIVER: 'sync' }, logger: failingAt('warn', how, told), modules: [{ name: 'test', jobs: allJobs, listeners: [listen(JobFailed, FailedRecorder), listen(JobFailed, ThrowingFailedListener)] }] });
+      await expect(application.container.make(Queue).dispatch(FinalJob, { how: 'throw' })).rejects.toThrow('delivery refused');
+      expect(told.some((line) => line.startsWith('A listener of JobFailed failed'))).toBe(true);
+      expect(application.seen.queued).toEqual(['failed()', 'failed:test.final']);
+      expect(await rejections.done()).toEqual([]);
+    });
+
+    it('still releases a job for its next attempt and emits JobReleased when the retry warning fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app();
+      const { driver, events, run } = memoryWorker(application, failingAt('warn', how, told));
+      await push(application, driver, 'test.final', { how: 'throw' }, { tries: 2, backoff: [30] });
+      expect(await run()).toMatchObject({ released: 1 });
+      expect(told.some((line) => line.startsWith('Attempt 1 of 2 of test.final failed'))).toBe(true);
+      expect(events.some((event) => event instanceof JobReleased)).toBe(true);
+      expect(driver.entries()).toHaveLength(1);
+      expect(await rejections.done()).toEqual([]);
+    });
+
+    it('still releases a running job and emits JobReleased when the stop interrupts it and the logger warn() fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app();
+      const { driver, events, run } = memoryWorker(application, failingAt('warn', how, told, 'Released'));
+      await push(application, driver, 'test.rude-slow', {});
+      const stop = new AbortController();
+      const running = run({ stopTimeout: 0.05, signal: stop.signal });
+      await sleep(20);
+      stop.abort();
+      expect(await running).toMatchObject({ reason: 'interrupted' });
+      expect(told.some((line) => line.startsWith('Released test.rude-slow: the worker is stopping'))).toBe(true);
+      expect(events.some((event) => event instanceof JobReleased && event.reason === 'stopping')).toBe(true);
+      expect(driver.entries()).toMatchObject([{ reserved: false, attempts: 0 }]);
+      expect(await rejections.done()).toEqual([]);
+    });
+
+    it('still emits JobReleased when a job finds its job.once key busy and the logger info() fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app({ modules: [{ name: 'test', jobs: [...allJobs, BusyJob] }] });
+      const { driver, events, run } = memoryWorker(application, failingAt('info', how, told, 'Released'));
+      await push(application, driver, 'test.busy', {}, { tries: 2 });
+      await run();
+      expect(told.some((line) => line.startsWith('Released test.busy: test-once:1 is busy'))).toBe(true);
+      expect(events.some((event) => event instanceof JobReleased && event.reason === 'busy')).toBe(true);
+      expect(await rejections.done()).toEqual([]);
+    });
+
+    it('still holds a record it cannot run and emits JobReleased when the logger warn() fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app();
+      application.clock.freeze();
+      const { driver, events, run } = memoryWorker(application, failingAt('warn', how, told, 'Holding'));
+      await push(application, driver, 'test.welcome', { userId: 1 }, { v: 2, dispatchedAt: application.clock.now() - 400_000 });
+      await run();
+      expect(told.some((line) => line.startsWith('Holding test.welcome'))).toBe(true);
+      expect(events.some((event) => event instanceof JobReleased && event.reason === 'unknown')).toBe(true);
+      expect(driver.entries()).toHaveLength(1);
+      expect(await rejections.done()).toEqual([]);
+    });
+
+    it('still emits JobReleased when the job releases itself and the logger info() fails', async () => {
+      const rejections = unhandledRejections();
+      const told: string[] = [];
+      await using application = await app();
+      const { driver, events, run } = memoryWorker(application, failingAt('info', how, told, 'Released'));
+      await push(application, driver, 'test.one-try', { how: 'release' }, { tries: 2, backoff: [30] });
+      expect(await run()).toMatchObject({ released: 1 });
+      expect(told.some((line) => line.startsWith('Released test.one-try (by the job)'))).toBe(true);
+      expect(events.some((event) => event instanceof JobReleased)).toBe(true);
+      expect(await rejections.done()).toEqual([]);
+    });
+  });
+
   it('gives a failed() only what is left of the stop timeout after the attempt, and aborts its signal when it gives up', async () => {
     const { logged, capture } = logging();
     await using application = await app({ logger: capture });
@@ -666,6 +971,13 @@ describe('a job that fails for good', () => {
     expect(application.seen.finals).toMatchObject([{ message: 'delivery refused', attempt: 1 }]);
   });
 });
+
+/** A listener of `JobFailed` that fails, as an app's own can. */
+class ThrowingFailedListener {
+  handle(): void {
+    throw new Error('listener down');
+  }
+}
 
 /** Records the order `JobFailed` came in (into `Seen.queued`, a test-only list of ids). */
 class FailedRecorder {

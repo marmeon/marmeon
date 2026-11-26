@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Container } from './container.ts';
 import { withCode } from './error-codes.ts';
+import { guardedLog } from './log-guard.ts';
 import { Logger, type LogContext } from './logger.ts';
 import { Redactor } from './redact.ts';
 import { outsideTransaction } from './transaction-context.ts';
@@ -66,6 +67,9 @@ const UNPRINTABLE: ReportedError = Object.freeze({ name: 'Error', message: 'Unpr
 /** Set while a reporter runs, in everything it starts: an error it reports itself is not reported again. */
 const reporting = new AsyncLocalStorage<true>();
 
+/** Set while a log line is written, in everything the logger starts: a logger that calls `report()` from its `error()` is not logged again. */
+const logging = new AsyncLocalStorage<true>();
+
 /** Whether the code running now was started by an error reporter (or by something it started): what it queues is marked, see `fromReporter`. */
 export function startedByReporter(): boolean {
   return reporting.getStore() === true;
@@ -118,7 +122,7 @@ export class ErrorReports {
   }
 
   /**
-   * Logs the error and passes the masked view to every reporter. Returns at once. `log` is the log line when the caller has a better one
+   * Logs the error and passes the masked view to every reporter. Returns at once; a log sink that throws, or whose `error()` returns a rejected promise, does not stop the reporters, and a `report()` called from inside its own log line skips that line (so does one from code the logger starts while it writes, such as a transport or a flush timer). `log` is the log line when the caller has a better one
    * than the error's message (`{ message, fields }`, masked here), or `false` when it said the error to the user already. `bindings` are fields of the framework (`job`, `task` …) that a call's context cannot carry: the line is written through a child logger bound with them.
    */
   report(
@@ -128,8 +132,18 @@ export class ErrorReports {
     // The message is the log line's own text, the stack a string: masked like text by the app's Redactor — keys alone would
     // not catch a connection URL or a token an error quotes, and the core's list alone not the names packages add (the session cookie).
     const { name, message, stack } = asError(error);
-    if (log === undefined) this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) });
-    else if (log !== false) (log.bindings ? this.#logger.child(log.bindings) : this.#logger).error(this.#redactor.text(log.message), log.fields);
+    // A logger that forwards error() back into report() (even after an await) would loop: the nested call skips its log line and only reports.
+    if (!logging.getStore()) {
+      logging.run(true, () =>
+        guardedLog(() =>
+          log === undefined
+            ? this.#logger.error(this.#redactor.text(message), { exception: name, stack: this.#redactor.text(stack) })
+            : log === false
+              ? undefined
+              : (log.bindings ? this.#logger.child(log.bindings) : this.#logger).error(this.#redactor.text(log.message), log.fields),
+        ),
+      );
+    }
     if (this.#instances.size === 0 || reporting.getStore()) return;
     const report: ErrorReport = Object.freeze({
       error: this.#reported(error, new Set(), 0),
@@ -162,7 +176,7 @@ export class ErrorReports {
       }),
     ]).then(() => 'done' as const);
     try {
-      if ((await Promise.race([flushing, timeout])) === 'timeout') this.#logger.warn(`Error reporters did not finish within ${FLUSH_TIMEOUT} ms of the shutdown; their reports may be lost.`);
+      if ((await Promise.race([flushing, timeout])) === 'timeout') guardedLog(() => this.#logger.warn(`Error reporters did not finish within ${FLUSH_TIMEOUT} ms of the shutdown; their reports may be lost.`));
     } finally {
       clearTimeout(timer);
     }
@@ -213,10 +227,12 @@ export class ErrorReports {
     this.#dropped++;
     if (!this.#warnedFull.has(Reporter)) {
       this.#warnedFull.add(Reporter);
-      this.#logger.warn(
-        stuck
-          ? `Error reporter ${identifier(Reporter.name)} has calls that never finished: it gets no further reports until they do.`
-          : `Error reporter ${identifier(Reporter.name)} has ${MAX_OPEN_REPORTS} reports open: it is slow or stuck, further reports to it are dropped.`,
+      guardedLog(() =>
+        this.#logger.warn(
+          stuck
+            ? `Error reporter ${identifier(Reporter.name)} has calls that never finished: it gets no further reports until they do.`
+            : `Error reporter ${identifier(Reporter.name)} has ${MAX_OPEN_REPORTS} reports open: it is slow or stuck, further reports to it are dropped.`,
+        ),
       );
     }
     const now = Date.now();
@@ -237,7 +253,7 @@ export class ErrorReports {
 
   #logDropped(now: number): void {
     const stuck = [...this.#warnedFull].map((Reporter) => identifier(Reporter.name)).join(', ');
-    this.#logger.warn(`${this.#dropped} error reports were dropped because a reporter had too many open${stuck ? ` (${stuck})` : ''}.`);
+    guardedLog(() => this.#logger.warn(`${this.#dropped} error reports were dropped because a reporter had too many open${stuck ? ` (${stuck})` : ''}.`));
     this.#dropped = 0;
     this.#dropSince = undefined;
     this.#loggedDropped = now;
@@ -246,7 +262,7 @@ export class ErrorReports {
   /** Once per failing report: the reporter's own failure is never reported again. */
   #failed(Reporter: ErrorReporterClass, failure: unknown): void {
     const { name, message } = asError(failure);
-    this.#logger.warn(`Error reporter ${identifier(Reporter.name)} failed: ${this.#redactor.text(message)}`, { exception: name });
+    guardedLog(() => this.#logger.warn(`Error reporter ${identifier(Reporter.name)} failed: ${this.#redactor.text(message)}`, { exception: name }));
   }
 
   /** The masked, frozen view of `error`; `seen` stops a cause that leads back to an error already shown. */

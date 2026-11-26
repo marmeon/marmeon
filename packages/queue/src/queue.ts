@@ -1,6 +1,6 @@
 import { afterCommit, afterRollback, currentJob, currentRequest, inTransaction, Redactor, token, type Application, type Clock, type Logger } from '@marmeon/core';
 import { channels, type QueueDispatchMessage } from '@marmeon/core/diagnostics';
-import { followsTransaction, messageBase, startedByReporter, trace } from '@marmeon/core/internal';
+import { followsTransaction, guardedLog, messageBase, startedByReporter, trace } from '@marmeon/core/internal';
 import type { Transaction } from '@marmeon/database';
 import type { JobRecord, QueueDriver, UniqueRecord } from './driver.ts';
 import { JobFailed, JobProcessed, JobProcessing, JobQueued, type JobEvents } from './events.ts';
@@ -375,7 +375,7 @@ export class QueueManager implements Queue {
         } catch (error) {
           // The sync connection has one attempt: this is the job's final failure.
           await runner.failed(ready, { attempt: 1, queue, connection, signal: new AbortController().signal }, error).catch((thrown: unknown) => {
-            this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: 1 }).error(`failed() of ${record.job} threw: ${this.#redactor.text(thrown instanceof Error ? thrown.message : String(thrown))}`, { queue });
+            guardedLog(() => this.#deps.logger.child({ job: record.job, jobId: record.uuid, attempt: 1 }).error(`failed() of ${record.job} threw: ${this.#redactor.text(thrown instanceof Error ? thrown.message : String(thrown))}`, { queue }));
           });
           await this.#emit(new JobFailed({ ...about, attempt: 1, error: error instanceof Error ? error : new Error(String(error)) }));
           throw error;
@@ -400,7 +400,7 @@ export class QueueManager implements Queue {
     } catch (error) {
       // A sync run is the job itself, with its attempt; a `JobQueued` names a job that is not running.
       const bindings = event instanceof JobQueued ? { dispatched: event.job, dispatchedId: event.jobId } : { job: event.job, jobId: event.jobId, attempt: event.attempt };
-      this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`);
+      guardedLog(() => this.#deps.logger.child(bindings).warn(`A listener of ${event.constructor.name} failed: ${this.#redactor.text(error instanceof Error ? error.message : String(error))}`));
     }
   }
 

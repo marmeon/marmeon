@@ -24,6 +24,7 @@ export { belongsTo, isInside } from './discovery/contain.ts';
 export { findPackage, printable, resolveExports, runtimeConditions } from './discovery/resolve.ts';
 export { canonicalTimeZone, isTimeZone } from './time-zone.ts';
 export { startedByReporter } from './error-reports.ts';
+export { guardedLog } from './log-guard.ts';
 export { isQueuedListener } from './events.ts';
 export { withFileGuard } from './file-guard.ts';
 export { browserSources } from './injection/browser.ts';
