@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { defineRoutes, everyone, Router, type RouteDefinitions } from './index.ts';
-import { FRAMEWORK_ROUTES } from './internal.ts';
+import { FRAMEWORK_ROUTES, type UrlLocales } from './internal.ts';
 import { namesOtherLocale } from './router.ts';
 
 const open = (register: (Route: Parameters<RouteDefinitions['register']>[0]) => void): RouteDefinitions => defineRoutes((Route) => register(Route.authorize(everyone)));
 const web = (...files: RouteDefinitions[]) => new Router().load({ group: 'web' }, ...files);
+const locales = (supported: readonly string[]): UrlLocales => ({ supported, preferred: async () => supported[0]! });
 const routeAt = (router: Router, path: string) => {
   const claim = router.claimedBy(path);
   return claim?.by === 'route' ? claim.route.path : claim;
@@ -66,10 +67,10 @@ describe('Router.claimedBy()', () => {
 
     it('is where the server put it, and nowhere when it is off', () => {
       const router = web();
-      router.bindServerPaths({ health: ['/healthz', '/healthz/ready'] });
+      router.bindHealthPaths(['/healthz', '/healthz/ready']);
       expect(router.claimedBy('/healthz')).toEqual({ by: 'framework', reason: 'health' });
       expect(router.claimedBy('/up')).toBeUndefined();
-      router.bindServerPaths({ health: [] });
+      router.bindHealthPaths([]);
       expect(router.claimedBy('/healthz')).toBeUndefined();
     });
   });
@@ -100,15 +101,15 @@ describe('Router.claimedBy()', () => {
   it('names a localized fallback only for a locale the app has: /fr/x belongs to the address without a locale, or to a root fallback', () => {
     const localized = open((Route) => void Route.localized().fallback(() => 'localized'));
     const alone = web(localized);
-    // Unbound (the command line): any first segment may be a locale.
+    // Unbound (an app without @marmeon/i18n): any first segment may be a locale.
     expect(alone.fallbackFor('/fr/x')?.path).toBe('/:locale/:path*');
-    alone.bindServerPaths({ locales: ['de', 'en'], health: [] });
+    alone.bindUrlLocales(locales(['de', 'en']));
     expect(alone.fallbackFor('/de/x')?.path).toBe('/:locale/:path*');
     expect(alone.fallbackFor('/de')?.path).toBe('/:locale/:path*');
     const variant = alone.fallbackFor('/fr/x')!;
     expect([variant.path, variant.generatedFrom?.path]).toEqual(['/:path*', '/:locale/:path*']);
     const beside = web(localized, open((Route) => void Route.prefix('/legacy').fallback(() => 'legacy')));
-    beside.bindServerPaths({ locales: ['de', 'en'], health: [] });
+    beside.bindUrlLocales(locales(['de', 'en']));
     expect(beside.fallbackFor('/legacy/x')?.path).toBe('/legacy/:path*');
     expect(beside.fallbackFor('/de/legacy/x')?.path).toBe('/:locale/:path*');
     expect(beside.fallbackFor('/fr/legacy/x')?.generatedFrom?.path).toBe('/:locale/:path*');
@@ -120,14 +121,14 @@ describe('Router.claimedBy()', () => {
       open((Route) => void Route.localized().prefix('/help').fallback(() => 'help')),
     );
     for (const bound of [false, true]) {
-      if (bound) router.bindServerPaths({ locales: ['de', 'en'], health: [] });
+      if (bound) router.bindUrlLocales(locales(['de', 'en']));
       for (const path of ['/', '/de', '/de/x', '/x', '/help', '/help/x', '/de/help', '/de/help/x']) expect(router.claimedBy(path), `${path} (bound ${bound})`).toBeUndefined();
     }
   });
 
   it('counts the route of the app beside a localized fallback', () => {
     const router = web(open((Route) => void Route.localized().fallback(() => 'root')), open((Route) => void Route.localized().get('/about', () => 'about')));
-    router.bindServerPaths({ locales: ['de', 'en'], health: [] });
+    router.bindUrlLocales(locales(['de', 'en']));
     expect(routeAt(router, '/de/about')).toBe('/:locale/about');
     expect(routeAt(router, '/about')).toBe('/:locale/about');
     expect(router.claimedBy('/de/other')).toBeUndefined();
@@ -138,7 +139,7 @@ describe('Router.claimedBy()', () => {
 
     it('is answered per locale once the locales are bound, and by its address without a locale', () => {
       const router = web(about);
-      router.bindServerPaths({ locales: ['de', 'en'], health: [] });
+      router.bindUrlLocales(locales(['de', 'en']));
       expect(routeAt(router, '/de/about')).toBe('/:locale/about');
       expect(routeAt(router, '/en/about')).toBe('/:locale/about');
       expect(router.claimedBy('/fr/about')).toBeUndefined();
@@ -147,6 +148,18 @@ describe('Router.claimedBy()', () => {
 
     it('takes any first segment while no locales are bound: conservative', () => {
       expect(web(about).claimedBy('/fr/about')).toMatchObject({ by: 'route' });
+    });
+
+    it('reads the bound locales live: one added after the binding counts, and an unbound router stays conservative', () => {
+      let list = ['de'];
+      const router = web(about);
+      expect(router.claimedBy('/fr/about')).toMatchObject({ by: 'route' });
+      expect(router.claimedBy('/up')).toEqual({ by: 'framework', reason: 'health' });
+      router.bindUrlLocales({ get supported() { return list; }, preferred: async () => 'de' });
+      expect(router.claimedBy('/fr/about')).toBeUndefined();
+      list = [...list, 'fr'];
+      expect(router.claimedBy('/fr/about')).toMatchObject({ by: 'route' });
+      expect(router.claimedBy('/up')).toEqual({ by: 'framework', reason: 'health' });
     });
 
     it('skips a match only when it names a locale the app lacks: no locale in the match, or none bound, claims', () => {
@@ -158,7 +171,7 @@ describe('Router.claimedBy()', () => {
 
     it('does not tie a route to a prefix: a locale-free address is claimed on its own', () => {
       const router = web(open((Route) => void Route.get('/legal', () => 'l')), about);
-      router.bindServerPaths({ locales: ['de'], health: [] });
+      router.bindUrlLocales(locales(['de']));
       expect(router.claimedBy('/legal')).toMatchObject({ by: 'route' });
     });
   });

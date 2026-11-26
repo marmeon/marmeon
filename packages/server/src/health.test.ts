@@ -7,7 +7,7 @@ import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { HttpServiceProvider } from '@marmeon/http';
 import { ServerClosing } from '@marmeon/http/internal';
 import { openRoutes } from './test-helpers/open-routes.ts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createHttpKernel } from './kernel.ts';
 import { ServerServiceProvider } from './provider.ts';
 
@@ -235,6 +235,49 @@ describe('health endpoints', () => {
     expect(await claimed({}, '/up', '/up/ready', '/healthz')).toEqual([health, health, undefined]);
     expect(await claimed({ SERVER_HEALTH_PATH: '/healthz' }, '/healthz', '/healthz/ready', '/up')).toEqual([health, health, undefined]);
     expect(await claimed({ SERVER_HEALTH_PATH: 'off' }, '/up', '/up/ready')).toEqual([undefined, undefined]);
+  });
+
+  it('tells the router where the health check answers while the app boots, with no kernel started', async () => {
+    const claimed = async (env: Record<string, string>, ...paths: string[]) => {
+      const { application } = await boot({ env });
+      try {
+        const router = application.container.make(Router);
+        return paths.map((path) => router.claimedBy(path));
+      } finally {
+        await application.shutdown();
+      }
+    };
+    const health = { by: 'framework', reason: 'health' };
+    expect(await claimed({}, '/up', '/up/ready', '/healthz')).toEqual([health, health, undefined]);
+    expect(await claimed({ SERVER_HEALTH_PATH: '/healthz' }, '/healthz', '/healthz/ready', '/up')).toEqual([health, health, undefined]);
+    expect(await claimed({ SERVER_HEALTH_PATH: 'off' }, '/up', '/up/ready')).toEqual([undefined, undefined]);
+  });
+
+  it('answers with the health option of the kernel instead of the configured paths, for claimedBy() as for requests', async () => {
+    const health = { by: 'framework', reason: 'health' };
+    const { application } = await boot();
+    onTestFinished(() => application.shutdown());
+    const router = application.container.make(Router);
+    // Before the kernel exists the router has the configured paths.
+    expect([router.claimedBy('/up'), router.claimedBy('/status')]).toEqual([health, undefined]);
+    const kernel = createHttpKernel(application, { health: '/status' });
+    expect(['/status', '/status/ready', '/up', '/up/ready'].map((path) => router.claimedBy(path))).toEqual([health, health, undefined, undefined]);
+    expect((await kernel.request('/status')).status).toBe(200);
+    expect((await kernel.request('/up')).status).toBe(404);
+    const off = await boot();
+    onTestFinished(() => off.application.shutdown());
+    createHttpKernel(off.application, { health: false });
+    expect(['/up', '/up/ready'].map((path) => off.application.container.make(Router).claimedBy(path))).toEqual([undefined, undefined]);
+  });
+
+  it('binds no health paths when the app has no router', async () => {
+    const spy = vi.spyOn(Router.prototype, 'bindHealthPaths');
+    const application = await createApplication({ root: fileURLToPath(new URL('../../../', import.meta.url)), discover: false, providers: [ServerServiceProvider] }, { env: { APP_KEY: generateKey() } });
+    onTestFinished(async () => {
+      await application.shutdown();
+      spy.mockRestore();
+    });
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('SERVER_HEALTH_PATH moves them (or turns them off); an app route on a health path fails the start', async () => {
