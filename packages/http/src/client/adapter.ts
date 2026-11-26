@@ -2,7 +2,7 @@
  * `@marmeon/http/client/adapter` — the interface a UI adapter builds on: the navigator, regions and layers, the feature
  * wiring, loading the first page, the form helpers and the page helpers. What an app uses (the `hooks` and `tabSync`
  * handles, `xsrfToken`, the types an adapter re-exports) stays in `@marmeon/http/client`. See
- * docs/package-development.md#writing-a-ui-adapter.
+ * docs/package-pages.md#writing-a-ui-adapter.
  */
 export type { FeatureHandle } from './handle.ts';
 export { xsrfToken, isHistoryState, Navigator } from './navigation.ts';

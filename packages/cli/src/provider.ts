@@ -17,9 +17,9 @@ declare module '@marmeon/core' {
   }
 
   interface ServiceProviderClass {
-    /** Console commands this provider adds to `marmeon` — how a package brings its commands. See docs/package-development.md#commands. */
+    /** Console commands this provider adds to `marmeon` — how a package brings its commands. See docs/package-commands.md#commands. */
     readonly commands?: readonly CommandClass[];
-    /** Checks this provider adds to `marmeon check` — how a package brings its checks. See docs/package-development.md#checks. */
+    /** Checks this provider adds to `marmeon check` — how a package brings its checks. See docs/package-commands.md#checks. */
     readonly checks?: readonly AppCheckClass[];
   }
 }

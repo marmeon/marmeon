@@ -393,7 +393,7 @@ describe('the jobs a provider lists in a tinker session', () => {
   describe('with a second copy of @marmeon/database', () => {
     const NAME = '@marmeon/database';
     const LEAD = `--sandbox refuses: ${NAME} is installed more than once, and writes through another copy would not be rolled back.`;
-    const FIX = 'Install one copy: docs/package-development.md#one-copy-of-a-framework-package';
+    const FIX = 'Install one copy: docs/package-publishing.md#one-copy-of-a-framework-package';
     const UNKNOWN = 'in a version that cannot be read';
     const line = (holder: string, copy: string, fix = "align the peers' versions, then pnpm dedupe") => `  ${holder} resolves its own copy of ${NAME} ${copy}, the app has 1.0.0: ${fix}`;
     const put = (dir: string, manifest: object | string) => {

@@ -49,7 +49,7 @@ function isBindingName(name: string): boolean {
 
 /**
  * The name a module `shop-cart` is imported as (`shopCart`) — suffixed with `Module` when that would be a reserved word
- * (`let` becomes `letModule`), so the import is always valid. See `docs/package-development.md#registering-what-a-generator-writes`.
+ * (`let` becomes `letModule`), so the import is always valid. See `docs/package-commands.md#registering-what-a-generator-writes`.
  */
 export function bindingNameOf(kebab: string): string {
   const name = kebab.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
@@ -62,7 +62,7 @@ type Splice = readonly [start: number, end: number, text: string];
 /**
  * Adds an entry to a list (or a property) of the object passed to `defineModule`/`defineApplication`, with the imports it needs.
  * Only inserts: the rest of the file stays byte for byte. Anything the editor does not recognise comes back as `manual` with a
- * reason. See `docs/package-development.md#registering-what-a-generator-writes`.
+ * reason. See `docs/package-commands.md#registering-what-a-generator-writes`.
  */
 export function editDefinition(source: string, filename: string, edit: DefinitionEdit): DefinitionEditOutcome {
   const parsed = parseSync(filename, source);
@@ -134,7 +134,7 @@ export function editDefinition(source: string, filename: string, edit: Definitio
 /**
  * {@link editDefinition} on a file. Writes only on `added`, atomically (a temporary file beside it, renamed into place); a missing
  * file is `manual`. `display` is the name reasons use (an app-relative path such as `bootstrap/app.ts`; default: `file`) and must
- * keep the file's extension. See `docs/package-development.md#registering-what-a-generator-writes`.
+ * keep the file's extension. See `docs/package-commands.md#registering-what-a-generator-writes`.
  */
 export function editDefinitionFile(file: string, edit: DefinitionEdit, display: string = file): DefinitionEditOutcome {
   if (!existsSync(file)) return manual(`${display} does not exist`);
@@ -161,7 +161,7 @@ export function editDefinitionFile(file: string, edit: DefinitionEdit, display: 
 
 /**
  * The top-level imports of a source by local name, type-only ones included — for a generator that follows an import the file
- * already has. Empty when the source does not parse. See `docs/package-development.md#registering-what-a-generator-writes`.
+ * already has. Empty when the source does not parse. See `docs/package-commands.md#registering-what-a-generator-writes`.
  */
 export function importedBindings(source: string, filename: string): ReadonlyMap<string, ImportedBinding> {
   const bindings = new Map<string, ImportedBinding>();

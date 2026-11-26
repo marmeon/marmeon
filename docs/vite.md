@@ -70,7 +70,7 @@ Before you change `server` in `vite.config.ts`, know what the app relies on:
 
 Vite resolves the packages your app uses under the condition `@marmeon/source`, in development and in tests. A package of your
 workspace that offers it is served from its `src/`. Node does not follow Vite here: it needs `NODE_OPTIONS=--conditions=@marmeon/source`
-too, as [a package in your app's workspace](package-development.md#a-package-in-your-apps-workspace) shows. An installed `marmeon build` and
+too, as [a package in your app's workspace](package-workspace.md#a-package-in-your-apps-workspace) shows. An installed `marmeon build` and
 `marmeon start` never add the condition.
 
 ## Building

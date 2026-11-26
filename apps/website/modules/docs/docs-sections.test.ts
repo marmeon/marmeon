@@ -21,9 +21,9 @@ beforeAll(async () => {
 afterAll(() => app?.close());
 
 describe('the docs: sections of pages under /docs', () => {
-  it('lists the 93 pages in eleven sections, in this order', () => {
+  it('lists the 100 pages in twelve sections, in this order', () => {
     expect(docsConfig.sections.map((section) => section.title)).toEqual(SECTIONS);
-    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 5, 5, 11, 11, 18, 12, 7, 7, 5]);
+    expect(docsConfig.sections.map((section) => section.pages.length)).toEqual([6, 6, 5, 5, 11, 11, 16, 12, 7, 7, 5, 9]);
     expect(ENTRIES[0]).toEqual({ slug: 'why-marmeon', label: 'Why Marmeon' });
     expect(ENTRIES[1]).toEqual({ slug: 'upgrading', label: 'Upgrade Guide', file: 'UPGRADING.md', changes: true });
     expect(ENTRIES.filter((entry) => entry.file).map((entry) => [entry.slug, entry.file])).toEqual([
@@ -72,7 +72,13 @@ describe('the docs: sections of pages under /docs', () => {
     expect(await neighbours('upgrading')).toBe('why-marmeon ← upgrading → releases');
     expect(await neighbours('health')).toBe('observability ← health → agents');
     expect(await neighbours('agents')).toBe('health ← agents → mcp');
-    expect(await neighbours('mcp')).toBe('agents ← mcp → none');
+    expect(await neighbours('mcp')).toBe('agents ← mcp → package-development');
+    const packageSection = ['package-development', 'package-commands', 'package-tables', 'package-routes', 'package-pages', 'package-areas', 'package-users', 'package-publishing', 'package-workspace'];
+    for (const [index, slug] of packageSection.entries()) {
+      if (index === 0 || index === packageSection.length - 1) continue;
+      expect(await neighbours(slug)).toBe(`${packageSection[index - 1]} ← ${slug} → ${packageSection[index + 1]}`);
+    }
+    expect(await neighbours('package-workspace')).toBe('package-publishing ← package-workspace → none');
   });
 
   it('the start page lists every docs page exactly once, in its section — and no package page', async () => {

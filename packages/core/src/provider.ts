@@ -8,7 +8,7 @@ import type { SolutionDefinition } from './solutions.ts';
 /**
  * The key of a provider's jobs: `static [providerJobs] = [ProcessMediaJob]`. There are none by default, and only this key counts,
  * never a string like `jobs`. A bad list stops the start: `K9` on a provider with nothing else, `Q4` with the queue's provider.
- * See `docs/package-development.md#jobs`.
+ * See `docs/package-commands.md#jobs`.
  */
 export const providerJobs: unique symbol = Symbol.for('marmeon.provider.jobs');
 

@@ -5,7 +5,7 @@ import { SmokeError } from './pack-smoke.ts';
 import { checkWorkspacePackage, COMMANDS, sectionBlocks, type WorkspaceTarget } from './workspace-package-smoke.ts';
 import { tempDir } from './test/temp-dir.js';
 
-const PAGE = readFileSync(new URL('../docs/package-development.md', import.meta.url), 'utf8');
+const PAGE = readFileSync(new URL('../docs/package-workspace.md', import.meta.url), 'utf8');
 /** `PAGE` with `from` replaced once, inside the section only. */
 const inSection = (from: string, to: string): string => {
   const start = PAGE.indexOf("\n## A package in your app's workspace\n");

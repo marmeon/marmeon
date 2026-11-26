@@ -76,7 +76,7 @@ export function stampsBehind(
  * migration of every module, read from the file names in each module's `migrations` folder under `modules`, as `marmeon publish` reads them.
  * It throws, naming the file, when the newest stamp lies in the future and has a field out of range or leaves no room behind it; a past stamp never refuses.
  * A `migrations` folder that exists but cannot be read throws its filesystem error; an entry that is no folder is skipped.
- * See `docs/package-development.md#registering-what-a-generator-writes`.
+ * See `docs/package-commands.md#registering-what-a-generator-writes`.
  */
 export function nextMigrationStamp(root: string): string {
   const next = stampsBehind(newestMigration(join(root, 'modules')), 1, root, 'a new migration');

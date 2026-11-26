@@ -235,7 +235,7 @@ describe('a second copy of a framework package in one version', () => {
         severity: 'warning',
         message: 'ui resolves another copy of @marmeon/storage (the same version, other peers)',
         fix: "align the peers' versions, then pnpm dedupe",
-        docs: 'docs/package-development.md#one-copy-of-a-framework-package',
+        docs: 'docs/package-publishing.md#one-copy-of-a-framework-package',
         rule: 'marmeon(packages)',
       }),
     ]);

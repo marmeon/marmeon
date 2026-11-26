@@ -156,7 +156,7 @@ export function problemsAgainst(root: string, referenceName: '@marmeon/core' | '
   return problems;
 }
 
-const COPIES_DOCS = 'docs/package-development.md#one-copy-of-a-framework-package';
+const COPIES_DOCS = 'docs/package-publishing.md#one-copy-of-a-framework-package';
 
 /**
  * A package of someone else the app lists (dependencies and devDependencies) whose `@marmeon/*` of `dependencies` or `peerDependencies`, resolved from that

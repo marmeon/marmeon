@@ -44,7 +44,7 @@ snake_case, and `--module` must name a module that exists.
 
 The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the latest migration of every
 module under `modules/*/migrations`: the later of now and one second after the newest file name there. Only a newest stamp in the future
-with a field out of range (the ranges are in [Registering what a generator writes](package-development.md#registering-what-a-generator-writes)), or that leaves no room behind it, and a `migrations` folder of another module that cannot be read, are printed as a
+with a field out of range (the ranges are in [Registering what a generator writes](package-commands.md#registering-what-a-generator-writes)), or that leaves no room behind it, and a `migrations` folder of another module that cannot be read, are printed as a
 warning. The file is then stamped behind its own module's migrations whose stamps are dates, or with now if even that leaves no room. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
 line when the file has another shape or you pass `--no-register`):
 
@@ -1366,7 +1366,7 @@ Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-m
 writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap
 and the choice of the module), and ends with exit code 0 and "Nothing to publish" when they are all there. The package need not be
 in the `dependencies` of your app: the command comes from it. `marmeon publish <package>` also works for every package that
-[declares its migrations](package-development.md#declaring-the-migrations-a-package-ships).
+[declares its migrations](package-tables.md#declaring-the-migrations-a-package-ships).
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
 to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. A `make:*-table`

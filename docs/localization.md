@@ -101,7 +101,7 @@ what is published and, at a terminal, asks. `--check` is for migrations only: th
 
 ### Texts of a package
 
-A package that declares a `namespace` and `lang` in its `package.json` ships texts of its own (see [Pages of a package](package-development.md#pages-of-a-package)).
+A package that declares a `namespace` and `lang` in its `package.json` ships texts of its own (see [Pages of a package](package-pages.md#pages-of-a-package)).
 They load with the app's, under the package's namespace: a package with the namespace `status` and `lang/en.js` gives `status.title`
 and so on, in every locale the package has a file for. The package's English file declares its keys in `Translations` itself, as a
 module's does, so `t('title')` of `useTranslation('status')` is typed without anything in the app.
@@ -139,7 +139,7 @@ The browser gets a package's texts through a virtual module, merged the way the 
 `lang/<namespace>/<locale>.ts` laid over it key by key, so a key the locale's file has shows the same text on both sides (a key it leaves
 out falls back on the server only, see below). Where they go depends on the package:
 
-- A package **with an entry** (see [Pages of a package](package-development.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
+- A package **with an entry** (see [Pages of a package](package-pages.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
   loads that module. A page of the app, and any other entry, never loads them, so texts meant for an admin area stay out of the public bundle.
   The entry hands them to the loader: `createMessageLoader(lang)` with `import lang from 'virtual:marmeon/lang/status'`. A namespace that no package declares with an entry is a build error.
 - A package **without an entry**: its texts are part of the app's `virtual:marmeon/lang`, next to the app's own.

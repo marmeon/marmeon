@@ -174,4 +174,4 @@ named …"). Rename your command. `agents:sync` itself does not boot the app and
 [writing commands](console.md#writing-commands).
 
 `agents` is also the name of a check of `marmeon check`. A check of a package or a module with this name no longer registers: every command that
-boots the app ends with the error `[marmeon:K11]`. Rename your check. See [package development](package-development.md#checks).
+boots the app ends with the error `[marmeon:K11]`. Rename your check. See [package development](package-commands.md#checks).

@@ -1768,7 +1768,7 @@ There is no way back. See [migrations from a package](docs/migrations.md#migrati
 - The page protocol has its own entry: the `*_HEADER` constants, `PAGE_SCRIPT_ID`, `MAX_LAYER_DEPTH`, the types `PageObject`, `RegionObject`, `OnceInfo`, `LayerInfo`, `LiveHint`, `LiveSubscription`, `RegionKind`, `RegionOutcomeStatus` and `LayerClose`, and `isPageObject`, `isPrefetch`, `isActionRequest` and `regionOf` come from `@marmeon/http/protocol`, no longer from `@marmeon/http` or `@marmeon/http/page`. Augmentations of `@marmeon/http/page` (`Views`, `SharedProps`, `FlashData`) stay.
 - No longer exported, without replacement: the `DEFAULT_*` constants, `SCROLL_REGION_ATTRIBUTE` (write the `scroll-region` attribute), `matchesRouteName`, `confirmRequest` and `nativeConfirm`, `isSensitiveField` and `SENSITIVE_FIELD` (use `isSensitiveRememberField`), and from the client entries of devtools and table `DevtoolsBar`, `installDevtoolsHook` and `parseSort`, `sortValue`, `propOf` (for a column's sort value write `-name` or `name`).
 
-There is no way back. See [writing a UI adapter](docs/package-development.md#writing-a-ui-adapter).
+There is no way back. See [writing a UI adapter](docs/package-pages.md#writing-a-ui-adapter).
 
 #### Low: The page protocol has a version
 

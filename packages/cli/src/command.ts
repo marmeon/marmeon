@@ -80,7 +80,7 @@ export class CommandRegistry {
    * Registers `commands`; adding the same class again is a no-op, a different class under a taken name throws a
    * `CommandSetupError` naming both classes and their `source` (a package or module), so no package silently takes over
    * an app's command. Packages list their commands as `static commands` on their provider; commands added in `boot()` run,
-   * but `marmeon build` and `make:command` do not see them. See docs/package-development.md#commands.
+   * but `marmeon build` and `make:command` do not see them. See docs/package-commands.md#commands.
    */
   add(commands: readonly CommandClass[], source = 'a package'): this {
     for (const command of commands) {

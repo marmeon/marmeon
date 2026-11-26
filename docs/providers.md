@@ -126,9 +126,9 @@ A provider class can carry these statics. The app reads the first three before a
 | `static health = [SearchIndexReady]` | Checks for `/up/ready`. See [health checks](health.md). |
 | `static solutions = defineSolutions([…])` | Solutions for the provider's errors, shown on the development error page. See [error handling](errors.md#solutions). |
 | `static errorReporters = [SentryReporter]` | Classes that receive the app's server errors, masked, to send them to a service. Built when the app boots. See [reporting](errors.md#reporting). |
-| `static commands = [PruneNotesCommand]` | Console commands for `marmeon`. Collected while the app registers, so `marmeon build` sees them. See [package development](package-development.md#commands). |
-| `static [providerJobs] = [ProcessMediaJob]` | The [jobs](queues.md#the-job-class) a worker runs, like a module's `jobs`. Registered when the app boots, and only with `@marmeon/queue` installed. See [jobs in package development](package-development.md#jobs). |
-| `static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'notes' }` | The directory of the migrations the package ships, for `marmeon publish`. See [declaring the migrations a package ships](package-development.md#declaring-the-migrations-a-package-ships). |
+| `static commands = [PruneNotesCommand]` | Console commands for `marmeon`. Collected while the app registers, so `marmeon build` sees them. See [package development](package-commands.md#commands). |
+| `static [providerJobs] = [ProcessMediaJob]` | The [jobs](queues.md#the-job-class) a worker runs, like a module's `jobs`. Registered when the app boots, and only with `@marmeon/queue` installed. See [jobs in package development](package-commands.md#jobs). |
+| `static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'notes' }` | The directory of the migrations the package ships, for `marmeon publish`. See [declaring the migrations a package ships](package-tables.md#declaring-the-migrations-a-package-ships). |
 
 A package uses these lists, because it has no module definition of its own. In an app, a module lists its configuration, its
 health checks and its jobs in its definition instead.

@@ -51,7 +51,7 @@ export let providerSourceOf: (registry: JobRegistry, job: JobClass) => string | 
 /**
  * Which job class has which name — from the modules' `jobs: [...]` and the providers' `static [providerJobs]`. The worker finds a
  * job's class here, so a job that is not registered cannot run: dispatching it is an error, and a name used twice fails the start.
- * See `docs/package-development.md#jobs`.
+ * See `docs/package-commands.md#jobs`.
  */
 export class JobRegistry {
   readonly #jobs = new Map<string, { readonly job: JobClass; readonly source: string; readonly provider: boolean }>();
