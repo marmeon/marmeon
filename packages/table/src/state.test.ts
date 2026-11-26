@@ -2,7 +2,7 @@ import { parseQuery } from '@marmeon/router';
 import { rules as r } from '@marmeon/validation';
 import { describe, expect, it } from 'vitest';
 import './__fixtures__/schema.ts';
-import { FeedTable, MembersTable } from './__fixtures__/app.ts';
+import { FeedTable, MembersTable, RoleOptionsTable } from './__fixtures__/app.ts';
 import { MemberPolicy } from './__fixtures__/policies.ts';
 import { column, defineTable, filter } from './index.ts';
 import { parseState, queryKeys, stateQuery, TableQueryError } from './state.ts';
@@ -30,6 +30,34 @@ describe('the table\'s state in the URL', () => {
       expect(() => parseState(members, search(query))).toThrow(TableQueryError);
     },
   );
+
+  it.each([
+    ['search=a%00b', 'search'],
+    ['filter[role]=%00', 'filter[role]'],
+  ])('refuses a NUL character in %s with a TableQueryError (400) that names the key, not the value', (query, key) => {
+    const refuse = () => parseState(members, search(query));
+    expect(refuse).toThrow(TableQueryError);
+    expect(refuse).toThrow(new TableQueryError(`${key}: no NUL character or half of a surrogate pair.`));
+    expect(refuse).not.toThrow('\u0000');
+  });
+
+  it('refuses a NUL character in a filter whose options are computed per request (400)', () => {
+    const refuse = () => parseState(RoleOptionsTable.definition, search('filter[role]=a%00'));
+    expect(refuse).toThrow(new TableQueryError('filter[role]: no NUL character or half of a surrogate pair.'));
+  });
+
+  it.each<[[string, string][], string]>([
+    [[['search', 'a\ud83d']], 'search'],
+    [[['search', '\ude00']], 'search'],
+    [[['filter[role]', '\ud83d']], 'filter[role]'],
+  ])('refuses half of a surrogate pair (400) in %j', (query, key) => {
+    expect(() => parseState(members, query)).toThrow(new TableQueryError(`${key}: no NUL character or half of a surrogate pair.`));
+  });
+
+  it('takes accents and emoji in a search', () => {
+    expect(parseState(members, search('search=caf%C3%A9')).search).toBe('café');
+    expect(parseState(members, [['search', '😀']]).search).toBe('😀');
+  });
 
   it('prefixes its keys for a second table on the page', () => {
     expect(queryKeys(FeedTable.definition)).toMatchObject({ sort: 'feed_sort', cursor: 'feed_cursor', perPage: 'feed_per_page' });

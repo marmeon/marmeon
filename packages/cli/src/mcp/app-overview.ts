@@ -20,7 +20,7 @@ const UPDATE = 'this version does not read — update marmeon.';
  */
 export const APP_OVERVIEW_TOOL: McpTool = {
   name: 'app_overview',
-  description: `Give an overview of the app: its packages, the providers of the app and of each module, the commands, jobs, notifications, seeders and migration folder of each module, each event with its listeners, the scheduled tasks (name, expression, time zone), the Node and Marmeon version, and the names of the environment variables the app reads, each with whether it is set, required or has a default — never a value. Use it to find what exists before placing code. Listeners that a provider adds in boot() are missing. Starts the app once, twice when it has a scheduler. ${DATA_NOTICE}`,
+  description: `Give an overview of the app: its packages, the providers of the app and of each module, the commands, jobs, notifications, seeders and migration folder of each module, the jobs each provider lists, each event with its listeners, the scheduled tasks (name, expression, time zone), the Node and Marmeon version, and the names of the environment variables the app reads, each with whether it is set, required or has a default — never a value. Use it to find what exists before placing code. Listeners that a provider adds in boot() are missing. Starts the app once, twice when it has a scheduler. ${DATA_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -63,6 +63,7 @@ function strings(value: unknown): string[] {
 interface Listener { listener: string; queued: boolean; defined: 'app' | 'module' | 'provider'; module: string | null }
 interface Variable { name: string; config: string; set: boolean; required: boolean; hasDefault: boolean }
 interface Event { event: string; name: string | null; listeners: Listener[] }
+interface ProviderJobs { provider: string; jobs: { class: string; job: string | null }[] }
 interface Module {
   name: string;
   providers: string[];
@@ -108,6 +109,16 @@ function module(value: unknown): Module {
   };
 }
 
+/** An entry: the provider and its jobs. `modules` says which modules list the provider and only filters; an older document has none, so no module owns it. */
+function providerJobsEntry(value: unknown): ProviderJobs & { modules: string[] } {
+  const raw = record(value);
+  return {
+    provider: string(raw.provider),
+    jobs: list(raw.jobs).map((item) => ({ class: string(record(item).class), job: nullable(record(item).job) })),
+    modules: raw.modules === undefined ? [] : strings(raw.modules),
+  };
+}
+
 function task(value: unknown): { name: string; expression: string; timeZone: string; description: string | null } {
   const raw = record(value);
   return { name: string(raw.name), expression: string(raw.expression), timeZone: string(raw.timeZone), description: nullable(raw.description) };
@@ -140,6 +151,7 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
   let packages: string[];
   let app: { providers: string[] };
   let modules: Module[];
+  let providerJobs: (ProviderJobs & { modules: string[] })[];
   let events: Event[];
   let environment: (Variable & { modules: string[] })[];
   const warnings: string[] = [];
@@ -150,6 +162,8 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
     packages = strings(document.packages);
     app = { providers: strings(record(document.app).providers) };
     modules = list(document.modules).map(module);
+    // A document of an older version has none.
+    providerJobs = document.providerJobs === undefined ? [] : list(document.providerJobs).map(providerJobsEntry);
     events = list(document.events).map(event);
     // A document of an older version of this format has none.
     environment = document.environment === undefined ? [] : list(document.environment).map(variable);
@@ -164,6 +178,7 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
       const names = modules.slice(0, MAX_MODULE_NAMES).map((item) => item.name);
       return failure(`No module named ${only}. Modules: ${names.length > 0 ? names.join(', ') : '(none)'}${modules.length > MAX_MODULE_NAMES ? ', …' : ''}.`);
     }
+    providerJobs = providerJobs.filter((item) => item.modules.includes(only));
     modules = modules.filter((item) => item.name === only);
     events = events
       .map((item) => ({ ...item, listeners: item.listeners.filter((entry) => entry.defined === 'module' && entry.module === only) }))
@@ -200,8 +215,9 @@ async function appOverview(input: Readonly<Record<string, unknown>>, { root, sig
   // A warning is the first line of what the app said, masked and cut: it may quote a name or message of the app's own code.
   const redactor = new Redactor();
   const lines = warnings.map((warning) => redactor.text(warning.split('\n')[0]!).slice(0, MAX_OVERVIEW_WARNING_LENGTH));
+  const jobsOfProviders = providerJobs.map(({ provider, jobs }) => ({ provider, jobs }));
   const variables = environment.map(({ name, config, set, required, hasDefault }) => ({ name, config, set, required, hasDefault }));
   // The tools' children run with this process's Node, and the server runs only in development.
   const runtime = { node: process.version, platform: process.platform, arch: process.arch, marmeon: packageVersion(), nodeEnv: 'development' };
-  return { format: 1, runtime, packages, app, modules, events, environment: variables, schedules, warnings: lines };
+  return { format: 1, runtime, packages, app, modules, providerJobs: jobsOfProviders, events, environment: variables, schedules, warnings: lines };
 }

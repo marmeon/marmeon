@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { providerJobs, type Application } from '@marmeon/core';
+import type { Application } from '@marmeon/core';
 import { staticNames } from '@marmeon/core/internal';
-import { appListedProviders } from './app-providers.ts';
+import { appListedProviders, providerJobsOf } from './app-providers.ts';
 import type { CommandInput } from './command.ts';
 
 export interface UnlistedClass {
@@ -37,9 +37,7 @@ export function unlistedClasses(root: string, app: UnlistedApp): UnlistedClass[]
     }
   }
   for (const provider of appListedProviders(app)) {
-    const jobs: unknown = (provider as { [providerJobs]?: unknown })[providerJobs];
-    if (!Array.isArray(jobs)) continue;
-    for (const entry of jobs) if (typeof entry === 'function' && typeof (entry as { job?: unknown }).job === 'string') listed.job.add((entry as unknown as { job: string }).job);
+    for (const entry of providerJobsOf(provider)) if (typeof entry === 'function' && typeof (entry as { job?: unknown }).job === 'string') listed.job.add((entry as unknown as { job: string }).job);
   }
   const found: UnlistedClass[] = [];
   for (const path of sourceFiles(join(root, 'modules'))) {
