@@ -12,13 +12,16 @@ import { SchemaError } from './schema-error.ts';
 
 export { SchemaError };
 
-let access: { steps(schema: Schema): readonly PlanStep[]; seal(schema: Schema): void };
+let access: { steps(schema: Schema): readonly PlanStep[]; seal(schema: Schema): void; rolledBack(schema: Schema): void };
 
 /** The steps a migration's `up()` or `down()` appended. Not API: the migrator reads them. */
 export const schemaSteps = (schema: Schema): readonly PlanStep[] => access.steps(schema);
 
 /** Closes a plan: the `Schema` refuses every call after `up()` or `down()` returned. Not API: the migrator does it. */
 export const sealSchema = (schema: Schema): void => access.seal(schema);
+
+/** Marks the plan as the one of a `down()`: it is not described by the migrations, so `create()` and `rename()` accept a name with a dot there. Not API: the migrator does it. */
+export const rollbackSchema = (schema: Schema): void => access.rolledBack(schema);
 
 /**
  * Builds the plan of a migration — what a migration gets. Nothing runs while `up()` or `down()` builds it: `migrate` runs the
@@ -34,12 +37,16 @@ export const sealSchema = (schema: Schema): void => access.seal(schema);
 export class Schema {
   readonly #steps: PlanStep[] = [];
   #sealed = false;
+  #down = false;
 
   static {
     access = {
       steps: (schema) => schema.#steps,
       seal: (schema) => {
         schema.#sealed = true;
+      },
+      rolledBack: (schema) => {
+        schema.#down = true;
       },
     };
   }
@@ -72,6 +79,17 @@ export class Schema {
     );
   }
 
+  /** Refuses, in an `up()`, a name Kysely splits at a dot: it names a table together with its schema or database, which the migrations do not describe, so `migrate` could not find it again. A `down()` is not checked against the migrations. */
+  #unqualified(table: string, action: string): void {
+    if (this.#down || !table.includes('.')) return;
+    throw new SchemaError(
+      withCode(
+        'D31',
+        `Cannot ${action} "${table}": a name with a dot names a table together with its schema or database, and the migrations do not describe such a table. Use a name without a dot. See docs/migrations.md#what-the-migrations-describe.`,
+      ),
+    );
+  }
+
   /**
    * Refuses raw SQL that names a table of the migrator. Only a guard against mistakes: it reads the words of the statement, outside
    * its string literals, and does not parse it.
@@ -96,9 +114,10 @@ export class Schema {
     return blueprint;
   }
 
-  /** Adds the creation of a table. */
+  /** Adds the creation of a table. A name with a dot (a table with its schema or database) is refused with D31 in an `up()`; a table of the migrator is refused with D4 in both. See `docs/migrations.md#what-the-migrations-describe`. */
   create(table: string, build: (table: Blueprint) => void): void {
     this.#allowed(table, 'create the table');
+    this.#unqualified(table, 'create the table');
     const blueprint = Schema.#describe(table, build);
     const parts = blueprintParts(blueprint);
     if (parts.columns.length === 0) throw new Error(`Table "${table}" needs at least one column.`);
@@ -135,11 +154,12 @@ export class Schema {
    * Adds the renaming of a table. Its indexes and constraints keep their names, which begin with the old one (`notes_user_id_index`), unless
    * `indexes` is set: then those that begin with `<from>_` are renamed to begin with `<to>_` — so the table ends up as one
    * created under the new name (and, on Postgres, its identity sequences too). Opt-in: the default must not change what a
-   * migration written earlier does.
+   * migration written earlier does. A new name with a dot is refused with D31 in an `up()`; a table of the migrator is refused with D4 in both. See `docs/migrations.md#what-the-migrations-describe`.
    */
   rename(from: string, to: string, options: { readonly indexes?: boolean } = {}): void {
     this.#allowed(from, 'rename the table');
     this.#allowed(to, 'rename a table to');
+    this.#unqualified(to, 'rename a table to');
     this.#add({ kind: 'rename', from, to, indexes: options.indexes === true });
   }
 

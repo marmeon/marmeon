@@ -324,6 +324,32 @@ describe.each(drivers)('the plan of a migration on %s', (driver: TestDriver) => 
 });
 
 describe('what up() refuses while it builds the plan', () => {
+  it('does not let the build callback of create() change the table after its name was checked', () => {
+    expect(() => new Schema().create('items', (table: any) => { table.table = 'otherdb.items'; table.string('x'); })).toThrow(TypeError);
+    const steps = planOf({ up: (schema) => schema.create('items', (table: any) => { try { table.table = 'migrations'; } catch {} table.string('x'); }) }, 'up');
+    expect((steps[0] as { blueprint: Blueprint }).blueprint.table).toBe('items');
+  });
+
+  it('refuses a name with a dot in create() and as the new name of rename() with D31, and keeps it for the rest', () => {
+    for (const name of ['audit.items', 'main.items', 'a.b.c', '.items', 'items.', ' a . b']) {
+      expect(() => new Schema().create(name, (table: any) => table.string('x')), name).toThrow(/^\[marmeon:D31\] Cannot create the table /);
+      expect(() => new Schema().rename('items', name), name).toThrow(/^\[marmeon:D31\] Cannot rename a table to /);
+    }
+    expect(() => new Schema().create('audit_items', (table: any) => table.string('x'))).not.toThrow();
+    expect(() => new Schema().rename('audit.items', 'items')).not.toThrow();
+    for (const name of ['audit.items', 'a.b']) {
+      expect(() => new Schema().alter(name, (table: any) => table.string('x')), name).not.toThrow();
+      expect(() => new Schema().drop(name), name).not.toThrow();
+      expect(() => new Schema().dropIfExists(name), name).not.toThrow();
+    }
+    // A down() is not checked against the migrations: it plans a dotted create and rename.
+    const down = planOf({ up: () => {}, down: (schema) => { schema.create('main.items', (table: any) => table.string('x')); schema.rename('items', 'x.items'); } }, 'down');
+    expect(down.map((step) => step.kind)).toEqual(['create', 'rename']);
+    // The table of the migrator keeps D4, which comes first.
+    expect(() => new Schema().create('public.migrations', (table: any) => table.string('x'))).toThrow(/^\[marmeon:D4\]/);
+    expect(() => new Schema().rename('items', 'public.migrations')).toThrow(/^\[marmeon:D4\]/);
+  });
+
   it('refuses to change the table of the migrator by any name Kysely reads as it, and allows another', () => {
     for (const name of ['migrations', 'public.migrations', 'public. migrations', 'public.migrations.x', 'main.migration_lock', 'a. Migrations .x']) {
       expect(() => new Schema().dropIfExists(name), name).toThrow(/^\[marmeon:D4\]/);
@@ -679,6 +705,10 @@ describe('asking Postgres whether the names of a plan fit', () => {
       const steps = planOf({ up }, 'up');
       return pgsqlNames(steps, cutsOf(steps));
     };
+    const collectedDown = (down: (schema: any) => void) => {
+      const steps = planOf({ up: () => {}, down }, 'down');
+      return pgsqlNames(steps, cutsOf(steps));
+    };
     const effect = (kind: string, method: string) => `, so ${method} would act on the ${kind} its first 63 bytes name.`;
     const entry = (kind: string, name: string, method: string) => ({ name, what: kind, hint: `Name the ${kind} as Postgres stored it.`, effect: effect(kind, method) });
 
@@ -714,7 +744,7 @@ describe('asking Postgres whether the names of a plan fit', () => {
 
     it('asks each part of a qualified table name, as Kysely sends it, and a name without a dot whole', () => {
       expect(collected((schema) => schema.dropIfExists('analytics.old')).map((one) => [one.what, one.name])).toEqual([['schema', 'analytics'], ['table', 'old']]);
-      expect(collected((schema) => schema.rename('analytics.old', 'analytics.new')).map((one) => [one.what, one.name])).toEqual([['schema', 'analytics'], ['table', 'old']]);
+      expect(collected((schema) => schema.rename('analytics.old', 'new')).map((one) => [one.what, one.name])).toEqual([['schema', 'analytics'], ['table', 'old']]);
       expect(collected((schema) => schema.drop(' a . b ')).map((one) => one.name)).toEqual(['a', 'b']);
       expect(collected((schema) => schema.drop(' plain ')).map((one) => one.name)).toEqual([' plain ']);
       // A name that is one identifier for an index, a check or a column keeps its dot.
@@ -730,7 +760,6 @@ describe('asking Postgres whether the names of a plan fit', () => {
         schema.alter('later', (table: any) => table.string('w'));
         schema.drop('later');
       }).map((one) => one.what)).toEqual([]);
-      expect(collected((schema) => { schema.create('analytics.made', (table: any) => table.string('x')); schema.drop('analytics.made'); })).toEqual([]);
       expect(collected((schema) => schema.alter('items', (table: any) => { table.string('y'); table.string('own'); table.notNull('own'); table.dropColumn('y'); })).map((one) => one.what)).toEqual(['table']);
       expect(collected((schema) => {
         schema.create('items', (table: any) => { table.string('a'); table.index(['a'], 'items_a_index'); table.string('s').oneOf('p'); table.check('items_c', 'true'); });
@@ -812,7 +841,6 @@ describe('asking Postgres whether the names of a plan fit', () => {
       expect(collected((schema) => {
         schema.create(long, (table: any) => table.string('a'));
         schema.rename(`public.${stored}`, 'keep');
-        schema.rename('users', `public.${stored}`);
         schema.drop(long);
       }).filter((one) => one.name === long)).toEqual([entry('table', long, 'drop()')]);
     });
@@ -847,25 +875,35 @@ describe('asking Postgres whether the names of a plan fit', () => {
       expect(collected((schema) => schema.alter('items', (table: any) => { table.string(long); table.index([long], 'short_ix'); table.dropColumn(long); })).filter((one) => one.what === 'column')).toEqual([]);
     });
 
-    it('keeps the tables of two schemas apart, and still reads `public.S` as the table S', () => {
+    it('keeps the tables of two schemas apart, and still reads `public.S` as the table S, in a down()', () => {
       const long = 'x'.repeat(70);
-      expect(collected((schema) => {
+      expect(collectedDown((schema) => {
         schema.create(`a.${long}`, (table: any) => table.string('a'));
         schema.create(`b.${long}`, (table: any) => table.string('a'));
         schema.drop(`a.${long}`);
         schema.drop(`b.${long}`);
       })).toEqual([]);
       // A step on `b.<cut>` is not one on `a.<long>`; one on `<cut>` without a schema may be any schema, so `public.<long>` is withdrawn.
-      expect(collected((schema) => {
+      expect(collectedDown((schema) => {
         schema.create(`a.${long}`, (table: any) => table.string('a'));
         schema.rename(`b.${'x'.repeat(63)}`, 'keep');
         schema.drop(`a.${long}`);
       }).filter((one) => one.name === long)).toEqual([]);
-      expect(collected((schema) => {
+      expect(collectedDown((schema) => {
         schema.create(`public.${long}`, (table: any) => table.string('a'));
         schema.rename('x'.repeat(63), 'keep');
         schema.drop(`public.${long}`);
       }).filter((one) => one.name === long)).toEqual([entry('table', long, 'drop()')]);
+    });
+
+    it('withdraws by the table a qualified name reads as, in a down() that creates, drops or renames to one', () => {
+      const long = 'x'.repeat(70);
+      const stored = `public.${'x'.repeat(63)}`;
+      const lost = (down: (schema: any) => void) => collectedDown(down).filter((one) => one.name === long);
+      // Creating public.S makes the table S: the long table is no longer the plan's, so dropping it acts on one the plan never made.
+      expect(lost((schema) => { schema.create(long, (table: any) => table.string('a')); schema.create(stored, (table: any) => table.string('a')); schema.drop(long); })).toEqual([entry('table', long, 'drop()')]);
+      expect(lost((schema) => { schema.create(long, (table: any) => table.string('a')); schema.drop(stored); schema.drop(long); })).toEqual([entry('table', long, 'drop()')]);
+      expect(lost((schema) => { schema.create(long, (table: any) => table.string('a')); schema.rename('other', stored); schema.drop(long); })).toEqual([entry('table', long, 'drop()')]);
     });
 
     it('names what an earlier step of the plan took away or never made', () => {

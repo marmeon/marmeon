@@ -764,8 +764,7 @@ export class Migrator {
       const found = types.get(table.name);
       if (found === undefined) {
         lacking.push(`the table ${table.name}`);
-        // A qualified name is lacking whatever its length (the catalog is read by the bare name), so its length is no cause.
-        if (!table.name.includes('.')) names.push({ shown: table.name, name: table.name });
+        names.push({ shown: table.name, name: table.name });
         continue;
       }
       for (const column of table.columns) {
