@@ -2,7 +2,8 @@ import { Application, defineConfig, env, environment, escapeControls, Logger, Re
 import { consoleLogsGoToStderr, messageBase, redactedFrameworkFields, redactedLogPart, UNREADABLE_PART, withoutFrameworkFields } from '@marmeon/core/internal';
 import { channels } from '@marmeon/core/diagnostics';
 import { createRequire } from 'node:module';
-import { destination as pinoDestination, pino, type Logger as Pino } from 'pino';
+import { writeSync } from 'node:fs';
+import { destination as pinoDestination, pino, type DestinationStream, type Logger as Pino } from 'pino';
 import type pinoPretty from 'pino-pretty';
 
 export const LogConfig = defineConfig('log', {
@@ -154,6 +155,159 @@ function terminalSafeEntry(object: Readonly<Record<string, unknown>>): Record<st
   return Object.fromEntries(Object.entries(object).map(([key, value]) => [escapeControls(key), typeof value === 'string' && key !== 'stack' ? escapeControls(value) : terminalSafe(value, key)]));
 }
 
+/**
+ * The most bytes the asynchronous destination (the default: JSON on stdout) keeps while the descriptor does not take them (a pipe nobody reads);
+ * a line beyond it is dropped, so a stalled reader costs a bounded amount of memory. 4 MiB is a few thousand lines of a server
+ * that logs much, and small beside what a process holds anyway.
+ */
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
+
+/**
+ * How often in a row the exit flush waits 100 ms for a full pipe before it drops the rest (the pipe takes no byte for that
+ * long), and how long in all it waits (a reader that takes a small burst now and then must not hold the exit). Both bound pipes
+ * only: a terminal that stops reading (Ctrl-S, a stalled ssh session) is a blocking descriptor, whose `write` no Node API
+ * can limit.
+ */
+const MAX_EXIT_WAITS = 20;
+const MAX_EXIT_MILLISECONDS = 5_000;
+
+/**
+ * The fields of sonic-boom 4 (4.2.1 in this repo's lockfile; pino only asks for `^4.0.1`) that `drainSync` reads and the dying
+ * destination clears. A different shape is treated as a failed flush.
+ */
+interface SonicState {
+  _bufs: string[];
+  _writingBuf: string | Buffer;
+  _writing: boolean;
+  _len: number;
+}
+
+type Sonic = ReturnType<typeof pinoDestination>;
+
+function hasSonicState(sonic: Sonic): sonic is Sonic & SonicState {
+  const state = sonic as unknown as Partial<SonicState>;
+  return (
+    Array.isArray(state._bufs) &&
+    state._bufs.every((chunk) => typeof chunk === 'string') &&
+    (typeof state._writingBuf === 'string' || Buffer.isBuffer(state._writingBuf)) &&
+    typeof state._writing === 'boolean' &&
+    typeof state._len === 'number'
+  );
+}
+
+/** The exit flush failed without an OS error (see `drainSync`). */
+const FLUSH_FAILED = 'flush failed';
+
+/** Waits without the event loop, as sonic-boom does while a descriptor says `EAGAIN`. */
+function sleepSync(milliseconds: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+/**
+ * `flushSync` of sonic-boom for the exit hook, whose own loop retries a write that fails with any code for ever (a process whose
+ * stdout is gone, or whose reader never reads, would never end). Here `EAGAIN` and `EBUSY` (a full pipe) are waited out up to
+ * `MAX_EXIT_WAITS` times in a row (a write that takes bytes starts the count again) and `MAX_EXIT_MILLISECONDS` in all; any other
+ * error, or the last of those, is returned and the rest is dropped. `FLUSH_FAILED` is this logger's own result for a flush that
+ * failed without an OS error (an unexpected sonic-boom shape, or a throw): it has no errno.
+ */
+function drainSync(sonic: Sonic, fd: number, retrying: boolean): NodeJS.ErrnoException | typeof FLUSH_FAILED | undefined {
+  if (!hasSonicState(sonic)) return FLUSH_FAILED;
+  // A write in flight is left to finish (as sonic-boom does). One that waits for its retry after `EAGAIN` is not in flight: its
+  // timer never fires after `'exit'`, and `_writingBuf` holds exactly what is still to write.
+  const inFlight = sonic._writing && !retrying;
+  const head = inFlight ? [] : [Buffer.from(sonic._writingBuf)];
+  let rest = Buffer.concat([...head, ...sonic._bufs.map((chunk) => Buffer.from(chunk))]);
+  sonic._bufs = [];
+  sonic._writingBuf = inFlight ? sonic._writingBuf : '';
+  sonic._len = inFlight ? Buffer.byteLength(sonic._writingBuf) : 0;
+  const deadline = performance.now() + MAX_EXIT_MILLISECONDS;
+  let waits = 0;
+  while (rest.length > 0) {
+    try {
+      rest = rest.subarray(writeSync(fd, rest));
+      waits = 0;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if ((code !== 'EAGAIN' && code !== 'EBUSY') || waits === MAX_EXIT_WAITS || performance.now() >= deadline) return error as NodeJS.ErrnoException;
+      waits += 1;
+      sleepSync(100);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * A destination on `fd` that a failed write cannot turn into a thrown error, an uncaught `'error'` event or a process that never
+ * ends. Any error but `EAGAIN` (`ENOSPC`, `EIO`, `EBADF`, `EPIPE`) ends the destination for good: it drops what it holds and
+ * every line after, and retries nothing. A failed stdout (not a reader that left: `EPIPE`) is told once on stderr (dropped when
+ * stderr is a full pipe); a failed stderr is not told anywhere, because stdout may hold a command's document.
+ *
+ * Asynchronous (`sync` false), as the default destination is: `EAGAIN` (a full pipe) is backpressure, sonic-boom keeps the data up
+ * to `MAX_BUFFERED_BYTES` and `write` returns at once. Synchronous (`--json`, `marmeon mcp`, pretty), the buffer has no bound:
+ * `write` returns once the line is written, and while the pipe is full it retries every 100 ms, so a reader that stops reading
+ * blocks the process until sonic-boom's retry recursion overflows (a few thousand retries while one line is written); then the
+ * destination stops as after a write error.
+ * A pipe on fd 1 is non-blocking (pino reads `process.stdout.fd`, which makes libuv set `O_NONBLOCK`), which is why a full one says
+ * `EAGAIN`; a terminal is blocking, and one that stops reading holds the process whatever the exit flush does.
+ */
+function failSafeDestination(fd: number, sync: boolean): DestinationStream {
+  // True while sonic-boom's 100 ms retry timer after an `EAGAIN` is pending: its chunk is then not in flight (see `drainSync`).
+  // Cleared by a timer queued first: it fires before sonic-boom's own, which starts the retry write.
+  let retrying = false;
+  const sonic = pinoDestination({
+    fd,
+    sync,
+    // Only the asynchronous destination buffers; a synchronous one (`--json`, `marmeon mcp`, pretty) is unbounded and waits for the
+    // reader, and sonic-boom would drop a single larger entry.
+    ...(sync ? {} : { maxLength: MAX_BUFFERED_BYTES }),
+    retryEAGAIN: () => {
+      retrying = true;
+      setTimeout(() => {
+        retrying = false;
+      }, 100).unref();
+      return true;
+    },
+  });
+  // The notice goes to fd 2 with a synchronous write. Reading `process.stderr.fd` opens fd 2 as a stream, and libuv sets
+  // `O_NONBLOCK` on a pipe: a full one then answers `EAGAIN`, which the catch below drops, instead of blocking the process. A
+  // terminal stays blocking (one that stops reading holds the process, the known limit), and Node makes stdio pipes blocking on
+  // Windows.
+  if (fd === 1) void process.stderr.fd;
+  let dead = false;
+  const fail = (error: NodeJS.ErrnoException | typeof FLUSH_FAILED): void => {
+    if (dead) return;
+    dead = true;
+    const state = sonic as unknown as Partial<SonicState>;
+    state._bufs = [];
+    state._writingBuf = '';
+    state._len = 0;
+    const code = error === FLUSH_FAILED ? undefined : error.code;
+    // An error without an OS code (a RangeError from sonic-boom's retry recursion) is named by its own name.
+    const named = code ?? (error === FLUSH_FAILED ? undefined : String(error.name || 'unknown error'));
+    if (fd !== 1 || code === 'EPIPE') return;
+    try {
+      writeSync(2, `@marmeon/log: ${error === FLUSH_FAILED ? 'the exit flush to stdout failed' : `writing to stdout failed (${named})`}; log lines are dropped until the process restarts.\n`);
+    } catch {
+      // stderr is gone too: nobody is left to tell.
+    }
+  };
+  // pino's listener turns the destination off for EPIPE; every error also reaches this one.
+  sonic.on('error', fail);
+  const write = sonic.write.bind(sonic);
+  sonic.write = (chunk: string): boolean => (dead ? true : write(chunk));
+  sonic.flushSync = (): void => {
+    let error: NodeJS.ErrnoException | typeof FLUSH_FAILED | undefined;
+    try {
+      error = drainSync(sonic, fd, retrying);
+    } catch {
+      // Never a throw inside pino's exit hook, and never sonic-boom's own flush (it retries any error for ever).
+      error = FLUSH_FAILED;
+    }
+    if (error) fail(error);
+  };
+  return sonic;
+}
+
 /** Where `createPinoLogger` writes and whose entries it also publishes. */
 export interface PinoLoggerOptions {
   /** The stream the entries go to; default: stdout (stderr while a command prints JSON), pretty-printed for `format: 'pretty'`. */
@@ -173,7 +327,9 @@ export function createPinoLogger(config: LogOptions, options: PinoLoggerOptions 
   const fd = consoleLogsGoToStderr() ? 2 : 1;
   const stream =
     destination ??
-    (config.format === 'pretty' ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv', destination: fd }) : fd === 2 ? pinoDestination({ fd, sync: true }) : undefined);
+    (config.format === 'pretty'
+      ? pretty()({ colorize: true, sync: true, ignore: 'pid,hostname,appEnv', destination: failSafeDestination(fd, true) })
+      : failSafeDestination(fd, fd === 2));
   const redactor = redactorOf(app);
   const logger = pino(
     {
