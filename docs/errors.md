@@ -67,6 +67,11 @@ Because the answer depends on the request's headers, every error answer carries 
 and `X-Marmeon`, and `X-Requested-With` for a validation error), so a shared cache keeps the page and the JSON apart. A `Vary` an
 `HttpError` brings itself is kept; these are added to it.
 
+`abort(204)`, `abort(205)` and `abort(304)` answer with that status and no body, for a page and for JSON alike. An action reads a 204
+or 205 as a success without data, and a 304 as an error. The headers of the `HttpError` (an `ETag`, say) go out with them.
+
+An `abort()` with a status that is not a whole number from 200 to 599 (`abort(0)`, `abort(404.5)`) is answered and reported as a 500.
+
 Any error that is not an `HttpError` is a 500. Its own message never reaches the client in production: the page and the JSON say
 `Server Error`, so a database error cannot show its query. The headers of an `HttpError` go out with the answer, so a 503 carries
 its `Retry-After`.

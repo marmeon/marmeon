@@ -221,7 +221,7 @@ pnpm marmeon schedule:work
 
 Its first line names its tasks and the environment it assumed, such as `Running the schedule every minute: 3 tasks (session:prune,
 cache:prune, queue:prune-failed --hours=168) — in production (APP_ENV=production)`. On `SIGTERM` or `SIGINT` it starts no new run, gives
-the runs still going `--stop-timeout` seconds, 30 by default, then ends and frees their locks.
+the runs still going `--stop-timeout` seconds, 30 by default and at most 2073600 (24 days), then ends and frees their locks.
 
 | Command | What it does |
 | --- | --- |

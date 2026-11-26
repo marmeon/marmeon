@@ -25,7 +25,7 @@ class Factors extends TwoFactorState {
   }
 }
 
-function setup(ended: 'ok' | 'missing' = 'ok') {
+function setup(ended: 'ok' | 'missing' = 'ok', info = vi.fn()) {
   const users = new MemoryUsers<AuthUser>();
   users.add(ada);
   const state = new Factors();
@@ -40,7 +40,6 @@ function setup(ended: 'ok' | 'missing' = 'ok') {
     state.held = state.enrolDuringRemoval ? ['totp'] : [];
   });
   const dispatch = vi.fn(async (event: unknown) => void order.push(event instanceof TwoFactorDisabled ? `event:${event.via}` : 'event'));
-  const info = vi.fn();
   const lines: string[] = [];
   const output = { line: (line: string) => lines.push(line), success: (line: string) => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
   const command = new ResetTwoFactorCommand(commandGuards(guardContext({ users, accountSessions: { end } as unknown as AccountSessions, factors: state, events: { dispatch } as unknown as EventDispatcher })), { info } as unknown as Logger);
@@ -107,6 +106,19 @@ describe('auth:reset-two-factor', () => {
     state.enrolDuringRemoval = true;
     expect(await run(['ada@example.com'])).toBe(1);
     expect(lines).toEqual(['✗ A second factor was enrolled for ada@example.com while the command ran. Run it again.']);
+  });
+
+  it('answers as usual when the log of the reset cannot be written', async () => {
+    const down = vi.fn(() => {
+      throw new Error('log sink down');
+    });
+    const done = setup('ok', down);
+    expect(await done.run(['ada@example.com'])).toBe(0);
+    expect(down).toHaveBeenCalled();
+    const raced = setup('ok', down);
+    raced.state.enrolDuringRemoval = true;
+    expect(await raced.run(['ada@example.com'])).toBe(1);
+    expect(raced.lines).toEqual(['✗ A second factor was enrolled for ada@example.com while the command ran. Run it again.']);
   });
 
   it('says so, and does nothing, for an account without a second factor', async () => {

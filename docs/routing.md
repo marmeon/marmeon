@@ -1118,8 +1118,11 @@ if (claim) throw new Error(claim.by === 'route' ? `${slug} is the address of ${c
 | `'invalid'` | one no fallback would ever get: an empty or dot segment, a trailing `/`, a `\`, a control character or a path that does not begin with `/`. Treat it as taken. |
 
 A localized route answers one path per locale of the app: with `de` and `en`, `/de/about` and `/en/about` are taken and `/fr/about` is
-not. Where the server has not told the router (the command line), every first segment counts as a locale and the default health paths count, so the answer errs towards taken. A route a
-package adds in `boot()` is only seen once it has booted, so ask after the app started.
+not. `@marmeon/i18n` tells the router the locales and `@marmeon/server` the health paths of `SERVER_HEALTH_PATH` while the app boots, so a
+command gets the same answer as a request. A `health` you pass to `createHttpKernel()` counts only once the kernel exists. Without
+`@marmeon/i18n`, every first segment counts as a locale. Without `@marmeon/server`, `/up` and `/up/ready` count. The locales, the health
+paths and a route a package adds in `boot()` are only known once their provider has booted, so ask after the app started, not from another
+provider's `boot()`.
 
 ### Moving from a wildcard route
 

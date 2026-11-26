@@ -3,7 +3,7 @@
  * and speak the page protocol with the rest; an app has no reason to, and none of it is API — it can change in any release.
  * @internal
  */
-export { isViewResult } from './view.ts';
+export { assertStatus, isResponseStatus, isViewResult } from './view.ts';
 export { isJsonResult, jsonResponse } from './json.ts';
 export { isConflictResult } from './conflict.ts';
 export { isIslandResult } from './island.ts';

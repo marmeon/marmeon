@@ -1,11 +1,11 @@
-import { createApplication, defineModule, listen, type Container } from '@marmeon/core';
+import { createApplication, defineModule, listen, Logger, type Container, type LogContext } from '@marmeon/core';
 import { CacheServiceProvider } from '@marmeon/cache';
 import { Connections, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
 import { EncryptionServiceProvider, generateKey } from '@marmeon/encryption';
 import { Controller, HttpServiceProvider, type HttpContext } from '@marmeon/http';
 import { createHttpKernel, ServerServiceProvider } from '@marmeon/server';
 import { CsrfProtection, SessionServiceProvider } from '@marmeon/session';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AccountSessions, Auth, authenticate, AuthServiceProvider, SignInFailed, Hasher, PasswordHasher, RememberTokenReused, SignInStore, UserProvider, type AuthUser, type PasswordHash } from './index.ts';
 import { COMPLETE_PENDING, SIGN_IN_VERIFIED } from './auth.ts';
 import { NewPassword } from './new-password.ts';
@@ -119,6 +119,19 @@ class EndOthersController extends Controller {
   }
 }
 
+class EndOthersInTransactionController extends Controller {
+  readonly #auth: Auth;
+  readonly #connections: Connections;
+  constructor(auth: Auth, connections: Connections) {
+    super();
+    this.#auth = auth;
+    this.#connections = connections;
+  }
+  async handle() {
+    return { done: await this.#connections.transaction(() => this.#auth.updateSessionKey()) };
+  }
+}
+
 class LogoutOthersController extends Controller {
   readonly #auth: Auth;
   constructor(auth: Auth) {
@@ -139,6 +152,7 @@ const routes = openRoutes((Route) => {
   Route.middleware(authenticate()).post('/change-password', ChangePasswordController);
   Route.middleware(authenticate()).post('/logout-others', LogoutOthersController);
   Route.middleware(authenticate()).post('/end-others', EndOthersController);
+  Route.middleware(authenticate()).post('/end-others-in-transaction', EndOthersInTransactionController);
   Route.post('/login', LoginController);
   Route.post('/login-as', LoginAsController);
   Route.post('/complete', CompleteController);
@@ -164,7 +178,7 @@ class RecordReused {
  * a remember-me token is written (`issue`), or after one was consumed (`consume`) — the slow steps another request can land in. `verify`
  * holds from the start; the others only after `arm()`, so that the test can set an account up first.
  */
-async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consume' }) {
+async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consume'; logger?: Logger }) {
   failed.length = 0;
   reused.length = 0;
   const users = new Users();
@@ -184,6 +198,7 @@ async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consu
     override: (container: Container) => {
       container.make(CsrfProtection).disable();
       container.instance(UserProvider, users);
+      if (options.logger) container.instance(Logger, options.logger);
       const real = (hasher = container.make(Hasher)); // the app's own costs: its hashes need no rehash
       container.instance(Hasher, {
         make: (password) => real.make(password),
@@ -237,9 +252,10 @@ async function boot(options: { totp?: boolean; hold: 'verify' | 'issue' | 'consu
   users.rows.set(1, { user: ada, hash: await hasher.make('secret'), key: null });
   const tokenCount = async () =>
     (await application.container.make(Connections).get<any>().selectFrom(SIGN_INS_TABLE).select('id').where(sql<boolean>`${sql.ref('remember_selector')} is not null`).execute()).length as number;
+  const sessionCount = async () => (await application.container.make(Connections).get<any>().selectFrom(SIGN_INS_TABLE).select('id').execute()).length as number;
   const end = async () => void (await application.container.make(AccountSessions).end(1));
   const arm = () => void (armed = true);
-  return { application, users, send, jar, browser, arm, held, release, hasher, tokenCount, end };
+  return { application, users, send, jar, browser, arm, held, release, hasher, tokenCount, sessionCount, end };
 }
 
 /** A sign-in store that stops where a test asks it to: `hold('issue')` before a token is made, `hold('consume')` after a cookie was checked. */
@@ -606,6 +622,121 @@ describe('a remember-me token is bound to the account state it was issued under'
     expect((await thief.send('/me')).status, "the thief's session").toBe(401);
     expect((await owner('/me')).status, "the owner's session ends too").toBe(401);
     expect(reused, "the owner is told").toHaveLength(1);
+  });
+
+  it.each([
+    ['signing out the other devices', '/logout-others'],
+    ['updateSessionKey()', '/end-others'],
+  ])('%s ends the sessions of a thief who rotated the owner\'s cookie before it logs, so a throwing logger keeps none alive', async (_name, route) => {
+    const throwing: Logger = {
+      debug() {},
+      info() {},
+      warn() {
+        throw new Error('log sink down');
+      },
+      error() {
+        throw new Error('log sink down');
+      },
+      child: () => throwing,
+    };
+    const world = await boot({ hold: 'issue', logger: throwing });
+    await login(world.send);
+    const owner = world.send;
+    const thief = world.browser();
+    thief.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
+    expect((await thief.send('/me')).status, 'the copy signs in and rotates the cookie').toBe(200);
+    await world.application.container.make(Connections).get<any>().updateTable(SIGN_INS_TABLE).set({ remember_rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+
+    expect(await (await owner(route, {})).json(), 'the request ends as it does with a working logger').toEqual({ done: false });
+    expect(await world.tokenCount(), 'no token is kept').toBe(0);
+    expect(await world.sessionCount(), 'no sign-in row is left in the store').toBe(0);
+    expect((await thief.send('/me')).status, "the thief's session").toBe(401);
+    expect(reused, 'the owner is told').toHaveLength(1);
+  });
+
+  it('logs the copy of a rotated cookie with its user, address and browser once the sessions are ended', async () => {
+    const warnings: { message: string; context?: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (message, context) => void warnings.push({ message, context }), error() {}, child: () => logger };
+    const world = await boot({ hold: 'issue', logger });
+    await login(world.send);
+    const thief = world.browser();
+    thief.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
+    expect((await thief.send('/me')).status).toBe(200);
+    await world.application.container.make(Connections).get<any>().updateTable(SIGN_INS_TABLE).set({ remember_rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    expect(await (await world.send('/logout-others', {})).json()).toEqual({ done: false });
+    const theft = warnings.filter((warning) => warning.message.startsWith('A rotated remember-me token'));
+    expect(theft).toHaveLength(1);
+    expect(theft[0]!.message).toBe('A rotated remember-me token was presented again while signing out other devices: all remember-me tokens and sessions of the user are being ended');
+    expect(theft[0]!.context).toMatchObject({ user: 1 });
+  });
+
+  /** The owner's cookie is the previous validator, past the grace window: a copy rotated it. */
+  const rotatedByCopy = async (world: Awaited<ReturnType<typeof boot>>) => {
+    await login(world.send);
+    const thief = world.browser();
+    thief.jar.set('marmeon_remember', world.jar.get('marmeon_remember')!);
+    expect((await thief.send('/me')).status, 'the copy signs in and rotates the cookie').toBe(200);
+    await world.application.container.make(Connections).get<any>().updateTable(SIGN_INS_TABLE).set({ remember_rotated_at: new Date(Date.now() - 3_600_000) }).execute();
+    return thief;
+  };
+
+  it('ends the sessions first and logs afterwards when the request is not inside a transaction', async () => {
+    const order: string[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: () => void order.push('warn'), error() {}, child: () => logger };
+    const real = AccountSessions.prototype.end;
+    const spy = vi.spyOn(AccountSessions.prototype, 'end').mockImplementation(function (this: AccountSessions, ...args) {
+      order.push('end');
+      return real.apply(this, args);
+    });
+    try {
+      const world = await boot({ hold: 'issue', logger });
+      await rotatedByCopy(world);
+      expect(await (await world.send('/logout-others', {})).json()).toEqual({ done: false });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(order).toEqual(['end', 'warn']);
+  });
+
+  it('ends the sessions after the transaction around the copy\'s request, with a logger that throws', async () => {
+    const throwing: Logger = { debug() {}, info() {}, warn() { throw new Error('log sink down'); }, error() { throw new Error('log sink down'); }, child: () => throwing };
+    const world = await boot({ hold: 'issue', logger: throwing });
+    const thief = await rotatedByCopy(world);
+    expect(await (await world.send('/end-others-in-transaction', {})).json()).toEqual({ done: false });
+    expect(await world.sessionCount()).toBe(0);
+    expect((await thief.send('/me')).status).toBe(401);
+  });
+
+  it('logs the copy even when ending this device throws', async () => {
+    const warnings: { message: string; context?: LogContext }[] = [];
+    const logger: Logger = { debug() {}, info() {}, warn: (message, context) => void warnings.push({ message, context }), error() {}, child: () => logger };
+    const world = await boot({ hold: 'issue', logger });
+    await rotatedByCopy(world);
+    const end = vi.spyOn(world.application.container.make(SignInStore), 'end').mockImplementation(() => {
+      throw new Error('store broke before it answered');
+    });
+    try {
+      await world.send('/logout-others', {});
+      expect(end).toHaveBeenCalled();
+    } finally {
+      end.mockRestore();
+    }
+    const theft = warnings.filter((warning) => warning.message.startsWith('A rotated remember-me token was presented again'));
+    expect(theft).toHaveLength(1);
+    expect(theft[0]!.context).toMatchObject({ user: 1 });
+  });
+
+  it('ends this device as a guest, not with an error, when its sign-in row cannot be ended and nothing can be logged', async () => {
+    const throwing: Logger = { debug() {}, info() {}, warn() { throw new Error('log sink down'); }, error() { throw new Error('log sink down'); }, child: () => throwing };
+    const world = await boot({ hold: 'issue', logger: throwing });
+    await rotatedByCopy(world);
+    const end = vi.spyOn(world.application.container.make(SignInStore), 'end').mockRejectedValue(new Error('store refused'));
+    try {
+      expect(await (await world.send('/logout-others', {})).json()).toEqual({ done: false });
+      expect(end).toHaveBeenCalled();
+    } finally {
+      end.mockRestore();
+    }
   });
 
   it.each([

@@ -15,6 +15,7 @@ export abstract class Controller {
   /**
    * A page: `this.view('user-profile/Show', { profile })` — the name is checked against `modules/*\/views/**`. Or a layer
    * over the page on screen: `this.view('user-profile/Edit', { profile }).layer({ base: 'user-profile.show', params: { user } })`.
+   * Throws a `TypeError` for a status outside 200 to 599, and for 204, 205 and 304. See docs/responses.md#pages.
    */
   protected view<const V extends string, const TProps extends ViewProps>(component: CheckViewName<V>, props: TProps & ReservedProps, options?: ResultOptions): PageResult<TProps, V> {
     return view<V, TProps>(component, props, options);
@@ -41,6 +42,7 @@ export abstract class Controller {
   /**
    * Data as JSON — typed: an action (`useAction('user-profile.links.destroy')`) gets `Serialize<T>` back as `result.data`,
    * an API client the same JSON. `return this.json({ deleted: link.id })`.
+   * Throws a `TypeError` for a status outside 200 to 599, and for 204, 205 and 304 with data. See docs/responses.md#json.
    */
   protected json<T>(data: T, options?: ResultOptions): JsonResult<T> {
     return json(data, options);
