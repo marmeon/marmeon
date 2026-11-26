@@ -65,12 +65,14 @@ async function boot() {
     )
   `.execute(app.container.make(Connections).get('default'));
   const kernel = createHttpKernel(app);
-  return (event: string, field: string, headers: Record<string, string> = {}) =>
+  const target = (event: string, field: string, headers: Record<string, string> = {}, body: string = JSON.stringify({ name: 'badge.png', size: 10 })) =>
     kernel.request(`/events/${event}/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json', [PAGE_HEADER]: PROTOCOL_VERSION, [UPLOAD_HEADER]: field, ...headers },
-      body: JSON.stringify({ name: 'badge.png', size: 10 }),
+      body,
     });
+  const names = async () => ((await app.container.make(Connections).get('default').selectFrom(UPLOADS_TABLE as never).select('name' as never).execute()) as unknown as { name: string }[]).map((row) => row.name);
+  return Object.assign(target, { names });
 }
 
 describe('an upload target of a form built per request', () => {
@@ -96,5 +98,15 @@ describe('an upload target of a form built per request', () => {
     log.length = 0;
     expect((await target('a', 'badge', { [VALIDATE_HEADER]: 'badge' })).status).toBe(400);
     expect(log).toEqual([]); // the interceptor never ran
+  });
+
+  it('stores a name with half of a surrogate pair with U+FFFD in its place, and answers 400 to a name with a NUL character', async () => {
+    const target = await boot();
+    expect((await target('a', 'badge', {}, '{"name":"\\ud83d.png","size":1}')).status).toBe(200);
+    expect(await target.names()).toEqual(['\ufffd.png']);
+    const refused = await target('a', 'badge', {}, '{"name":"a\\u0000.png","size":1}');
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toContain('An upload’s name may not contain a NUL character.');
+    expect(await target.names()).toHaveLength(1);
   });
 });
