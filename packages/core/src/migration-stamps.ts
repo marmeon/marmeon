@@ -39,7 +39,8 @@ export function newestMigration(modulesDir: string): NewestMigration | undefined
 
 /**
  * The timestamps for `count` new files (`subject` in the messages), a second apart, from now on and behind `newest`; or why that
- * cannot be: a newest stamp in the future that is no date, or that leaves no room. A newest stamp in the past is never a reason.
+ * cannot be: a newest stamp in the future with a field out of range (month 1-12, day 1-31, hour up to 23, minute and second up to 59), or that
+ * leaves no room. A day past the end of its month (`2026_02_31_…`) rolls into the next month and is no refusal. A newest stamp in the past is never a reason.
  * @internal
  */
 export function stampsBehind(
@@ -73,7 +74,7 @@ export function stampsBehind(
 /**
  * The timestamp (`2026_10_02_213000`) for the next migration of the app at `root`: the later of now and one second after the newest
  * migration of every module, read from the file names in each module's `migrations` folder under `modules`, as `marmeon publish` reads them.
- * It throws, naming the file, when the newest stamp lies in the future and is no date or leaves no room behind it; a past stamp never refuses.
+ * It throws, naming the file, when the newest stamp lies in the future and has a field out of range or leaves no room behind it; a past stamp never refuses.
  * A `migrations` folder that exists but cannot be read throws its filesystem error; an entry that is no folder is skipped.
  * See `docs/package-development.md#registering-what-a-generator-writes`.
  */

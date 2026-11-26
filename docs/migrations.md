@@ -44,7 +44,7 @@ snake_case, and `--module` must name a module that exists.
 
 The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the latest migration of every
 module under `modules/*/migrations`: the later of now and one second after the newest file name there. Only a newest stamp in the future
-that is no date, or that leaves no room behind it, and a `migrations` folder of another module that cannot be read, are printed as a
+with a field out of range (the ranges are in [Registering what a generator writes](package-development.md#registering-what-a-generator-writes)), or that leaves no room behind it, and a `migrations` folder of another module that cannot be read, are printed as a
 warning. The file is then stamped behind its own module's migrations whose stamps are dates, or with now if even that leaves no room. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
 line when the file has another shape or you pass `--no-register`):
 
@@ -1423,8 +1423,8 @@ A migration is known by its name without the timestamp, across the whole app. `p
 Everything is planned before anything is written: `publish` writes nothing when it refuses, and one refusal for any chosen
 package ends the command with exit code 1 and all the messages. If a write fails after the plan (a full disk, a directory
 without permission), the command names the files it had written by then. A new file is put behind the newest migration of
-your app, whatever its extension (`.ts`, `.js`, `.mts`, `.mjs`); a newest migration whose timestamp is no date, or that leaves no
-room behind it, stops the command with exit code 1 and names the file.
+your app, whatever its extension (`.ts`, `.js`, `.mts`, `.mjs`); a newest migration whose timestamp has a field out of range stops the command with exit code 1 and names the file. So does one that leaves no
+room behind it. A day past the end of its month rolls over and is no refusal.
 
 The command writes what is missing and skips a migration your app already has under the same name (say, one that `make:auth`
 wrote), so you can run it again: when nothing is left it ends with exit code 0 and says so. The files carry a timestamp one

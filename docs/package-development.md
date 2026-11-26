@@ -289,7 +289,7 @@ The reasons name the file by its path. Pass an app-relative name as the third ar
 
 A generator that writes a migration names the file with `nextMigrationStamp(root)` of `@marmeon/core`: the later of now and one second after the newest migration of every module, so the file runs after the tables it builds on whichever module holds them. It reads file names under `modules/*/migrations`, imports nothing and writes nothing. A generator that writes several migrations calls it again after each write. A migrations folder an app registers elsewhere is seen only by the booted migrator, not by the helper.
 
-It throws an error that names the file and says to rename it when the newest stamp lies in the future and is no date or leaves no room behind it. A stamp in the past is never a reason.
+It throws an error that names the file and says to rename it when the newest stamp lies in the future and has a field out of range (month 1-12, day 1-31, hour up to 23, minute and second up to 59) or leaves no room behind it. A day past the end of its month (`2026_02_31_…`) is not refused: it rolls into the next month. A stamp in the past is never a reason.
 
 ```ts
 import { writeFileSync } from 'node:fs';
