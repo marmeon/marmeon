@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ActiveTable, ByEmailTable, drivers, endpoint, GuardedTable, guardedOverride, MEMBERS, MembersTable, SmallExportTable, tableApp, TeamsTable, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
+import { ActiveTable, ByEmailBulkTable, ByEmailTable, drivers, endpoint, GuardedTable, guardedOverride, MEMBERS, MembersTable, SmallExportTable, tableApp, TeamsTable, USERS, type TableTestApp, type TestDriver } from './__fixtures__/app.ts';
 import { HttpError } from '@marmeon/router';
 import { secret, type Database } from '@marmeon/database';
 import { column, defineTable, filter, type DataTable } from './define.ts';
@@ -8,6 +8,9 @@ import { DataTables } from './tables.ts';
 import type { TableData } from './client/index.ts';
 
 let open: TableTestApp | undefined;
+/** Whether a statement of the app carried a NUL character or half of a surrogate pair as a parameter. */
+const sentBadText = (application: TableTestApp) =>
+  application.queries.some((query) => query.parameters.some((value) => typeof value === 'string' && (value.includes('\u0000') || !value.isWellFormed())));
 afterEach(async () => {
   guardedOverride.check = undefined;
   await open?.close();
@@ -298,10 +301,17 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       ['a page that is none', 'page=0'],
       ['two sorts', 'sort=name&sort=-name'],
       ['a search that is too long', `search=${'x'.repeat(101)}`],
+      ['a search with a NUL character', 'search=a%00b'],
     ])('%s → 400', async (_what, query) => {
       const application = await app(driver);
       const { status } = await page(application, ADA, query);
       expect(status, `${query} answered ${status}`).toBe(400);
+    });
+
+    it('takes a search with accents or an emoji', async () => {
+      const application = await app(driver);
+      expect((await page(application, ADA, 'search=caf%C3%A9')).status).toBe(200);
+      expect((await page(application, ADA, `search=${encodeURIComponent('😀')}`)).status).toBe(200);
     });
 
     it('a filter on a hidden column is hidden with it (400) — its counts would tell the values', async () => {
@@ -382,6 +392,25 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
       expect(application.recorder.deactivated).toEqual([]);
     });
 
+    it('a number key with a NUL character or half of a surrogate pair is a 422 — never a 404', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      expect((await run(application, ADA, 'a\u0000b')).status).toBe(422);
+      expect((await run(application, ADA, 'a\ud83d')).status).toBe(422);
+      expect(sentBadText(application), 'a refused key reached the database').toBe(false);
+      expect(application.recorder.deactivated).toEqual([]);
+    });
+
+    it('a text key with a NUL character or half of a surrogate pair is a 422 — on Postgres it was a 500', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      const text = (key: string) => application.request(endpoint(ByEmailTable, 'action', 'deactivate'), { method: 'POST', user: ADA, json: { key } });
+      expect((await text('a\u0000b')).status).toBe(422);
+      expect((await text('a\ud83d')).status).toBe(422);
+      expect(sentBadText(application), 'a refused key reached the database').toBe(false);
+      expect(application.recorder.deactivated).toEqual([]);
+    });
+
     it('refuses an unknown action (404), a body without a key (422) and a guest (the page\'s middleware: 401)', async () => {
       const application = await app(driver);
       expect((await run(application, ADA, 2, 'delete')).status).toBe(404);
@@ -456,6 +485,43 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     const run = (application: TableTestApp, user: number | undefined, body: unknown) =>
       application.request(endpoint(MembersTable, 'bulk', 'deactivate'), { method: 'POST', user, json: body });
 
+    it.each([['a NUL character', 'a\u0000b'], ['half of a surrogate pair', '\ud83d']])('refuses a chosen key with %s (422) and acts on nothing', async (_what, key) => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      expect((await run(application, ADA, { keys: [2, key] })).status).toBe(422);
+      expect(application.recorder.deactivated).toEqual([]);
+      expect(sentBadText(application), 'a refused key reached the database').toBe(false);
+    });
+
+    it('refuses a chosen text key with a NUL character or half of a surrogate pair (422) — on Postgres it was a 500', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      const text = (keys: string[]) => application.request(endpoint(ByEmailBulkTable, 'bulk', 'deactivate'), { method: 'POST', user: ADA, json: { keys } });
+      expect((await text(['alan@example.com', 'a\u0000b'])).status).toBe(422);
+      expect((await text(['a\ud83d'])).status).toBe(422);
+      expect(application.recorder.deactivated).toEqual([]);
+      expect(sentBadText(application), 'a refused key reached the database').toBe(false);
+      expect((await text(['alan@example.com'])).status, 'a valid text key is refused').toBe(200);
+      expect(application.recorder.deactivated).toEqual(['alan@example.com']);
+    });
+
+    it.each([['a NUL character', 'a\u0000'], ['half of a surrogate pair', '\ud83d']])('"all matching" with a search with %s is a 400 and acts on nothing', async (_what, value) => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      expect((await run(application, ADA, { all: true, query: { search: value } })).status).toBe(400);
+      expect(application.recorder.deactivated).toEqual([]);
+      expect(application.queries, 'a refused search ran a statement').toEqual([]);
+    });
+
+    it('a form post of "all matching" with a NUL character in the URL\'s search is a 400 and runs no query', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      const response = await application.request(`${endpoint(MembersTable, 'bulk', 'deactivate')}?search=a%00b`, { method: 'POST', user: ADA, form: 'all=1' });
+      expect(response.status).toBe(400);
+      expect(application.recorder.deactivated).toEqual([]);
+      expect(sentBadText(application), 'a refused search reached the database').toBe(false);
+    });
+
     it('keys ∩ the base query: keys that are no rows of the table (another team\'s, none) are left out and counted', async () => {
       const application = await app(driver);
       const response = await run(application, ADA, { keys: [2, 9, 777] });
@@ -504,6 +570,13 @@ describe.each(drivers)('@marmeon/table on %s', (driver) => {
     // A date cell is written as TIME: its format is not what these tests are about.
     const withoutTimes = (text: string) => text.replace(/\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d(\.\d+)?Z?/g, 'TIME');
     const csv = (application: TableTestApp, user: number | undefined, query = '') => application.request(`${endpoint(MembersTable, 'export', 'csv')}${query ? `?${query}` : ''}`, { user });
+
+    it('refuses a NUL character in the URL\'s search (400) before any row is read', async () => {
+      const application = await app(driver);
+      application.queries.length = 0;
+      expect((await csv(application, ADA, 'search=a%00b')).status).toBe(400);
+      expect(sentBadText(application), 'a refused search reached the database').toBe(false);
+    });
 
     it('streams the visible columns as the table is filtered and sorted — no-store, a safe file name', async () => {
       const application = await app(driver);
