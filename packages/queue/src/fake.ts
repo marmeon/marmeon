@@ -12,7 +12,7 @@ import { CallQueuedListener, QueuedListeners } from './listeners.ts';
 import { uniqueLock, uniqueRecord } from './locks.ts';
 import { prepareChain, prepareRecord, recordOptionsOf, type PendingJobs, type Queue } from './queue.ts';
 import { QueueError, JobRegistry } from './registry.ts';
-import { delaySeconds, JobRunner } from './runner.ts';
+import { delaySeconds, isEncryptedJob, JobRunner } from './runner.ts';
 import { Worker, type WorkOptions, type WorkResult } from './worker.ts';
 
 /** The unique lock a recorded dispatch carried. */
@@ -120,7 +120,7 @@ export class QueueFake implements Queue {
       kind,
       jobs: pending.map(([job]) => (typeof job === 'function' && typeof job.job === 'string' ? job.job : String(job))),
       payloads: pending.map(([, payload]) => payload),
-      encrypted: pending.map(([job]) => (job as { encrypted?: unknown }).encrypted === true),
+      encrypted: pending.map(([job]) => isEncryptedJob(job)),
       connection: options.connection ?? FAKE_CONNECTION,
       queue: options.queue ?? 'default',
       delaySeconds: 0,
