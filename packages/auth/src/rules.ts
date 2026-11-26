@@ -16,9 +16,10 @@ const length = (value: string) => [...value.normalize('NFKC')].length;
 const bytes = (value: string) => Buffer.byteLength(value.normalize('NFKC'), 'utf8');
 
 /**
- * A new password — a rule of @marmeon/validation: long enough, short enough to hash (4 KiB, the hasher's limit), well-formed,
- * and nothing else. No composition rules (digits, symbols): NIST SP 800-63B advises against them. Never trimmed. Its
- * confirmation is `.confirmed()` of the object:
+ * A new password — a rule of @marmeon/validation: long enough, short enough to hash and to sign in with (4096 characters as typed, 4 KiB after NFKC), well-formed
+ * and without a NUL character, and nothing else. No composition rules (digits, symbols): NIST SP 800-63B advises against them. Never trimmed. Its
+ * confirmation is `.confirmed()` of the object. A missing, malformed or NUL-holding value gets the `required` message. See
+ * docs/hashing.md#the-password-rule.
  *
  * ```ts
  * schema: r.object({ password: password(), password_confirmation: r.string() }).confirmed('password')
@@ -29,9 +30,12 @@ export function password({ min = 8, messages = {} }: PasswordRuleOptions = {}): 
   const required = messages.required ?? translatable('marmeon.validation.password.required', {}, 'Enter a password.');
   const short = messages.min ?? translatable('marmeon.validation.password.min', { min }, 'The password needs at least {min} characters.');
   const long = messages.max ?? translatable('marmeon.validation.password.max', {}, 'The password is too long.');
-  // Missing, not a string or not well-formed (a lone surrogate the hasher would refuse): "Enter a password".
+  // Missing, not a string, not well-formed (a lone surrogate the hasher would refuse) or with a NUL character (sign-in's
+  // r.string() refuses it): "Enter a password".
   return r
-    .value<string>((value) => (typeof value === 'string' && value.isWellFormed() ? undefined : required))
+    .value<string>((value) => (typeof value === 'string' && value.isWellFormed() && !value.includes('\0') ? undefined : required))
     .custom((value) => length(value) >= min, short)
+    // The starter's sign-in caps the value as typed at 4096 characters, so a longer one is refused here even when it fits after NFKC.
+    .custom((value) => [...value].length <= MAX_PASSWORD_BYTES, long)
     .custom((value) => bytes(value) <= MAX_PASSWORD_BYTES, long);
 }

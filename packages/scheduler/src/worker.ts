@@ -60,10 +60,18 @@ export class ScheduleWorker {
     }
   }
 
-  /** Waits up to `seconds` for the runs still going; whether they all ended. */
+  /**
+   * Waits up to `seconds` for the runs still going; whether they all ended. The wait holds the process open — a run
+   * without a handle of its own would otherwise let it end early — and stops as soon as the runs end.
+   */
   async drain(seconds: number): Promise<boolean> {
     if (this.#running.size === 0) return true;
     const ended = Promise.all(this.#running).then(() => true);
-    return Promise.race([ended, delay(seconds * 1000, false, { ref: false })]);
+    const timer = new AbortController();
+    try {
+      return await Promise.race([ended, delay(seconds * 1000, false, { signal: timer.signal }).catch(() => false)]);
+    } finally {
+      timer.abort();
+    }
   }
 }

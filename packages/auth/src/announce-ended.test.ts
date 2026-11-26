@@ -1,7 +1,9 @@
+import type { Logger } from '@marmeon/core';
 import { SessionEndings, type UserSessions } from '@marmeon/session';
 import { accountScope } from '@marmeon/session/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { AccountSessions } from './account-sessions.ts';
+import { EverySessionEnded } from './events.ts';
 import { signInStore } from './test-helpers/stores.ts';
 import type { AuthUser, Credentials, UserProvider } from './user.ts';
 import { guardContext } from './test-helpers/guard-context.ts';
@@ -143,5 +145,47 @@ describe('the sign-ins of the account are ended once more after the keys', () =>
     const accounts = new AccountSessions(guardContext({ users: users({ updateSessionKey }), signIns: {} as never }));
     await expect(accounts.end(7 as never)).rejects.toThrow(/^\[marmeon:A6\] AccountSessions\.end\(\) needs SignInStore\.endAll\(\)/);
     expect(updateSessionKey).not.toHaveBeenCalled();
+  });
+});
+
+describe('endEveryone() whatever the logger does', () => {
+  const down = (): never => {
+    throw new Error('log sink down');
+  };
+  const throwing: Logger = { debug() {}, info: down, warn: down, error: down, child: () => throwing };
+  const rotating = () => {
+    let key: string | null = null;
+    return users({
+      findById: async () => ({ user: ada, passwordHash: null, sessionKey: key }),
+      updateEverySessionKey: async (next: string) => ((key = next), { accounts: 1, sampleId: ada.id }),
+    });
+  };
+
+  it('dispatches EverySessionEnded and returns what it did when the summary cannot be logged', async () => {
+    const dispatch = vi.fn(async (_event: unknown) => {});
+    const accounts = new AccountSessions(guardContext({ users: rotating(), signIns, logger: throwing, events: { dispatch } as never }));
+    expect(await accounts.endEveryone({ accessTokens: false, resetTokens: false })).toEqual({ accounts: 1, resetTokens: 0, accessTokens: 0, signIns: 2 });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch.mock.calls[0]![0]).toBeInstanceOf(EverySessionEnded);
+  });
+
+  it('returns what it did when a listener fails and the failure cannot be logged', async () => {
+    const dispatch = vi.fn(async () => Promise.reject(new Error('queue down')));
+    const accounts = new AccountSessions(guardContext({ users: rotating(), signIns, logger: throwing, events: { dispatch } as never }));
+    expect(await accounts.endEveryone({ accessTokens: false, resetTokens: false })).toMatchObject({ accounts: 1 });
+    expect(dispatch).toHaveBeenCalled();
+  });
+
+  it('keeps the error it throws when a failed step cannot be logged', async () => {
+    const failing = signInStore({ endEveryone: async () => Promise.reject(new Error('store refused')) });
+    const accounts = new AccountSessions(guardContext({ users: rotating(), signIns: failing, logger: throwing }));
+    await expect(accounts.endEveryone({ accessTokens: false, resetTokens: false })).rejects.toThrow(/AccountSessions\.endEveryone\(\) failed at "sign-ins".*store refused/);
+  });
+
+  it('tells the streams and returns when the streams cannot be told and the failure cannot be logged', async () => {
+    const endings = { endEverySession: vi.fn(async () => Promise.reject(new Error('hub down'))) };
+    const accounts = new AccountSessions(guardContext({ users: rotating(), signIns, logger: throwing, endings: endings as never }));
+    expect(await accounts.endEveryone({ accessTokens: false, resetTokens: false })).toMatchObject({ accounts: 1 });
+    expect(endings.endEverySession).toHaveBeenCalled();
   });
 });

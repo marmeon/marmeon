@@ -25,6 +25,9 @@ export const READY_CACHE_MS = 1000;
 /** The readiness path under a liveness `path`. */
 export const readyPathOf = (path: string): string => `${path === '/' ? '' : path}/ready`;
 
+/** The paths the health check answers under `health` (the setting): liveness and readiness; none when it is off. What `claimedBy()` is told. */
+export const healthPathsOf = (health: string | false): readonly string[] => (health === false ? [] : [health, readyPathOf(health)]);
+
 /**
  * The endpoints for `application`, under `path`. `debug`: the details of each check in the answer — to a request for one of
  * `hosts` only (the path is public; a foreign `Host` is a page re-pointed at this machine).

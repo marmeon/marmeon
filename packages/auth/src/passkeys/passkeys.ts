@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { clientKey, RateLimiter } from '@marmeon/cache';
 import { afterCommit, afterRollback, err, ok, type Clock, type EventDispatcher, type Logger, type Result } from '@marmeon/core';
+import { logQuietly } from '../quiet-log.ts';
 import type { Connections } from '@marmeon/database';
 import { ClientInfo } from '@marmeon/http';
 import { CookieJar } from '@marmeon/router';
@@ -501,8 +502,9 @@ export class Passkeys {
         await this.#store.suspend(record.id);
         // Every session of the account ends, this one too, whatever the copy started must not outlive the suspicion: at once, or — inside an app
         // transaction — after it, so the owner is told first.
-        this.#logger.warn('A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
         await this.#endSessionsOfClone(record);
+        // A logger that throws never skips the suspension, an ending or the owner's notice, and never changes the refusal.
+        logQuietly(this.#logger, 'warn', 'A passkey answered with a sign count that did not move forward: it may have been copied, and is suspended', { user: record.userId, passkey: record.id });
         if (found) await this.#emit(new PasskeyCloneSuspected(found.user, record.id));
       } else if (purposeIsSignIn && found) {
         // A passkey that exists answered wrongly (signature, user handle): the owner may want to know. The client learns nothing.
@@ -523,16 +525,16 @@ export class Passkeys {
     const end = async () => {
       try {
         const ended = await this.#accountSessions.end(record.userId as never, { accessTokens: false });
-        if (!ended.ok) this.#logger.warn('A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
+        if (!ended.ok) logQuietly(this.#logger, 'warn', 'A passkey looked copied, but its account is gone, so no sessions were ended', { user: record.userId, passkey: record.id });
       } catch (error) {
-        this.#logger.error('A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error });
+        logQuietly(this.#logger, 'error', 'A passkey looked copied and was suspended, but the sessions of its account could not be ended', { user: record.userId, passkey: record.id, error });
       }
     };
     await afterRollback(async () => {
       try {
         await this.#store.suspend(record.id);
       } catch (error) {
-        this.#logger.error('A passkey looked copied, but its suspension could not be written again after a rollback', { user: record.userId, passkey: record.id, error });
+        logQuietly(this.#logger, 'error', 'A passkey looked copied, but its suspension could not be written again after a rollback', { user: record.userId, passkey: record.id, error });
       }
       await end();
     });

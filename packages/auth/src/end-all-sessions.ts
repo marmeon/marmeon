@@ -3,6 +3,7 @@ import { CommandArgumentsError, environment, escapeControls, Logger, Redactor } 
 import type { CommandInput } from 'marmeon';
 import { AccountSessions } from './account-sessions.ts';
 import { GUARD_OPTION, OperatorGuards } from './operator-guard.ts';
+import { logQuietly } from './quiet-log.ts';
 
 /**
  * `marmeon auth:end-all-sessions --force [--guard=web] [--keep-api-tokens] [--keep-reset-tokens]`: signs every account out of every browser and
@@ -79,7 +80,7 @@ export class EndAllSessionsCommand {
       return 1;
     }
     // `endEveryone()` has logged the counts; this adds who asked for it.
-    this.#logger?.info('Ended every session of every account at the operator\'s request', { ...operator(), ...ended });
+    logQuietly(this.#logger, 'info', 'Ended every session of every account at the operator\'s request', { ...operator(), ...ended });
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'}`;
     const kept = [...(accessTokens ? [] : ['API tokens']), ...(resetTokens ? [] : ['password-reset tokens'])];
     output.success(
