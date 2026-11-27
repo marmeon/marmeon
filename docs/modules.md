@@ -111,6 +111,7 @@ its own:
 | `liveAuthorizers` | Who may follow its [live channels](realtime.md#who-may-follow-a-channel). | `@marmeon/live` |
 | `schedule` | Its [scheduled work](scheduling.md). | `@marmeon/scheduler` |
 | `csrfExcept` | Paths that skip the [CSRF check](csrf.md#excluding-paths). | `@marmeon/session` |
+| `searchIndexes` | Its [search indexes](full-text-search.md#defining-an-index). | `@marmeon/search` |
 
 Controllers, views and other classes need no list: a route names its controller, and the container builds it when a request
 needs it.
