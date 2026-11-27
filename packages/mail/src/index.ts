@@ -1,12 +1,14 @@
 import { Application, Clock, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers, withCode } from '@marmeon/core/internal';
 import { devOnly } from '@marmeon/core/dev';
-import { API_MAIL_DRIVERS, BUILT_IN_MAIL_DRIVERS, fromDefaultWarning, LOG_MAILER_WARNING, MailConfig, POSTMARK_TEST_TOKEN, POSTMARK_TEST_TOKEN_WARNING } from './config.ts';
+import type { HttpClient } from '@marmeon/fetch';
+import { BUILT_IN_MAIL_DRIVERS, fromDefaultWarning, LOG_MAILER_WARNING, MailConfig, POSTMARK_TEST_TOKEN, POSTMARK_TEST_TOKEN_WARNING } from './config.ts';
 import { MailError, Mailer, MailSetupError, TransportMailer, type MailQueue } from './mailer.ts';
 import { importFetch, type FetchModule } from './drivers/api.ts';
 import { MailPreviews } from './preview.ts';
 import { SendQueuedMail } from './queued.ts';
 import { PostmarkTransport } from './drivers/postmark.ts';
+import { ResendTransport } from './drivers/resend.ts';
 import { ArrayTransport, LogTransport, MailTransport, SmtpTransport, type MailDriverFactory } from './transports.ts';
 
 export { fromHtml, Html, html, raw } from './html.ts';
@@ -24,12 +26,41 @@ export type { MailDriverContext, MailDriverFactory, MailReceipt, MailSendOptions
 declare module '@marmeon/core' {
   interface ServiceProviderClass {
     /**
-     * Mail transports this provider brings, by name — `MAIL_DRIVER=<name>` selects one. A built-in name (`log`, `array`, `smtp`, `postmark`) or a
+     * Mail transports this provider brings, by name — `MAIL_DRIVER=<name>` selects one. A built-in name (`log`, `array`, `smtp`, `postmark`, `resend`) or a
      * name another provider brings stops the start. See `docs/drivers.md#mail-transports`.
      */
     readonly mailDrivers?: Readonly<Record<string, MailDriverFactory>>;
   }
 }
+
+/** What every API transport is built from besides its credential. */
+interface ApiParts {
+  readonly http: () => HttpClient;
+  readonly fetch: FetchModule;
+  readonly clock: Clock;
+}
+
+/**
+ * The built-in transports that send through the `HttpClient` of @marmeon/fetch. Each names the setting that holds its credential and
+ * what it is (for the start that finds it unusable), reads it, and builds the transport; a new one is one more entry.
+ */
+const API_MAIL_DRIVERS = {
+  postmark: {
+    setting: 'MAIL_POSTMARK_TOKEN',
+    what: 'the server API token of your Postmark server',
+    credential: (config: MailConfig) => config.postmark.token,
+    build: (token: string, parts: ApiParts): MailTransport => new PostmarkTransport({ token, ...parts }),
+  },
+  resend: {
+    setting: 'MAIL_RESEND_API_KEY',
+    what: 'an API key of your Resend account',
+    credential: (config: MailConfig) => config.resend.apiKey,
+    build: (apiKey: string, parts: ApiParts): MailTransport => new ResendTransport({ apiKey, ...parts }),
+  },
+} satisfies Partial<Record<(typeof BUILT_IN_MAIL_DRIVERS)[number], unknown>>;
+
+type ApiMailDriver = keyof typeof API_MAIL_DRIVERS;
+const isApiDriver = (driver: string): driver is ApiMailDriver => Object.hasOwn(API_MAIL_DRIVERS, driver);
 
 type QueueModule = typeof import('@marmeon/queue');
 
@@ -62,7 +93,7 @@ export class MailServiceProvider implements ServiceProvider {
       if (config.driver === 'array') this.#transport = new ArrayTransport();
       else if (config.driver === 'smtp') this.#transport = new SmtpTransport(config.smtp);
       else if (config.driver === 'log') this.#transport = new LogTransport(c.make(Logger), { text: !config.protected });
-      else if (config.driver === 'postmark') this.#transport = this.#postmark(config, c);
+      else if (isApiDriver(config.driver)) this.#transport = this.#api(config.driver, config, c);
       else this.#transport = this.#custom(config, c);
       return this.#transport;
     });
@@ -77,31 +108,40 @@ export class MailServiceProvider implements ServiceProvider {
     container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport), c.make(Application)));
   }
 
-  /** The Postmark transport; the `HttpClient` is resolved for every request, so `app.http` of a test app is the one used. */
-  #postmark(config: MailConfig, container: Resolver): MailTransport {
+  /** The transport of an API driver; the `HttpClient` is resolved for every request, so `app.http` of a test app is the one used. */
+  #api(driver: ApiMailDriver, config: MailConfig, container: Resolver): MailTransport {
     const module = this.#fetch;
     // `boot()` loads @marmeon/fetch (or stops the start) before it builds the transport; unset means something asked for it earlier.
     if (!module) {
       throw new MailSetupError(withCode('Q8', 'The mail transport was resolved before MailServiceProvider booted, so @marmeon/fetch is not loaded yet. Resolve MailTransport or Mailer after the application has started.'));
     }
-    return new PostmarkTransport({ token: config.postmark.token, http: () => container.make(module.HttpClient), fetch: module, clock: container.make(Clock) });
+    const parts = { http: () => container.make(module.HttpClient), fetch: module, clock: container.make(Clock) };
+    const entry = API_MAIL_DRIVERS[driver];
+    return entry.build(entry.credential(config).trim(), parts);
   }
 
-  #fetchMissing(): MailSetupError {
+  #fetchMissing(driver: string): MailSetupError {
     return new MailSetupError(
-      withCode('Q8', 'MAIL_DRIVER=postmark sends through @marmeon/fetch (marmeon add fetch; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/fetch@<version of your app>).'),
+      withCode('Q8', `MAIL_DRIVER=${driver} sends through @marmeon/fetch (marmeon add fetch; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/fetch@<version of your app>).`),
     );
   }
 
   /** The checks of an API driver, before its transport is built: @marmeon/fetch is there and bound, and the credential is set (its value is never named). */
   async #checkApiDriver(app: Application, config: MailConfig): Promise<void> {
     const module = await importFetch();
-    if (!module) throw this.#fetchMissing();
+    if (!module) throw this.#fetchMissing(config.driver);
     if (!app.container.has(module.HttpClient)) {
       throw new MailSetupError(withCode('Q8', `MAIL_DRIVER=${config.driver} sends through the HttpClient of @marmeon/fetch, which this app does not register. Run marmeon discover (or add FetchServiceProvider to the app's providers).`));
     }
-    if (config.driver === 'postmark' && config.postmark.token.trim() === '') {
-      throw new MailSetupError(withCode('Q8', 'MAIL_DRIVER=postmark needs MAIL_POSTMARK_TOKEN (the server API token of your Postmark server).'));
+    const entry = API_MAIL_DRIVERS[config.driver as ApiMailDriver];
+    const value = entry.credential(config).trim();
+    // The request header is trimmed, so a credential of whitespace is none. No Postmark token or Resend key holds a space or a character
+    // outside visible ASCII, so such a value is certainly wrong (a header could carry it). The value itself is never named.
+    if (value === '') {
+      throw new MailSetupError(withCode('Q8', `MAIL_DRIVER=${config.driver} needs ${entry.setting} (${entry.what}).`));
+    }
+    if (!/^[\x21-\x7e]+$/.test(value)) {
+      throw new MailSetupError(withCode('Q8', `${entry.setting} must be printable ASCII without spaces, as ${entry.what} is. Check the value you set.`));
     }
     this.#fetch = module;
   }
@@ -129,7 +169,7 @@ export class MailServiceProvider implements ServiceProvider {
     const config = app.container.make(MailConfig);
     // A name nobody brought, a built-in name or a name twice stops the start here; so does a factory that fails.
     const custom = this.#factories(app.container);
-    if (API_MAIL_DRIVERS.includes(config.driver)) {
+    if (isApiDriver(config.driver)) {
       await this.#checkApiDriver(app, config);
       app.container.make(MailTransport);
     } else if (!(BUILT_IN_MAIL_DRIVERS as readonly string[]).includes(config.driver)) {

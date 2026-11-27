@@ -4,16 +4,13 @@ import { devHosts } from '@marmeon/core/dev';
 const DEFAULT_FROM_ADDRESS = 'hello@example.com';
 
 /** The built-in transports; a provider can bring more (`static mailDrivers`). */
-export const BUILT_IN_MAIL_DRIVERS = ['log', 'array', 'smtp', 'postmark'] as const;
-
-/** The built-in transports that send through the `HttpClient` of @marmeon/fetch: their start needs that package and a credential. */
-export const API_MAIL_DRIVERS: readonly string[] = ['postmark'];
+export const BUILT_IN_MAIL_DRIVERS = ['log', 'array', 'smtp', 'postmark', 'resend'] as const;
 
 export const MailConfig = defineConfig('mail', {
   env: env({
     /**
      * `log` (default: written to the log, nothing is sent), `array` (kept in memory), `smtp` (nodemailer, a dependency of this package),
-     * `postmark` (the Postmark API, through @marmeon/fetch) or a transport a provider brings. A name nobody brought stops the start.
+     * `postmark` or `resend` (their APIs, through @marmeon/fetch) or a transport a provider brings. A name nobody brought stops the start.
      */
     MAIL_DRIVER: env.string().regex(/^[a-z][a-z0-9-]*$/, 'must be a driver name: lowercase letters, digits and dashes').default('log'),
     MAIL_FROM_ADDRESS: env.email('MAIL_FROM_ADDRESS must be an e-mail address').optional(),
@@ -28,6 +25,8 @@ export const MailConfig = defineConfig('mail', {
     MAIL_PASSWORD: env.string().default(''),
     /** The Postmark server API token; `MAIL_DRIVER=postmark` stops the start without it. The name ends in `TOKEN`, so the log redactor masks it. */
     MAIL_POSTMARK_TOKEN: env.string().default(''),
+    /** The Resend API key; `MAIL_DRIVER=resend` stops the start without it. The name contains `API_KEY`, so the log redactor masks it. */
+    MAIL_RESEND_API_KEY: env.string().default(''),
     NODE_ENV: env.string().optional(),
     APP_URL: env.string().optional(),
   }).renamed('MAIL_MAILER', 'MAIL_DRIVER'),
@@ -47,6 +46,7 @@ export const MailConfig = defineConfig('mail', {
         password: e.MAIL_PASSWORD,
       },
       postmark: { token: e.MAIL_POSTMARK_TOKEN },
+      resend: { apiKey: e.MAIL_RESEND_API_KEY },
       /** The mail previews under `/_marmeon/mail`: only with `NODE_ENV=development`, never "not production". */
       previews: environment.isDevelopment(e),
       /** The hosts the previews answer (DNS rebinding): loopback names and `APP_URL`'s; any other gets 403. */
@@ -65,7 +65,7 @@ export type MailConfig = ConfigOf<typeof MailConfig>;
  */
 export const LOG_MAILER_WARNING =
   "MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is " +
-  'left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD, or MAIL_DRIVER=postmark and MAIL_POSTMARK_TOKEN.';
+  'left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD; MAIL_DRIVER=postmark and MAIL_POSTMARK_TOKEN; or MAIL_DRIVER=resend and MAIL_RESEND_API_KEY.';
 
 /** The token Postmark documents for tests: its API accepts every request and delivers none. */
 export const POSTMARK_TEST_TOKEN = 'POSTMARK_API_TEST';

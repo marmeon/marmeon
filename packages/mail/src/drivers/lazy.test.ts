@@ -11,6 +11,7 @@ vi.mock('@marmeon/fetch', async (original) => {
 const boot = (env: Record<string, string>) =>
   createApplication({ root: import.meta.dirname, discover: false, providers: [MailServiceProvider] }, { env: { LOG_LEVEL: 'silent', ...env } });
 
+// Any load of the package fires the factory, a static import of a driver file as well as the lazy one.
 describe('@marmeon/fetch is loaded for an API driver only', () => {
   it('MAIL_DRIVER=smtp, log and array never load it', async () => {
     for (const MAIL_DRIVER of ['smtp', 'log', 'array']) await boot({ MAIL_DRIVER });

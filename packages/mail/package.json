@@ -8,7 +8,8 @@
     "email",
     "mjml",
     "smtp",
-    "postmark"
+    "postmark",
+    "resend"
   ],
   "homepage": "https://marmeon.com/docs/mail",
   "bugs": {

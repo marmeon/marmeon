@@ -70,6 +70,9 @@ export declare const MailConfig: import("@marmeon/core").ConfigDefinition<{
     postmark: {
         token: string;
     };
+    resend: {
+        apiKey: string;
+    };
     previews: boolean;
     previewHosts: ReadonlySet<string>;
     protected: boolean;
@@ -169,6 +172,9 @@ export declare class MailServiceProvider implements ServiceProvider {
         };
         postmark: {
             token: string;
+        };
+        resend: {
+            apiKey: string;
         };
         previews: boolean;
         previewHosts: ReadonlySet<string>;
@@ -382,6 +388,8 @@ export interface SentMail extends MailMessage {
 `MAIL_POSTMARK_TOKEN` = `""`
 // MAIL_REQUIRE_TLS
 `MAIL_REQUIRE_TLS` = `true`
+// MAIL_RESEND_API_KEY
+`MAIL_RESEND_API_KEY` = `""`
 // MAIL_SECURE
 `MAIL_SECURE` = `false`
 // MAIL_USERNAME

@@ -1,6 +1,7 @@
 import type { Clock } from '@marmeon/core';
 import type { HttpClient } from '@marmeon/fetch';
 import { MailDeliveryError } from '../mailer.ts';
+import type { MailMessage } from '../message.ts';
 
 export type FetchModule = typeof import('@marmeon/fetch');
 
@@ -86,6 +87,21 @@ export function checkHeaders(headers: Readonly<Record<string, string>>, driver: 
   return checked;
 }
 
+/**
+ * Refuses, before any request, an attachment whose `filename` or `contentType` is not a single-line string: the provider puts both
+ * into the MIME headers of the part, where a line break would add a header. Returns the attachments' fields as the transport sends them.
+ * @internal
+ */
+export function checkAttachments(attachments: MailMessage['attachments']): { filename: string; contentType: string | undefined; content: Buffer }[] {
+  return attachments.map((attachment) => {
+    const { filename, contentType } = attachment as { filename: unknown; contentType: unknown };
+    if (typeof filename !== 'string' || /[\r\n]/.test(filename) || (contentType !== undefined && (typeof contentType !== 'string' || /[\r\n]/.test(contentType)))) {
+      throw new MailDeliveryError('refused', 'The mail was refused: an attachment\'s filename or content type is not a single line of text.');
+    }
+    return { filename, contentType: contentType as string | undefined, content: Buffer.from(attachment.content) };
+  });
+}
+
 const MAX_RETRY_AFTER = 3600;
 const HTTP_DATE = /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
 
@@ -127,6 +143,8 @@ export interface PostJsonOptions {
   readonly signal?: AbortSignal | undefined;
   /** The short error code an error answer names (`undefined` when it names none); only a plain short code is kept. */
   readonly codeOf: (body: unknown) => string | undefined;
+  /** A reason that replaces the one the status gives, for an answer the provider's code says more about. */
+  readonly reasonOf?: (status: number, code: string | undefined) => 'rejected' | undefined;
 }
 
 /**
@@ -189,6 +207,7 @@ function answered(options: PostJsonOptions, status: number, code: string | undef
   } else {
     reason = 'rejected';
   }
+  if (options.reasonOf?.(status, code) === 'rejected') reason = 'rejected';
   const message =
     `The mail was not delivered: ${options.driver} answered ${status}${code === undefined ? '' : ` (${code})`}.` +
     (reason === 'unauthorized' ? ` Check ${options.credential}.` : '');

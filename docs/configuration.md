@@ -428,7 +428,7 @@ These are the settings a new app starts with. Each feature's page lists its own 
 | `CACHE_DRIVER` | `file` | Where the cache lives: `file`, `database`, `redis`, `memory` or a driver a package brings. |
 | `QUEUE_DRIVER` | `database` | Where queued jobs wait: `database`, `redis`, `sync` or a driver a package brings. |
 | `LIVE_DRIVER` | `memory`; `database` in a new app's `.env.example` | How live hints travel: `memory` within one process, `database` through the `live_hints` table (every process of a machine, or of a shared Postgres), `redis` to every process. |
-| `MAIL_DRIVER` | `log` | Where mails go: `log` writes every mail to the log, `smtp` sends it, `postmark` sends it through the Postmark API, `array` keeps it in memory, or a transport a package brings. |
+| `MAIL_DRIVER` | `log` | Where mails go: `log` writes every mail to the log, `smtp` sends it, `postmark` or `resend` sends it through that provider's API, `array` keeps it in memory, or a transport a package brings. |
 
 ## Every variable
 
@@ -529,6 +529,7 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `MAIL_PORT` | mail | value | `587` | [Mail](mail.md#configuration) |
 | `MAIL_POSTMARK_TOKEN` | mail | value | `""` | [Mail](mail.md#configuration) |
 | `MAIL_REQUIRE_TLS` | mail | switch | `true` | [Mail](mail.md#configuration) |
+| `MAIL_RESEND_API_KEY` | mail | value | `""` | [Mail](mail.md#configuration) |
 | `MAIL_SECURE` | mail | switch | `false` | [Mail](mail.md#configuration) |
 | `MAIL_USERNAME` | mail | value | `""` | [Mail](mail.md#configuration) |
 | `MARMEON_OTEL_RECORD_QUERY_VALUES` | otel | switch | `false` | [Observability](observability.md#configuration) |

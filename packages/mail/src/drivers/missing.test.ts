@@ -16,4 +16,14 @@ describe('MAIL_DRIVER=postmark without @marmeon/fetch installed', () => {
     );
     expect(String(error)).not.toContain('pm-secret-token');
   });
+
+  it('names the driver that was chosen: resend too', async () => {
+    const key = ['re', 'secret', 'key'].join('_');
+    const error = await createApplication(
+      { root: import.meta.dirname, discover: false, providers: [MailServiceProvider] },
+      { env: { LOG_LEVEL: 'silent', MAIL_DRIVER: 'resend', MAIL_RESEND_API_KEY: key } },
+    ).catch((caught: unknown) => caught);
+    expect(String(error)).toContain('[marmeon:Q8] MAIL_DRIVER=resend sends through @marmeon/fetch (marmeon add fetch;');
+    expect(String(error)).not.toContain(key);
+  });
 });

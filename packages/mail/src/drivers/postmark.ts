@@ -2,7 +2,7 @@ import type { Clock } from '@marmeon/core';
 import type { HttpClient } from '@marmeon/fetch';
 import type { MailMessage } from '../message.ts';
 import type { MailReceipt, MailSendOptions, MailTransport } from '../transports.ts';
-import { checkHeaders, formatAddress, messageIdOf, postJson, type FetchModule } from './api.ts';
+import { checkAttachments, checkHeaders, formatAddress, messageIdOf, postJson, type FetchModule } from './api.ts';
 
 const ENDPOINT = 'https://api.postmarkapp.com/email';
 
@@ -44,6 +44,7 @@ export class PostmarkTransport implements MailTransport {
   async send(message: MailMessage, options?: MailSendOptions): Promise<MailReceipt> {
     // Before any request: the addresses and headers are checked first.
     const headers = checkHeaders(message.headers, 'postmark');
+    const attachments = checkAttachments(message.attachments);
     const list = (recipients: MailMessage['to']) => recipients.map(formatAddress).join(', ');
     const json = {
       From: formatAddress(message.from),
@@ -55,11 +56,11 @@ export class PostmarkTransport implements MailTransport {
       HtmlBody: message.html,
       TextBody: message.text,
       ...(headers.length > 0 ? { Headers: headers.map(({ name, value }) => ({ Name: name, Value: value })) } : {}),
-      ...(message.attachments.length > 0
+      ...(attachments.length > 0
         ? {
-            Attachments: message.attachments.map((attachment) => ({
+            Attachments: attachments.map((attachment) => ({
               Name: attachment.filename,
-              Content: Buffer.from(attachment.content).toString('base64'),
+              Content: attachment.content.toString('base64'),
               ContentType: attachment.contentType ?? 'application/octet-stream',
             })),
           }

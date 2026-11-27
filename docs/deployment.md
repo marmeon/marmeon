@@ -241,6 +241,7 @@ A new app needs nothing more for SQLite, files, the database queue and the log m
 | Redis for the cache, sessions, the queue or live updates | `pnpm marmeon add redis`, or `pnpm add -E @marmeon/redis@<version of your app>` without `marmeon add`. It brings the `redis` client. |
 | SMTP, `MAIL_DRIVER=smtp` | Nothing: `@marmeon/mail` brings `nodemailer`. |
 | The Postmark API, `MAIL_DRIVER=postmark` | `pnpm marmeon add fetch`, or `pnpm add -E @marmeon/fetch@<version of your app>` without `marmeon add`. |
+| The Resend API, `MAIL_DRIVER=resend` | `pnpm marmeon add fetch`, or `pnpm add -E @marmeon/fetch@<version of your app>` without `marmeon add`. |
 | Postgres, `DB_DRIVER=pgsql` | `pnpm add pg@^8` |
 | An S3 disk | `pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3` |
 | Direct uploads to S3 | also `pnpm add @aws-sdk/s3-presigned-post@^3` |
@@ -269,7 +270,7 @@ The settings a server needs, beyond those of each feature:
 | `SERVER_SHUTDOWN_DELAY_SECONDS` | `0` | Seconds of requests after `SIGTERM`, at most 300. About 5 behind a load balancer that learns from its probes. |
 | `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` | `65` | Seconds an idle connection stays open. Longer than the proxy keeps its own. |
 | `DB_DRIVER` | `sqlite` | `pgsql` for Postgres, with `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` and `DB_PASSWORD`, or the whole address in `DB_URL`, which then wins. See [database](database.md#configuration). |
-| `MAIL_DRIVER` | `log` | `smtp` in production, with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` and `MAIL_FROM_ADDRESS`; or `postmark`, with `MAIL_POSTMARK_TOKEN` and `MAIL_FROM_ADDRESS`. |
+| `MAIL_DRIVER` | `log` | `smtp` in production, with `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` and `MAIL_FROM_ADDRESS`; `postmark`, with `MAIL_POSTMARK_TOKEN` and `MAIL_FROM_ADDRESS`; or `resend`, with `MAIL_RESEND_API_KEY` and `MAIL_FROM_ADDRESS`. |
 | `SERVER_ASSET_VERSION` | the build's | Tabs of an older version load the page fully on their next visit. Set it to the git commit, for example. |
 
 ### `HOST`
@@ -295,7 +296,7 @@ whose secret is still under a removed key). Replacing the key without this step 
 ### Mail
 
 The default `MAIL_DRIVER=log` sends nothing. In a protected app it writes only each mail's recipients and subject into the log,
-and the app warns about it at every start. Production needs `smtp` or `postmark`, and queued mails then go out through a worker.
+and the app warns about it at every start. Production needs `smtp`, `postmark` or `resend`, and queued mails then go out through a worker.
 
 SMTP is encrypted or fails: `MAIL_SECURE=true` on port 465, or STARTTLS on the default port 587. `MAIL_REQUIRE_TLS=false` turns
 the STARTTLS requirement off. Use it only for a relay without TLS on the same machine.
@@ -628,7 +629,7 @@ A single server with Docker Compose is enough for many apps. A few things matter
   formats needs [every old process stopped](#the-upgrade-that-stops-every-process) first.
 - The proxy speaks HTTP/2 to browsers, does not buffer event streams and sets `X-Forwarded-*`. `SERVER_TRUSTED_PROXIES` names it.
 - `HOST=0.0.0.0` where another machine reaches the app directly. `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` above the proxy's idle timeout to the app.
-- `MAIL_DRIVER=smtp`, or `MAIL_DRIVER=postmark` with `MAIL_POSTMARK_TOKEN`.
+- `MAIL_DRIVER=smtp`, or `MAIL_DRIVER=postmark` with `MAIL_POSTMARK_TOKEN`, or `MAIL_DRIVER=resend` with `MAIL_RESEND_API_KEY`.
 - `LIVE_DRIVER=database` (or `redis`) in the production environment: a new app's `.env.example` sets it and its migrations create the table (an older app: `marmeon make:live-table`, then `migrate`), a hand-written `.env.production` does not, and the hints of the worker and the scheduler are lost with `memory`.
 - Web, worker and scheduler each under a supervisor that restarts them, with grace periods longer than the drain.
 - A worker takes every queue the app uses: one without `--queue` does, and a `--queue` list names every queue or holds a `*`.

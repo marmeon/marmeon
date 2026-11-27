@@ -264,7 +264,7 @@ it, the command says the entries expire on their own. A store that expires entri
 
 A mail transport implements `MailTransport` and is a `MailDriverFactory`: it gets the `name` it was registered under, the
 `container` and a `logger` of the `mail` channel, and returns the transport. `MAIL_DRIVER` selects it by name,
-like the built-in `log`, `array`, `smtp` and `postmark`. These four names are taken: a provider that brings a driver with one of them stops the start.
+like the built-in `log`, `array`, `smtp`, `postmark` and `resend`. These five names are taken: a provider that brings a driver with one of them stops the start.
 
 ```ts title="src/MailgunServiceProvider.ts"
 import type { MailDriverFactory } from '@marmeon/mail';

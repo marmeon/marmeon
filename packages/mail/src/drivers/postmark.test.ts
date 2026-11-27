@@ -266,6 +266,23 @@ describe('PostmarkTransport', () => {
     expect(await transport.send(message())).toEqual({ messageId: undefined });
   });
 
+  it('refuses an attachment whose filename or content type is not a single line, before any request', async () => {
+    const hostile: Partial<MailMessage>[] = [
+      { attachments: [{ filename: 'a.txt', content: 'x', contentType: 'text/plain\r\nBcc: x@attacker.example' }] },
+      { attachments: [{ filename: 'a\n.txt', content: 'x' }] },
+      { attachments: [{ filename: 'a.txt\r', content: 'x' }] },
+      { attachments: [{ filename: null as never, content: 'x' }] },
+      { attachments: [{ filename: 'a.txt', content: 'x', contentType: 5 as never }] },
+    ];
+    for (const overrides of hostile) {
+      const { http, transport } = setup();
+      const error = await failure(transport.send(message(overrides)));
+      expect(error.reason).toBe('refused');
+      expect(error.message).not.toContain('attacker');
+      http.assertNothingSent();
+    }
+  });
+
   it('refuses a Bcc header of the envelope before any request', async () => {
     const { http, transport } = setup();
     http.respond(ENDPOINT, Response.json({ MessageID: 'id-1' }));
