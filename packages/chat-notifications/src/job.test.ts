@@ -1,12 +1,19 @@
-import type { Logger } from '@marmeon/core';
+import { Clock, createApplication, type Application, type Logger } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
+import { EncryptionServiceProvider } from '@marmeon/encryption';
+import { FetchServiceProvider, HttpClient } from '@marmeon/fetch';
 import { HttpClientFake } from '@marmeon/fetch/testing';
-import type { JobContext } from '@marmeon/queue';
-import { describe, expect, it } from 'vitest';
+import { Queue, QueueError, QueueServiceProvider, type JobContext } from '@marmeon/queue';
+import { QueueFake } from '@marmeon/queue/testing';
+import { afterEach, describe, expect, it } from 'vitest';
+import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 import type { ChatDriverFactory } from './driver.ts';
 import { SendQueuedChatMessage, queuedChatSchema, type QueuedChatPayload } from './job.ts';
 import { ChatDeliveryError, ChatDriverError, ChatError } from './errors.ts';
 import { normalizeMessage } from './message.ts';
+import { ChatNotifier } from './notifier.ts';
 import { ChatPoster } from './poster.ts';
+import { ChatServiceProvider } from './provider.ts';
 import { ChatTargets } from './targets.ts';
 
 const slackSecret = ['T0', 'B0', 'x'.repeat(24)].join('/');
@@ -263,5 +270,61 @@ describe('queuedChatSchema', () => {
     ]) {
       expect((await validate(payload)).issues, JSON.stringify(payload)).toBeDefined();
     }
+  });
+});
+
+const KEY = `base64:${Buffer.alloc(32, 7).toString('base64')}`;
+const open: Application[] = [];
+afterEach(async () => {
+  for (const app of open.splice(0)) await app.shutdown();
+});
+
+async function boot(driver: 'sync' | 'memory') {
+  const http = new HttpClientFake();
+  const clock = new TestClock();
+  clock.freeze();
+  const fake: { queue?: QueueFake } = {};
+  const app = await createApplication(
+    { root: workspaceTempDir('marmeon-chat-job-'), discover: false, providers: [FetchServiceProvider, EncryptionServiceProvider, QueueServiceProvider, ChatServiceProvider] },
+    {
+      env: { LOG_LEVEL: 'silent', NODE_ENV: 'test', APP_KEY: KEY, QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null', CHAT_DRIVER: 'slack', CHAT_WEBHOOKS: `ops=${slackUrl}` },
+      override: (container) => {
+        container.instance(HttpClient, http);
+        container.instance(Clock, clock);
+        if (driver === 'memory') {
+          fake.queue = new QueueFake(container);
+          container.instance(Queue, fake.queue);
+        }
+      },
+    },
+  );
+  open.push(app);
+  return { app, http, clock, queue: fake.queue! };
+}
+
+describe('SendQueuedChatMessage waiting for a Retry-After', () => {
+  it.each([
+    [429, 'rate_limited'],
+    [503, 'service_unavailable'],
+  ] as const)('waits with the first four tries and fails the last one with the delivery error, not with a release (%i)', async (status, code) => {
+    const { app, http, clock, queue } = await boot('memory');
+    http.respond(/./, () => reply(status, code, { 'retry-after': '7' }));
+    await app.container.make(ChatNotifier).queue({ to: 'ops', text: 'Deploy done' });
+    for (let round = 1; round <= 4; round++) {
+      expect(await queue.work(), `round ${round}`).toMatchObject({ released: 1, failed: 0 });
+      clock.travel({ seconds: 7 });
+    }
+    expect(await queue.work()).toMatchObject({ released: 0, failed: 1 });
+    http.assertSentCount(5);
+    const [failed] = await queue.failed();
+    expect(failed?.exception).toContain(`answered ${status} (${code})`);
+  });
+
+  it('reaches the caller of the sync connection as a QueueError: the job asked to wait and sync runs it once', async () => {
+    const { app, http } = await boot('sync');
+    http.respond(/./, () => reply(429, 'rate_limited', { 'retry-after': '7' }));
+    const error = await app.container.make(ChatNotifier).queue({ to: 'ops', text: 'Deploy done' }).then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(QueueError);
+    expect((error as Error).message).toContain('sync connection runs a job only once');
   });
 });
