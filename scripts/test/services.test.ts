@@ -1,4 +1,4 @@
-import { globSync, mkdirSync, writeFileSync } from 'node:fs';
+import { globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { groupByServices, SERVICE_VARIABLES, serviceFiles, processFiles, splitTiming, timingEnv, tripwireEnv, type Service } from './services.ts';
@@ -219,6 +219,14 @@ describe('this repository', () => {
 
   it('runs the session store contract on Postgres and Redis', () => {
     expect([...selection.get('packages/session/src/stores/stores.test.ts')!].sort()).toEqual(['pgsql', 'redis']);
+  });
+
+  it('runs every test file that uses the MySQL helpers on MySQL: such a file names the variable itself, since the helper spells it in pieces', () => {
+    // In pieces: this file would be one of the files it looks for.
+    const helpers = new RegExp(`\\b(?:drivers${'With'}Mysql|with${'Mysql'})\\b`);
+    const using = candidates.filter((file) => file !== 'scripts/test/services.test.ts' && helpers.test(readFileSync(join(repo, file), 'utf8')));
+    expect(using.length).toBeGreaterThan(5);
+    expect(using.filter((file) => !selection.get(file)!.has('mysql'))).toEqual([]);
   });
 
   it('runs a storage test that reads the disks on S3', () => {

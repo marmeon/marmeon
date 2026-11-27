@@ -2,7 +2,7 @@ import type { Application, ModuleDefinition } from '@marmeon/core';
 import { ValidationError, type ValidationContext } from '@marmeon/router';
 import { rules as r } from '@marmeon/validation';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { failOnDuplicate, Migrator, Repository, uniqueViolationColumns, type Connections } from './index.ts';
 
@@ -17,7 +17,8 @@ const inRequest = (users: UserRepository, ctx: object = {}, live = false) => ({
   libraryOptions: { marmeon: { resolve: () => users, ctx, live } as unknown as ValidationContext },
 });
 
-describe.each(drivers)('the unique index is the truth — on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('the unique index is the truth — on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;

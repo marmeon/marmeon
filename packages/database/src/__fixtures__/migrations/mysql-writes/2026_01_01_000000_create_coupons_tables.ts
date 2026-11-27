@@ -8,6 +8,9 @@ export default defineMigration({
       table.string('email').unique();
       table.string('code').unique();
       table.string('note').nullable();
+      table.string('pin').secret().nullable();
+      table.timestamps();
+      table.softDeletes();
     });
     // A primary key that is always the caller's value.
     schema.create('slots', (table) => {

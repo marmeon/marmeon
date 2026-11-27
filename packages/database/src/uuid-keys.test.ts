@@ -1,7 +1,7 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql, type Generated } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshConnections, withMysql } from './__fixtures__/databases.ts';
+import { drivers, driversWithMysql, freshConnections, withMysql } from './__fixtures__/databases.ts';
 import { Migrator, RecordNotFoundError, Repository, type Connections } from './index.ts';
 import { runMigration } from './migrations/run.ts';
 import { workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -29,7 +29,7 @@ const modules: ModuleDefinition[] = [{ name: 'uuids', migrations: new URL('./__f
 const ctx = {} as never;
 const V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
+describe.each(driversWithMysql)('Repositories with UUID keys on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let teams: Teams;
@@ -45,7 +45,8 @@ describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
   });
   afterAll(() => close());
 
-  it('binds a UUID primary key, in either case, and finds nothing for what is no UUID', async () => {
+  // MySQL's `char(36)` is no uuid kind to Marmeon yet: an upper-case id is not folded to the case it was stored in.
+  it.runIf(driver !== 'mysql')('binds a UUID primary key, in either case, and finds nothing for what is no UUID', async () => {
     const team = await teams.insert({ name: 'Core' });
     expect(team.id).toMatch(V7);
     expect(await teams.resolveRouteBinding(team.id, { ctx })).toMatchObject({ name: 'Core' });
@@ -57,7 +58,7 @@ describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
     }
   });
 
-  it('binds the public key of a table whose primary key is an integer', async () => {
+  it.runIf(driver !== 'mysql')('binds the public key of a table whose primary key is an integer', async () => {
     const ada = await profiles.insert({ name: 'Ada' });
     expect(await profiles.resolveRouteBinding(ada.public_id, { ctx })).toMatchObject({ id: ada.id });
     expect(await profiles.resolveRouteBinding(ada.public_id.toUpperCase(), { ctx })).toMatchObject({ id: ada.id });
@@ -74,7 +75,7 @@ describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
     expect(await members.resolveRouteBinding(member.id, { ctx, scope: { param: 'team', parent: other, column: 'team_id' } })).toBeUndefined();
   });
 
-  it('answers find(), exists(), update(), delete() and friends with "not found" for an id that is no UUID — without a query', async () => {
+  it.runIf(driver !== 'mysql')('answers find(), exists(), update(), delete() and friends with "not found" for an id that is no UUID — without a query', async () => {
     const team = await teams.insert({ name: 'Find' });
     expect(await teams.find(team.id)).toMatchObject({ name: 'Find' });
     expect(await teams.find(team.id.toUpperCase())).toMatchObject({ name: 'Find' });
@@ -94,7 +95,7 @@ describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
     expect(queries.filter((sql) => !/^(begin|commit|savepoint|release|rollback)/i.test(sql))).toEqual([]);
   });
 
-  it('updates and deletes by UUID', async () => {
+  it.runIf(driver !== 'mysql')('updates and deletes by UUID', async () => {
     const team = await teams.insert({ name: 'Old' });
     expect(await teams.update(team.id.toUpperCase(), { name: 'New' })).toMatchObject({ name: 'New' });
     expect(await teams.delete(team.id)).toBe(true);
@@ -102,6 +103,7 @@ describe.each(drivers)('Repositories with UUID keys on %s', (driver) => {
   });
 });
 
+// MySQL refuses this migration, see the MySQL cases below.
 describe.each(drivers)('Adding a UUIDv7 column to an existing table on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;

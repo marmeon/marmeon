@@ -7,6 +7,7 @@ import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction
 import { Connections } from './connections.ts';
 import { shielded, unshielded } from './driver.ts';
 import { mysqlDuplicateKey, uniqueIndexColumns } from './mysql-duplicates.ts';
+import { checkNames, checkPlainKeyValue, insertAndRead, keyedRow, readBackKey, readByKey } from './mysql-returning.ts';
 import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
@@ -310,13 +311,19 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return Number((row as { count: number | string }).count);
   }
 
-  /** Inserts a row and returns it as stored — defaults and generated id included. */
+  /**
+   * Inserts a row and returns it as stored — defaults and generated id included. On MySQL the row is read back by its primary key,
+   * see `docs/queries.md#writing-on-mysql`.
+   */
   async insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>> {
-    return (await this.#untyped
-      .insertInto(this.#name)
-      .values((await stampTimestamps(this.#untyped, this.#name, [values as Record<string, unknown>]))[0]!)
-      .returningAll()
-      .executeTakeFirstOrThrow()) as RowOf<DB[T]>;
+    const stamped = (await stampTimestamps(this.#untyped, this.#name, [values as Record<string, unknown>]))[0]!;
+    if (metadataOf(this.#db)?.driver === 'mysql') {
+      // Every refusal comes before the transaction: nothing is sent for a table whose row cannot be read back.
+      const key = readBackKey(await this.#schema('insert()'), this.#name, 'insert');
+      const row = keyedRow(key, stamped, 'insert');
+      return (await this.transaction((repository) => insertAndRead(repository.#untyped, key, row, 'insert'))) as RowOf<DB[T]>;
+    }
+    return (await this.#untyped.insertInto(this.#name).values(stamped).returningAll().executeTakeFirstOrThrow()) as RowOf<DB[T]>;
   }
 
   /**
@@ -523,14 +530,32 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
 
   /**
    * Updates a row and returns it — `undefined` when there is none (or it is soft-deleted). Sets `updated_at` when the
-   * table's migration called `timestamps()`, unless `values` set it.
+   * table's migration called `timestamps()`, unless `values` set it. On MySQL the row is read back by its primary key, see
+   * `docs/queries.md#writing-on-mysql`.
    */
   async update<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined> {
     const key = await this.#lookup(id);
     if (key === undefined) return undefined;
+    const set = { ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date(nowOf(this.#db)) };
+    if (metadataOf(this.#db)?.driver === 'mysql') {
+      const readBack = readBackKey(await this.#schema('update()'), this.#name, 'update');
+      checkNames(readBack, Object.keys(values as object), 'update');
+      const changesKey = readBack.columns.includes(key.column) && (values as Record<string, unknown>)[key.column] !== undefined;
+      if (changesKey) checkPlainKeyValue(readBack, key.column, (values as Record<string, unknown>)[key.column], 'update');
+      return (await this.transaction(async (repository) => {
+        const result = await repository.#untyped.updateTable(this.#name).set(set).where(key.column, '=', key.value).where(softDeleteFilter(this.#name)).executeTakeFirst();
+        // FOUND_ROWS: an update that changes nothing still counts the row it matched. More than one match is a key compared loosely; the throw rolls it back.
+        if (result.numUpdatedRows === 0n) return undefined;
+        if (result.numUpdatedRows > 1n) {
+          throw new Error(`update() on MySQL matched ${result.numUpdatedRows} rows of ${this.#name} by its primary key, so the update was rolled back: a key compared with a value of another type matches more than one row on MySQL (a number against text); pass the key in the column's type.`);
+        }
+        const value = changesKey ? (values as Record<string, unknown>)[key.column] : key.value;
+        return readByKey(repository.#untyped, readBack, { [key.column]: value }, 'all', 'update');
+      })) as RowOf<DB[T]> | undefined;
+    }
     return (await this.#untyped
       .updateTable(this.#name)
-      .set({ ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date(nowOf(this.#db)) })
+      .set(set)
       .where(key.column, '=', key.value)
       .where(softDeleteFilter(this.#name))
       .returningAll()

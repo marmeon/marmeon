@@ -167,6 +167,9 @@ instead: `RowOf<NoteTable>`, `NewRowOf<NoteTable>` and `RowUpdateOf<NoteTable>`.
 Kysely's own documentation covers the builder: joins, subqueries, `onConflict`, `returning` and the rest. What Marmeon adds is
 on this page.
 
+MySQL has neither `RETURNING` nor `ON CONFLICT`: on a MySQL connection the builder's `returning()`, `onConflict()` and merge are refused with
+[D29](errors.md#server-error-codes) before the statement is sent, see [Writing on MySQL](#writing-on-mysql).
+
 > [!WARNING]
 > Secret columns, such as the password hash, are left out of every `selectAll()` and `returningAll()` of the query builder, and
 > a query reads one only with `secret()`. For a table the migrations created, those two name the columns the migrations know, so a
@@ -361,6 +364,31 @@ const added = await questions.insertMissing(rows, { on: ['survey', 'name'], retu
 ```
 
 The web-app's `lab` module seeds a survey's questions this way (`SurveyRepository.addMissing()`).
+
+#### Writing on MySQL
+
+MySQL cannot be selected yet; what follows is what the framework's own tests run against. MySQL has no `RETURNING`, so `insert()` and
+`tryInsert()` write the row and read it back by its primary key, in one transaction (a savepoint inside one). The key is the id in the
+answer to the insert, the key the row names, or, for a UUIDv7 column, a UUIDv7 that the repository draws in the layout of the column's
+default from the host's clock. `update()` and `tryUpdate()` count the rows the statement matched (an update that changes nothing counts
+its row) and read the row back by its key, the new one when the values change it. That makes four statements where Postgres and SQLite
+need one: the write, the read and the transaction's two ends, which inside a transaction are a savepoint and its release.
+
+`insert()` and `tryInsert()` refuse with [D29](errors.md#server-error-codes) before anything is sent: a table without a primary key
+that Marmeon knows, a key column that the row leaves out and nothing generates that Marmeon can read back, an auto-increment
+key given a value that is not empty, `0` or a positive whole number written plainly (`'0600'`, `-1`), and a key column written in another
+case (`ID`). A name with a character outside ASCII must be exactly a column of the table, because MySQL folds case in its own way. On a table the
+migrations did not create, or a connection with `managed: false`, Marmeon does not know which key column the database generates, so an
+insert needs every key value. A key set to an expression, a key column written in another case, and a name outside ASCII that is no column of the table are refused with D29 by `update()` as well; on a table without a single-column
+primary key `update()` throws the `TypeError` it throws on every driver. A key that matches more than one row makes `update()` an error, and the write
+is rolled back: MySQL compares a number with text loosely, so the number `5` also matches the text `'05'`. `delete()`, `forceDelete()` and `restore()` do not check this yet, so pass the key in the column's type.
+A UUID key is compared as it is written, in the case it was stored in (Marmeon makes it lower case): `update()` with an upper-case UUID
+finds no row and returns `undefined`, so pass the id in lower case. A trigger that changes a primary key the row names is not supported on MySQL: the row is read back by the key that was given, which can find another row that has it.
+
+`tryInsert()` reports `columns` for the primary key and for the unique indexes a migration describes, other than a partial one, and an
+empty list otherwise. For now `insertMany()` and `tryInsertMany()` with `returning`, `insertMissing()`, `create()` and `createMany()` of a
+relation, `attach()` and `sync()` when they link a row, and a factory's `create()` are refused with D29 on MySQL, as are the builder's
+`returning()`, `onConflict()` and merge. `detach()`, a `sync()` that only detaches and a factory's `make()` run.
 
 ### Route binding
 

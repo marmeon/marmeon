@@ -1,7 +1,7 @@
 import { TestClock } from '@marmeon/core/testing';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Factories, Migrator, Repository, type Connections } from './index.ts';
@@ -31,7 +31,8 @@ const DAY = 86_400_000;
 /** What a stamp is in milliseconds, whatever text the driver reads it back as. */
 const at = (value: unknown) => new Date(value as string).getTime();
 
-describe.each(drivers)('stamping with the app clock on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('stamping with the app clock on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
@@ -117,7 +118,8 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
     await expect(users.insertMany([{ name: 'A', email: 'a@example.com' }, { name: 'B', email: 'b@example.com', created_at: new Date() }])).rejects.toThrow(/first row/);
   });
 
-  it('relation().create() and createMany() stamp the related rows with the clock', async () => {
+  // Writes through relations do not run on MySQL yet.
+  it.runIf(driver !== 'mysql')('relation().create() and createMany() stamp the related rows with the clock', async () => {
     const author = await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const post = await connections.get<any>().insertInto('posts').values({ title: 'Hello', author_id: author.id }).returningAll().executeTakeFirstOrThrow();
     const posts = new PostRepository(connections);
@@ -128,7 +130,7 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
     expect(many.map((row) => at(row.created_at))).toEqual([START + 4 * DAY, START + 4 * DAY]);
   });
 
-  it('attach() and sync() stamp the links of a pivot with timestamps with the clock', async () => {
+  it.runIf(driver !== 'mysql')('attach() and sync() stamp the links of a pivot with timestamps with the clock', async () => {
     const author = await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const post = await connections.get<any>().insertInto('posts').values({ title: 'Hello', author_id: author.id }).returningAll().executeTakeFirstOrThrow();
     const flags = await connections.get<any>().insertInto('flags').values([{ label: 'a' }, { label: 'b' }, { label: 'c' }]).returning('id').execute();
@@ -152,7 +154,8 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
     expect(at(gone.deleted_at)).toBe(START + 9 * DAY);
   });
 
-  it('now() of a factory definition is the app clock: make(), create(), using(trx) and a state as a function', async () => {
+  // Factories do not run on MySQL yet.
+  it.runIf(driver !== 'mysql')('now() of a factory definition is the app clock: make(), create(), using(trx) and a state as a function', async () => {
     const factories = new Factories(connections);
     clock.travel({ days: 5 });
     expect(new Date(factories.for(ClockedPostFactory).make().published_at as string).getTime()).toBe(START + 5 * DAY);
@@ -170,7 +173,7 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
     expect(at((await factories.for(ClockedPostFactory).create()).published_at)).toBe(START + 7 * DAY);
   });
 
-  it('a factory stamps its rows with the clock, and keeps what an override names', async () => {
+  it.runIf(driver !== 'mysql')('a factory stamps its rows with the clock, and keeps what an override names', async () => {
     const factories = new Factories(connections);
     clock.travel({ days: 5 });
     const made = await factories.for(UserFactory).create();
@@ -180,7 +183,7 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('stamping without an app clock on %s', (driver) => {
+describe.each(driversWithMysql)('stamping without an app clock on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
 
@@ -201,7 +204,7 @@ describe.each(drivers)('stamping without an app clock on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('a factory definition reading now() without an app clock on %s', (driver) => {
+describe.each(driversWithMysql)('a factory definition reading now() without an app clock on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
 
@@ -211,7 +214,8 @@ describe.each(drivers)('a factory definition reading now() without an app clock 
   });
   afterAll(() => close());
 
-  it('gives the wall clock', async () => {
+  // Factories do not run on MySQL yet.
+  it.runIf(driver !== 'mysql')('gives the wall clock', async () => {
     const factories = new Factories(connections);
     const row = await factories.for(ClockedPostFactory).create();
     expect(Math.abs(at(row.published_at) - Date.now())).toBeLessThan(5000);
