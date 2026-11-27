@@ -9,7 +9,7 @@ import { searchOptions } from '../../config.ts';
 import { configFor } from '../../languages.ts';
 import { checkConfigurations, missingConfigurations, missingConfigurationsMessage, pgsqlSchemaGaps, queryPgsql } from './pgsql.ts';
 import { querySqlite, sqliteSchemaGaps } from './sqlite.ts';
-import { deleteDocuments, deleteUnchanged, documentsAfter, DOCUMENTS_COLUMNS, DOCUMENTS_TABLE, flushDocuments, TEXT_COLUMNS, upsertDocuments, type StoredRevision } from './statements.ts';
+import { deleteDocuments, deleteUnchanged, documentsAfter, DOCUMENTS_COLUMNS, DOCUMENTS_TABLE, flushDocuments, TEXT_COLUMNS, UNIQUE_INDEX, upsertDocuments, type StoredRevision } from './statements.ts';
 
 /**
  * What the stub migration makes with raw SQL: the FTS5 table on SQLite (its shadow tables with it) and the `vector` column on
@@ -26,6 +26,11 @@ const RESTORE = 'The migration of @marmeon/search creates it, so it was changed 
 function schemaProblem(gap: { readonly name: string; readonly problem: 'missing' | 'not-fts5' | 'other-type' | 'other-definition' }): SearchProblem {
   const { name, problem } = gap;
   if (name === 'search_documents' || name === 'search_rebuilds') return { message: `The default database has no table ${name}, which SEARCH_DRIVER=database needs.`, fix: MIGRATE };
+  if (name === UNIQUE_INDEX) {
+    return problem === 'missing'
+      ? { message: `The table search_documents has no unique index ${name}, so every write of a document fails. ${RESTORE}` }
+      : { message: `The index ${name} is not the unique index on (index_name, key) the search migration makes, or a build of it failed and left it invalid. ${RESTORE}` };
+  }
   if (problem === 'not-fts5') return { message: `The table ${name} is no FTS5 table. ${RESTORE}` };
   if (problem === 'other-type') return { message: `The column ${name} is no tsvector. ${RESTORE}` };
   if (problem === 'other-definition') return { message: `The index ${name} is not the GIN index the search migration makes, or a build of it failed and left it invalid. ${RESTORE}` };
@@ -135,7 +140,7 @@ export class DatabaseSearchDriver implements SearchDriver {
   async boot(app: Application): Promise<void> {
     const driver = this.#connections.options('default').driver as string;
     if (driver === 'mysql') {
-      throw setup('SEARCH_DRIVER=database does not run on MySQL, and the default database connection is a MySQL one. Use SEARCH_DRIVER=meilisearch.');
+      throw setup('SEARCH_DRIVER=database does not run on MySQL, and the default database connection is a MySQL one.');
     }
     if (driver !== 'sqlite' && driver !== 'pgsql') throw setup(`SEARCH_DRIVER=database has no SQL for the database driver ${JSON.stringify(driver)}. Use SQLite or Postgres, or select another driver.`);
     if (driver === 'pgsql') this.#languages = searchOptions(app.container).languages;

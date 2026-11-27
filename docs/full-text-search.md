@@ -357,8 +357,8 @@ not name those objects as unknown.
 The driver writes in your transaction: a document is stored or removed with the statements of your own change, and a rollback
 takes it back with them. `/up/ready` stays red until `search_documents` has every column the driver uses and its text columns are
 secret ([package tables](package-tables.md#tables)). An error of the database, such as a table that was not migrated yet, throws from `search.query()` like any
-other query of your app; the `unavailable` failure is for search services outside your database. The driver has no SQL for MySQL: on a MySQL connection the start stops with
-[Q9](errors.md#server-error-codes). Select `SEARCH_DRIVER=meilisearch` there.
+other query of your app; the `unavailable` failure is for search services outside your database. The driver does not run on MySQL, and MySQL
+is not a database you can select yet ([MySQL](database.md#mysql)).
 
 ### SQLite
 
@@ -584,6 +584,9 @@ and it names a command where one fixes it. A driver without `inspect()` has noth
 On the `database` driver, the check reads the catalog of the default connection. It finds each of these that is missing:
 
 - The tables `search_documents` and `search_rebuilds`. The fix is `marmeon publish @marmeon/search && marmeon migrate`.
+- The unique index `search_documents_index_name_key_unique` on `index_name` and `key`, which every write of a document needs. An
+  index of that name that is not unique, covers other columns, compares them with another collation or has a `where` clause
+  counts as different, and so does one on Postgres that a failed build left invalid or that belongs to a deferrable constraint.
 - On SQLite, the FTS5 table `search_documents_fts` and its three triggers `search_documents_ai`, `search_documents_ad` and
   `search_documents_au`.
 - On Postgres, the column `vector` of type `tsvector` and the GIN indexes `search_documents_vector_index` and

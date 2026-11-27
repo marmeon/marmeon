@@ -1,6 +1,7 @@
 import { sql, type Connection } from '@marmeon/database';
 import type { DriverHit, DriverPage, DriverQuery, SearchKey } from '../../driver.ts';
 import { excerptSegments, fts5Match, type FilterScalar } from '../../terms.ts';
+import { UNIQUE_INDEX } from './statements.ts';
 
 /** How many matches the count looks at: one more than a search reaches, so `Search` can cap the total at 1000. */
 const COUNT_LIMIT = 1001;
@@ -115,12 +116,22 @@ export async function querySqlite(db: Connection<any>, request: DriverQuery): Pr
 }
 
 /** Which of the schema objects of the search migration a SQLite database lacks or has in another form, by name and what is wrong. */
-export async function sqliteSchemaGaps(db: Connection<any>): Promise<{ readonly name: string; readonly problem: 'missing' | 'not-fts5' }[]> {
+export async function sqliteSchemaGaps(db: Connection<any>): Promise<{ readonly name: string; readonly problem: 'missing' | 'not-fts5' | 'other-definition' }[]> {
   const { rows } = await sql<{ type: string; name: string; tbl_name: string; sql: string | null }>`select type, name, tbl_name, sql from sqlite_master
     where name in ('search_documents', 'search_rebuilds', 'search_documents_fts', 'search_documents_ai', 'search_documents_ad', 'search_documents_au')`.execute(db);
   const found = new Map(rows.map((row) => [row.name, row]));
-  const gaps: { name: string; problem: 'missing' | 'not-fts5' }[] = [];
+  const gaps: { name: string; problem: 'missing' | 'not-fts5' | 'other-definition' }[] = [];
   for (const name of ['search_documents', 'search_rebuilds']) if (found.get(name)?.type !== 'table') gaps.push({ name, problem: 'missing' });
+  if (found.get('search_documents')?.type === 'table') {
+    // The unique index of the upserts: unique, whole (no where clause) and over exactly (index_name, key), in this order, each
+    // compared as written (a nocase collation would let "Slug" and "slug" share one document).
+    const { rows: unique } = await sql<{ unique: number; partial: number; columns: string | null }>`select l."unique" as "unique", l.partial as partial,
+        (select group_concat(name || ' ' || coll, ',') from (select name, coll from pragma_index_xinfo(l.name) where key = 1 order by seqno)) as columns
+      from pragma_index_list('search_documents') l where l.name = ${UNIQUE_INDEX}`.execute(db);
+    const [index] = unique;
+    if (index === undefined) gaps.push({ name: UNIQUE_INDEX, problem: 'missing' });
+    else if (Number(index.unique) !== 1 || Number(index.partial) !== 0 || index.columns !== 'index_name BINARY,key BINARY') gaps.push({ name: UNIQUE_INDEX, problem: 'other-definition' });
+  }
   const fts = found.get('search_documents_fts');
   if (fts?.type !== 'table') gaps.push({ name: 'search_documents_fts', problem: 'missing' });
   else if (!/^create\s+virtual\s+table\s.*?\busing\s+fts5\s*\(/is.test(fts.sql ?? '')) gaps.push({ name: 'search_documents_fts', problem: 'not-fts5' });

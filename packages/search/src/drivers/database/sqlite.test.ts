@@ -621,7 +621,7 @@ describe('the database driver at the start', () => {
     const requirements: unknown[] = [];
     const error = await driverOn('mysql').boot!(fakeApp(requirements)).then(() => undefined, (e: unknown) => e as Error);
     expect(error).toBeInstanceOf(SearchSetupError);
-    expect(error!.message).toBe('[marmeon:Q9] SEARCH_DRIVER=database does not run on MySQL, and the default database connection is a MySQL one. Use SEARCH_DRIVER=meilisearch.');
+    expect(error!.message).toBe('[marmeon:Q9] SEARCH_DRIVER=database does not run on MySQL, and the default database connection is a MySQL one.');
     expect(requirements).toEqual([]);
   });
 

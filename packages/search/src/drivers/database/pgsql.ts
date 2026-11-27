@@ -4,6 +4,7 @@ import type { DriverHit, DriverPage, DriverQuery, SearchKey } from '../../driver
 import { SearchSetupError } from '../../errors.ts';
 import { configFor, configurations, FALLBACK_CONFIGURATION } from '../../languages.ts';
 import { excerptSegments, postgresPrefixQuery, type FilterScalar } from '../../terms.ts';
+import { UNIQUE_INDEX } from './statements.ts';
 
 /** How many matches the count looks at: one more than a search reaches, so `Search` can cap the total at 1000. */
 const COUNT_LIMIT = 1001;
@@ -118,15 +119,16 @@ export function missingConfigurationsMessage(missing: readonly string[]): string
   );
 }
 
-/** The GIN indexes of the search migration on Postgres, each with the end its definition has (as `pg_get_indexdef` prints it). */
+/** The indexes of the search migration on Postgres, each with the end its definition has (as `pg_get_indexdef` prints it). */
 const PGSQL_INDEXES = [
-  { name: 'search_documents_vector_index', definition: ' USING gin (vector)' },
-  { name: 'search_documents_filters_index', definition: ' USING gin (filters jsonb_path_ops)' },
+  { name: UNIQUE_INDEX, definition: ' USING btree (index_name, key)', unique: true },
+  { name: 'search_documents_vector_index', definition: ' USING gin (vector)', unique: false },
+  { name: 'search_documents_filters_index', definition: ' USING gin (filters jsonb_path_ops)', unique: false },
 ] as const;
 
 /**
  * Which of the schema objects of the search migration a Postgres database lacks or has in another form: the tables, the column
- * `vector` of type `tsvector` and the GIN indexes. Each name is looked up through the search path, as the driver's statements find it.
+ * `vector` of type `tsvector`, the unique index of the upserts and the GIN indexes. Each name is looked up through the search path, as the driver's statements find it.
  */
 export async function pgsqlSchemaGaps(db: Connection<any>): Promise<{ readonly name: string; readonly problem: 'missing' | 'other-type' | 'other-definition' }[]> {
   const { rows } = await sql<{ documents: boolean; rebuilds: boolean; vector: string | null }>`select
@@ -140,14 +142,15 @@ export async function pgsqlSchemaGaps(db: Connection<any>): Promise<{ readonly n
   if (state?.documents !== true) return [{ name: 'search_documents', problem: 'missing' }, ...gaps];
   if (state.vector === null) gaps.push({ name: 'search_documents.vector', problem: 'missing' });
   else if (state.vector !== 'tsvector') gaps.push({ name: 'search_documents.vector', problem: 'other-type' });
-  // An index a failed concurrent build left behind is invalid: its definition reads right, but no query uses it.
-  const { rows: indexes } = await sql<{ name: string; definition: string; usable: boolean }>`select c.relname::text as name, pg_get_indexdef(i.indexrelid) as definition, i.indisvalid and i.indisready as usable
+  // An index a failed concurrent build left behind is invalid: its definition reads right, but no query uses it. A deferrable unique
+  // constraint reads right too, but `on conflict` refuses it as an arbiter.
+  const { rows: indexes } = await sql<{ name: string; definition: string; usable: boolean; unique: boolean }>`select c.relname::text as name, pg_get_indexdef(i.indexrelid) as definition, i.indisvalid and i.indisready and i.indimmediate as usable, i.indisunique as unique
     from pg_index i join pg_class c on c.oid = i.indexrelid where i.indrelid = to_regclass('search_documents')`.execute(db);
   const found = new Map(indexes.map((index) => [index.name, index]));
-  for (const { name, definition } of PGSQL_INDEXES) {
+  for (const { name, definition, unique } of PGSQL_INDEXES) {
     const index = found.get(name);
     if (index === undefined) gaps.push({ name, problem: 'missing' });
-    else if (!index.usable || !index.definition.endsWith(definition)) gaps.push({ name, problem: 'other-definition' });
+    else if (!index.usable || index.unique !== unique || !index.definition.endsWith(definition)) gaps.push({ name, problem: 'other-definition' });
   }
   return gaps;
 }

@@ -7,6 +7,8 @@ import { keyId } from '../../search.ts';
 export const DOCUMENTS_TABLE = 'search_documents';
 /** Every column of the table that the driver reads or writes. */
 export const DOCUMENTS_COLUMNS = ['id', 'index_name', 'key', 'locale', 'config', 'filters', 'a', 'b', 'c', 'd', 'revision'] as const;
+/** The unique index on (index_name, key) that every upsert's `on conflict` needs; the migration makes it with raw SQL. */
+export const UNIQUE_INDEX = 'search_documents_index_name_key_unique';
 /** The columns that hold the text of the fields, by weight. */
 export const TEXT_COLUMNS = ['a', 'b', 'c', 'd'] as const;
 

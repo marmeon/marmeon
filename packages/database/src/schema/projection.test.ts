@@ -862,11 +862,13 @@ async function expectParity(driver: TestDriver, modules: ModuleDefinition[], der
     // The database keeps the constraints of a retired column; Marmeon does not know them.
     const retired = (name: string, column: string) => tables.get(name)?.columns.find((c) => c.name === column)?.retired === true;
     expect(mine.foreignKeys).toEqual(real.foreignKeys.filter((key) => own(key.table) && !retired(key.table, key.column)));
+    // A unique index that raw SQL makes is unknown to the projection: the search table's, which MySQL could not hold as a blueprint index.
+    const rawUnique = (name: string, set: readonly string[]) => name === 'search_documents' && set.join(',') === 'index_name,key';
     expect(Object.fromEntries(mine.uniques)).toEqual(
       Object.fromEntries(
         [...real.uniques]
           .filter(([name]) => own(name))
-          .map(([name, sets]) => [name, sets.filter((set) => !set.some((column) => retired(name, column)))] as const),
+          .map(([name, sets]) => [name, sets.filter((set) => !rawUnique(name, set) && !set.some((column) => retired(name, column)))] as const),
       ),
     );
     expect(Object.fromEntries(mine.primaryKeys)).toEqual(Object.fromEntries([...real.primaryKeys].filter(([name]) => own(name))));

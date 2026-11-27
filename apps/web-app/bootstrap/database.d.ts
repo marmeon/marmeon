@@ -353,7 +353,6 @@ declare module '@marmeon/database' {
     /**
      * Owned by `system`.
      * Primary key: id.
-     * Unique: (index_name, key).
      */
     search_documents: {
       id: Generated<number>;

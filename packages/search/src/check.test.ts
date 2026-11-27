@@ -70,6 +70,10 @@ const error = (message: string, fix?: string): CheckProblem => ({
   ...(fix === undefined ? {} : { fix }),
   docs: DOCS,
 });
+const missingUnique = error(`The table search_documents has no unique index search_documents_index_name_key_unique, so every write of a document fails. ${RESTORE}`);
+const otherUnique = error(
+  `The index search_documents_index_name_key_unique is not the unique index on (index_name, key) the search migration makes, or a build of it failed and left it invalid. ${RESTORE}`,
+);
 
 describe('SearchIndexesCheck', () => {
   const indexes = new SearchIndexes().add([PageIndex], 'test');
@@ -133,6 +137,24 @@ describe('the database driver in marmeon check on SQLite', () => {
       await run(app, `drop trigger ${trigger}`);
       expect(await check(app)).toEqual([error(`The default database has no trigger ${trigger}, which keeps search_documents_fts current. ${RESTORE}`)]);
     }
+  });
+
+  it('names the unique index of the upserts when it is missing, not unique, partial or over other columns', async () => {
+    const app = await started('sqlite');
+    await run(app, 'drop index search_documents_index_name_key_unique');
+    expect(await check(app)).toEqual([missingUnique]);
+    for (const statement of [
+      'create index search_documents_index_name_key_unique on search_documents (index_name, key)',
+      'create unique index search_documents_index_name_key_unique on search_documents (key, index_name)',
+      'create unique index search_documents_index_name_key_unique on search_documents (index_name, key) where locale is null',
+      'create unique index search_documents_index_name_key_unique on search_documents (index_name, key collate nocase)',
+    ]) {
+      await run(app, statement);
+      expect(await check(app), statement).toEqual([otherUnique]);
+      await run(app, 'drop index search_documents_index_name_key_unique');
+    }
+    await run(app, 'create unique index search_documents_index_name_key_unique on search_documents (index_name, key)');
+    expect(await check(app)).toEqual([]);
   });
 
   it('takes no trigger of that name on another table, and names search_rebuilds next to another gap', async () => {
@@ -231,6 +253,29 @@ describe.skipIf(!PGSQL_URL)('the database driver in marmeon check on Postgres', 
 
     await run(app, 'alter table search_documents drop column vector');
     expect(await check(app)).toEqual([error(`The table search_documents has no column vector (tsvector). ${RESTORE}`), noVectorIndex]);
+  });
+
+  it('names the unique index of the upserts when it is missing, not unique, over other columns or invalid', async () => {
+    const app = await started('pgsql');
+    await run(app, 'drop index search_documents_index_name_key_unique');
+    expect(await check(app)).toEqual([missingUnique]);
+    for (const statement of [
+      'create index search_documents_index_name_key_unique on search_documents (index_name, key)',
+      'create unique index search_documents_index_name_key_unique on search_documents (key, index_name)',
+      'create unique index search_documents_index_name_key_unique on search_documents (index_name, key) where locale is null',
+    ]) {
+      await run(app, statement);
+      expect(await check(app), statement).toEqual([otherUnique]);
+      await run(app, 'drop index search_documents_index_name_key_unique');
+    }
+    // `on conflict` refuses a deferrable constraint as its arbiter, though its index reads like the migration's.
+    await run(app, 'alter table search_documents add constraint search_documents_index_name_key_unique unique (index_name, key) deferrable');
+    expect(await check(app)).toEqual([otherUnique]);
+    await run(app, 'alter table search_documents drop constraint search_documents_index_name_key_unique');
+    await run(app, 'create unique index search_documents_index_name_key_unique on search_documents (index_name, key)');
+    expect(await check(app)).toEqual([]);
+    await run(app, "update pg_index set indisvalid = false where indexrelid = 'search_documents_index_name_key_unique'::regclass");
+    expect(await check(app)).toEqual([otherUnique]);
   });
 
   it('names a configuration of the language map that the database does not have', async () => {

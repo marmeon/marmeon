@@ -12,7 +12,7 @@ export default defineMigration({
       table.id();
       table.string('index_name', 64);
       // The key as JSON: 253 UTF-16 units that JSON escapes as \u0001 take 253 * 6 + 2 = 1520 characters of ASCII, and unescaped
-      // units take at most 3 bytes each, so an entry of the unique index stays below the btree limit of Postgres (about 2700 bytes).
+      // units take at most 3 bytes each, so an entry of the unique index below stays under the btree limit of Postgres (about 2700 bytes).
       table.string('key', 1520);
       table.string('locale', 35).nullable();
       table.string('config', 63).nullable();
@@ -22,7 +22,6 @@ export default defineMigration({
       table.text('c').secret().default('');
       table.text('d').secret().default('');
       table.bigInteger('revision').default(1);
-      table.unique(['index_name', 'key']);
       table.index(['index_name', 'locale']);
     });
     schema.create('search_rebuilds', (table) => {
@@ -36,6 +35,15 @@ export default defineMigration({
       table.timestamp('started_at');
       // A hash of the index definition and the language map the run started with: a resume under another one starts over.
       table.string('fingerprint', 64).nullable();
+    });
+    // The unique index of the upserts (on conflict (index_name, key)), under the name the blueprint gives it. It is raw SQL because
+    // MySQL limits an index to 3072 bytes and a key of 1520 characters is wider: as a blueprint index, the MySQL check of the
+    // migrator would refuse this migration and every one pending with it. The database driver refuses MySQL, so MySQL needs a key
+    // design of its own before it searches here.
+    schema.raw({
+      sqlite: sql`create unique index search_documents_index_name_key_unique on search_documents (index_name, key)`,
+      pgsql: sql`create unique index search_documents_index_name_key_unique on search_documents (index_name, key)`,
+      mysql: null,
     });
     schema.raw({
       sqlite: sql`create virtual table search_documents_fts using fts5(a, b, c, d, content='search_documents', content_rowid='id', tokenize='unicode61 remove_diacritics 2', prefix='2 3 4')`,
