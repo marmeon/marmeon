@@ -1,7 +1,7 @@
 export { defineSearch, SearchConfig } from './config.ts';
 export type { SearchDefinition, SearchOptions } from './config.ts';
 export { SearchDriver } from './driver.ts';
-export type { DriverHit, DriverPage, DriverQuery, SearchDriverContext, SearchDriverFactory, SearchFailure, SearchKey, SearchProblem, StoredDocument } from './driver.ts';
+export type { DriverHit, DriverPage, DriverQuery, SearchDriverContext, SearchDriverFactory, SearchFailure, SearchInspectContext, SearchKey, SearchProblem, StoredDocument } from './driver.ts';
 export { SearchSetupError } from './errors.ts';
 export { SearchServiceProvider } from './provider.ts';
 export { SearchIndexes } from './registry.ts';

@@ -459,7 +459,7 @@ optional port. A user name, a password, a query, a fragment or a path in it stop
 line breaks, and no message names its value.
 
 Give the app a key with only the actions it uses, not the master key. Writes and searches need `search`, `documents.add`,
-`documents.delete`, `indexes.get` and `tasks.get`. A rebuild needs `indexes.create`, `settings.update`, `indexes.swap` and
+`documents.delete`, `indexes.get` and `tasks.get`. `marmeon check` needs `version` and `settings.get` in addition. A rebuild needs `indexes.create`, `settings.update`, `indexes.swap` and
 `indexes.delete` in addition. Meilisearch answers a missing action like a wrong key, so the driver's warning names both.
 
 Your Meilisearch server usually has a private address, which the [HTTP client](http-client.md#reaching-your-own-network) refuses.
@@ -553,7 +553,43 @@ protected, as in production, it asks for `--force`, as the [database commands](m
 
 ## Checking
 
-`marmeon check` reports an index that your search driver does not have yet.
+`marmeon check` reports what your search driver lacks, or has in another form than your app needs.
+
+```sh
+pnpm marmeon check --only=search-indexes
+```
+
+The check `search-indexes` asks the driver what it lacks. Each finding is an error with the code [Q9](errors.md#server-error-codes),
+and it names a command where one fixes it. A driver without `inspect()` has nothing to report, so the check passes.
+
+On the `database` driver, the check reads the catalog of the default connection. It finds each of these that is missing:
+
+- The tables `search_documents` and `search_rebuilds`. The fix is `marmeon publish @marmeon/search && marmeon migrate`.
+- On SQLite, the FTS5 table `search_documents_fts` and its three triggers `search_documents_ai`, `search_documents_ad` and
+  `search_documents_au`.
+- On Postgres, the column `vector` of type `tsvector` and the GIN indexes `search_documents_vector_index` and
+  `search_documents_filters_index`. An index that a failed build left invalid counts as different. Postgres looks each name up through the search path, as the driver's queries do.
+- On Postgres, a text search configuration that your [language map](#languages) gives and the database does not have.
+
+The migration of the package creates all of them. An object that is missing or different while its table exists was changed after
+that migration ran, so the finding asks you to create it again in a migration of your own. When the migration is published but has
+not run yet, the database refuses every query with [D2](errors.md#server-error-codes). The check is then `error` with that message,
+and `marmeon migrate` fixes it.
+
+On the `meilisearch` driver, the check asks the server, and it only reads. It finds:
+
+- A server older than 1.34, or one whose version it cannot read.
+- An index that does not exist on the server, with the fix `marmeon search:rebuild <index>`.
+- An index whose searchable attributes, filterable attributes or `maxTotalHits` differ from what its class gives. The order of the
+  searchable attributes counts, since it is the order of the weights. The fix is `marmeon search:rebuild <index>`.
+- A missing table `search_rebuilds`, which the job reads for every change.
+- An index named `<index>__rebuild_` followed by eight hex digits that no row of `search_rebuilds` names. A rebuild left it behind that
+  finished, started over or was flushed without deleting it. Delete it in the Meilisearch dashboard or with `DELETE /indexes/<name>`. A
+  rebuild that ends while the check runs can show up once, so run the check again before you delete one.
+  A stopped rebuild keeps its row until it resumes, so its target is not reported.
+
+A server that the check cannot reach, or that refuses the key, is one finding that names the host and never the key. The check asks
+nothing more after it. The key needs the actions `version`, `indexes.get` and `settings.get` for the check.
 
 ## Testing
 

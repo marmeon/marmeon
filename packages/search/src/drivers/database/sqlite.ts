@@ -113,3 +113,20 @@ export async function querySqlite(db: Connection<any>, request: DriverQuery): Pr
     limit ${COUNT_LIMIT})`.execute(db);
   return { hits, total: Number(counted.rows[0]?.total ?? 0) };
 }
+
+/** Which of the schema objects of the search migration a SQLite database lacks or has in another form, by name and what is wrong. */
+export async function sqliteSchemaGaps(db: Connection<any>): Promise<{ readonly name: string; readonly problem: 'missing' | 'not-fts5' }[]> {
+  const { rows } = await sql<{ type: string; name: string; tbl_name: string; sql: string | null }>`select type, name, tbl_name, sql from sqlite_master
+    where name in ('search_documents', 'search_rebuilds', 'search_documents_fts', 'search_documents_ai', 'search_documents_ad', 'search_documents_au')`.execute(db);
+  const found = new Map(rows.map((row) => [row.name, row]));
+  const gaps: { name: string; problem: 'missing' | 'not-fts5' }[] = [];
+  for (const name of ['search_documents', 'search_rebuilds']) if (found.get(name)?.type !== 'table') gaps.push({ name, problem: 'missing' });
+  const fts = found.get('search_documents_fts');
+  if (fts?.type !== 'table') gaps.push({ name: 'search_documents_fts', problem: 'missing' });
+  else if (!/^create\s+virtual\s+table\s.*?\busing\s+fts5\s*\(/is.test(fts.sql ?? '')) gaps.push({ name: 'search_documents_fts', problem: 'not-fts5' });
+  for (const name of ['search_documents_ai', 'search_documents_ad', 'search_documents_au']) {
+    const trigger = found.get(name);
+    if (trigger?.type !== 'trigger' || trigger.tbl_name !== 'search_documents') gaps.push({ name, problem: 'missing' });
+  }
+  return gaps;
+}

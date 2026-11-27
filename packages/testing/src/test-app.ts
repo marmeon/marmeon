@@ -209,6 +209,9 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
   if (options.search !== undefined && options.search !== 'fake' && options.search !== 'real') throw new Error(`createTestApp(…, { search }) takes 'fake' or 'real', not ${JSON.stringify(options.search)}.`);
   const search = options.search === 'real' ? undefined : await importSearch();
   let searchFake: SearchFake | undefined;
+  // Why app.search has no fake, by cause; set where the choice is made.
+  // Unset with the package missing: the getter says it is needed.
+  let searchAbsent: string | undefined = options.search === 'real' ? "app.search has no fake: the test chose createTestApp(…, { search: 'real' }), so the configured search driver is used." : undefined;
   const queue = options.queue === 'real' ? undefined : await importQueue();
   let queueFake: QueueFake | undefined;
   const notifications = options.notifications === 'real' ? undefined : await importNotifications();
@@ -272,9 +275,13 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
         container.instance(chat.ChatNotifier, chatFake);
       }
       // The database driver searches the test database, which the test has already; every other driver would reach a service.
-      if (search && container.has(search.SearchDriver) && (options.search === 'fake' || container.make(search.SearchConfig).driver !== 'database')) {
+      if (search && !container.has(search.SearchDriver)) {
+        searchAbsent = 'app.search needs the provider of @marmeon/search, which the app does not register: run marmeon discover, or add SearchServiceProvider to its providers.';
+      } else if (search && (options.search === 'fake' || container.make(search.SearchConfig).driver !== 'database')) {
         searchFake = new search.SearchFake();
         container.instance(search.SearchDriver, searchFake);
+      } else if (search) {
+        searchAbsent = "app.search has no fake: with SEARCH_DRIVER=database the test searches its own database with the real driver. For the fake: createTestApp(…, { search: 'fake' }).";
       }
       if (queue && container.has(queue.Queue)) {
         queueFake = new queue.QueueFake(container);
@@ -342,6 +349,7 @@ export async function createTestApp(definition: ApplicationDefinition, options: 
       chat: chatFake,
       // A test's own override of the driver wins: app.search must not answer for a fake that nothing writes to.
       search: searchFake !== undefined && application.container.make(search!.SearchDriver) === searchFake ? searchFake : undefined,
+      searchAbsent: searchFake !== undefined && application.container.make(search!.SearchDriver) !== searchFake ? "app.search has no fake: the test's override binds a SearchDriver of its own." : searchAbsent,
       queue: queueFake,
       notifications: notificationFake,
       storage: storageFake,
@@ -471,6 +479,8 @@ interface Shared {
   readonly chat: ChatFake | undefined;
   /** The fake search driver, unless the app has no @marmeon/search, runs on `SEARCH_DRIVER=database` without `search: 'fake'`, the test chose `search: 'real'` or its `override` bound a driver of its own. */
   readonly search: SearchFake | undefined;
+  /** Why `search` is unset: the message of the getter `app.search`. */
+  readonly searchAbsent: string | undefined;
   /** The recording queue, unless the app has no queue or the test chose `queue: 'real'`. */
   readonly queue: QueueFake | undefined;
   /** The recording notifications, unless the app has none or the test chose `notifications: 'real'`. */
@@ -768,7 +778,7 @@ export class TestApp {
    * Needs @marmeon/search in the app and a driver other than `database` (or `search: 'fake'`), and not `search: 'real'`; a `SearchDriver` the test's `override` binds turns it off too. See `docs/fakes.md#search`.
    */
   get search(): SearchFake {
-    if (!this.#shared.search) throw new Error("app.search needs @marmeon/search in the app and a fake: createTestApp(…, { search: 'fake' }) — with SEARCH_DRIVER=database the real driver is used.");
+    if (!this.#shared.search) throw new Error(this.#shared.searchAbsent ?? 'app.search needs @marmeon/search in the app.');
     return this.#shared.search;
   }
 

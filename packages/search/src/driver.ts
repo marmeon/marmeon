@@ -59,6 +59,11 @@ export interface SearchFailure {
   readonly message: string;
 }
 
+/** What `inspect()` is given besides the indexes: `signal` aborts when `marmeon check` stops waiting for the check. */
+export interface SearchInspectContext {
+  readonly signal?: AbortSignal | undefined;
+}
+
 /** What a driver's `inspect()` found wrong for `marmeon check`: the index it concerns, if one, what is wrong, and a command that fixes it. */
 export interface SearchProblem {
   readonly index?: string | undefined;
@@ -92,8 +97,8 @@ export interface SearchDriver {
   swap?(index: IndexInfo, target: string): Promise<void>;
   /** Deletes the rebuild target `target` of a run that cannot go on; a target that is gone is no error. Without it, a rebuild flushes that target. */
   discard?(index: IndexInfo, target: string): Promise<void>;
-  /** What `marmeon check` reports for these indexes. Without it, the check passes. */
-  inspect?(indexes: readonly IndexInfo[]): Promise<readonly SearchProblem[]>;
+  /** What `marmeon check` reports for these indexes; stop once `signal` is aborted (the check ran out of time). Without it, the check passes. */
+  inspect?(indexes: readonly IndexInfo[], context?: SearchInspectContext): Promise<readonly SearchProblem[]>;
   /** Releases what the driver holds when the app shuts down. */
   close?(): Promise<void>;
 }

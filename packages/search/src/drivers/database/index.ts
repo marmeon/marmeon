@@ -2,13 +2,13 @@ import { ok, type Application, type Resolver, type Result } from '@marmeon/core'
 import { withCode } from '@marmeon/core/internal';
 import { Connections, SchemaRequirements } from '@marmeon/database';
 import { declareDerivedSchema, type DerivedSchemaEntry } from '@marmeon/database/internal';
-import type { DriverPage, DriverQuery, SearchDriver, SearchDriverFactory, SearchFailure, SearchKey, StoredDocument } from '../../driver.ts';
+import type { DriverPage, DriverQuery, SearchDriver, SearchDriverFactory, SearchFailure, SearchKey, SearchProblem, StoredDocument } from '../../driver.ts';
 import { SearchSetupError } from '../../errors.ts';
 import type { IndexInfo } from '../../registry.ts';
 import { searchOptions } from '../../config.ts';
 import { configFor } from '../../languages.ts';
-import { checkConfigurations, queryPgsql } from './pgsql.ts';
-import { querySqlite } from './sqlite.ts';
+import { checkConfigurations, missingConfigurations, missingConfigurationsMessage, pgsqlSchemaGaps, queryPgsql } from './pgsql.ts';
+import { querySqlite, sqliteSchemaGaps } from './sqlite.ts';
 import { deleteDocuments, deleteUnchanged, documentsAfter, DOCUMENTS_COLUMNS, DOCUMENTS_TABLE, flushDocuments, TEXT_COLUMNS, upsertDocuments, type StoredRevision } from './statements.ts';
 
 /**
@@ -16,6 +16,24 @@ import { deleteDocuments, deleteUnchanged, documentsAfter, DOCUMENTS_COLUMNS, DO
  * Postgres. `migrate` does not name them; `db:query` and the database MCP still withhold them.
  */
 const DERIVED_SCHEMA: DerivedSchemaEntry = { tables: ['search_documents_fts'], columns: { search_documents: ['vector'] } };
+
+/** The commands that copy the migration of the package into the app and run it. */
+const MIGRATE = 'marmeon publish @marmeon/search && marmeon migrate';
+/** What a schema object that is missing or wrong once the migration ran needs. */
+const RESTORE = 'The migration of @marmeon/search creates it, so it was changed or dropped after that migration ran: create it again in a migration of your app, with the statement of that migration.';
+
+/** One gap of the schema as a finding of `marmeon check`. */
+function schemaProblem(gap: { readonly name: string; readonly problem: 'missing' | 'not-fts5' | 'other-type' | 'other-definition' }): SearchProblem {
+  const { name, problem } = gap;
+  if (name === 'search_documents' || name === 'search_rebuilds') return { message: `The default database has no table ${name}, which SEARCH_DRIVER=database needs.`, fix: MIGRATE };
+  if (problem === 'not-fts5') return { message: `The table ${name} is no FTS5 table. ${RESTORE}` };
+  if (problem === 'other-type') return { message: `The column ${name} is no tsvector. ${RESTORE}` };
+  if (problem === 'other-definition') return { message: `The index ${name} is not the GIN index the search migration makes, or a build of it failed and left it invalid. ${RESTORE}` };
+  if (name === 'search_documents.vector') return { message: `The table search_documents has no column vector (tsvector). ${RESTORE}` };
+  if (name.endsWith('_index')) return { message: `The table search_documents has no GIN index ${name}, so a search reads every row. ${RESTORE}` };
+  if (name === 'search_documents_fts') return { message: `The default database has no FTS5 table search_documents_fts, which every search reads. ${RESTORE}` };
+  return { message: `The default database has no trigger ${name}, which keeps search_documents_fts current. ${RESTORE}` };
+}
 
 function setup(message: string): SearchSetupError {
   return new SearchSetupError(withCode('Q9', message));
@@ -88,6 +106,26 @@ export class DatabaseSearchDriver implements SearchDriver {
   /** @internal Removes these documents unless the app wrote them again since the sweep read them; returns how many it removed. */
   deleteUnchanged(index: IndexInfo, documents: readonly StoredRevision[]): Promise<number> {
     return deleteUnchanged(this.#db, index, documents);
+  }
+
+  /**
+   * What `marmeon check` reports: a table, the FTS5 table and its triggers (SQLite), the column `vector`, a GIN index or a text search
+   * configuration of the language map (Postgres) that the default database lacks, read from its catalog. The same for every index.
+   */
+  async inspect(): Promise<readonly SearchProblem[]> {
+    const gaps = this.#postgres ? await pgsqlSchemaGaps(this.#db) : await sqliteSchemaGaps(this.#db);
+    const tables = gaps.filter((gap) => gap.name === 'search_documents' || gap.name === 'search_rebuilds');
+    // Without its table nothing that hangs on search_documents can exist, and the migration that makes the table makes the rest.
+    const problems: SearchProblem[] =
+      tables.length === 2
+        ? [{ message: 'The default database has neither search_documents nor search_rebuilds: the migration of @marmeon/search has not run.', fix: MIGRATE }]
+        : (tables.some((gap) => gap.name === 'search_documents') ? tables : gaps).map(schemaProblem);
+    if (this.#postgres) {
+      this.#languages ??= searchOptions(this.#container).languages;
+      const missing = await missingConfigurations(this.#db, this.#languages);
+      if (missing.length > 0) problems.push({ message: missingConfigurationsMessage(missing) });
+    }
+    return problems;
   }
 
   /**

@@ -61,6 +61,7 @@ After the tools come the checks that need the app, in this order: `boot`, the ch
 | `hsts` | Warns when production on an `https` `APP_URL` sends [no `Strict-Transport-Security`](#hsts). Asks the booted app once. | run |
 | `db-types` | `bootstrap/database.d.ts` matches the migrations (a file of another Marmeon version is `D7`); a missing file is an error. Reads the migration files, no database. | run |
 | `guard-slots` | An error (`A8`) for a [guard slot](authentication.md#events-of-a-guard-slot) that has listeners but no binding, or is bound to a guard no provider registered: its events are never dispatched. The start refuses it too. Asks the booted app once. | run |
+| `search-indexes` | Errors (`Q9`) for what the [search driver](full-text-search.md#checking) lacks: on `SEARCH_DRIVER=database` a table, the FTS5 table or a trigger of the package's migration (SQLite), the column `vector`, a GIN index or a text search configuration of the language map (Postgres); on Meilisearch a server that cannot be asked or is older than 1.34, an index that does not exist or whose settings differ from its class, the table `search_rebuilds` and a rebuild target that no row of `search_rebuilds` names. Each finding has its fix where a command makes it. A driver without `inspect()` passes. Reads the database catalog or asks Meilisearch. | run |
 | `readiness` | Runs the [readiness checks](health.md#liveness-and-readiness) of the packages, the modules and the app, the same as `/up/ready`: a failing one is an error named after it, one that takes longer than its time limit says so. | |
 
 The `build` phase registers the app and boots nothing: it reads no secret and connects to nothing. The `run` phase boots it. If the
@@ -477,7 +478,7 @@ pnpm marmeon doctor
 | `readiness` | The [readiness checks](health.md#liveness-and-readiness) of the app and its packages. | the services of the app |
 
 The checks come in this order. `--only` and `--skip` take these names and no others: `--only=types` is a wrong call (exit `2`) that
-lists them. The checks that other packages, modules and your app add (`modules`, `throttle`, `hsts`, `guard-slots`, your own) are not
+lists them. The checks that other packages, modules and your app add (`modules`, `throttle`, `hsts`, `guard-slots`, `search-indexes`, your own) are not
 run: the doctor checks come from the CLI and database providers. A check whose provider is not in the app's providers cannot run and
 is an `error` (exit `3`) that names the provider to add. The [status](#status), [exit codes](#exit-codes) and [JSON
 output](#json-output) are those of `check`. The app is loaded only when one of the last six checks is selected.

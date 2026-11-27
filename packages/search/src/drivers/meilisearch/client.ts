@@ -153,6 +153,11 @@ export class MeilisearchClient {
     this.#now = options.now ?? (() => performance.now());
   }
 
+  /** The host and port of `SEARCH_MEILISEARCH_URL`, for a message: the URL carries no credential, and the key is never part of it. */
+  get host(): string {
+    return this.#base.host;
+  }
+
   /** The address of a path of segments, each encoded, with the query; anything but the base's origin is refused. */
   url(segments: readonly string[], query: Readonly<Record<string, string>> = {}): URL {
     // encodeURIComponent keeps `.` and `..`, which the URL parser would resolve into another path.
@@ -187,9 +192,9 @@ export class MeilisearchClient {
 
   /**
    * Sends one request and returns the answer's parsed JSON (`undefined` for a body that is no JSON). Throws a `MeilisearchError` when
-   * the request fails, is redirected or is answered with an error status.
+   * the request fails, is redirected or is answered with an error status. `signal` aborts the request.
    */
-  async request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', segments: readonly string[], options: { readonly query?: Readonly<Record<string, string>>; readonly json?: unknown } = {}): Promise<unknown> {
+  async request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', segments: readonly string[], options: { readonly query?: Readonly<Record<string, string>>; readonly json?: unknown; readonly signal?: AbortSignal | undefined } = {}): Promise<unknown> {
     const url = this.url(segments, options.query);
     const module = this.#fetch();
     const client = this.#http().allowing(await this.#ranges(url));
@@ -199,6 +204,7 @@ export class MeilisearchClient {
         method,
         redirect: 'error',
         timeout: REQUEST_TIMEOUT,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         headers: { accept: 'application/json', authorization: `Bearer ${this.#apiKey}` },
         ...(options.json === undefined ? {} : { json: options.json }),
       });

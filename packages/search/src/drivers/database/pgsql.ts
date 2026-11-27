@@ -99,18 +99,57 @@ interface Row {
  * gives that is not among them stops the first search or write (Q9), with its name.
  */
 export async function checkConfigurations(db: Connection<any>, map: ReadonlyMap<string, string>): Promise<void> {
+  const missing = await missingConfigurations(db, map);
+  if (missing.length > 0) throw new SearchSetupError(withCode('Q9', missingConfigurationsMessage(missing)));
+}
+
+/** The configurations the language map gives that the database does not have, as a statement of the driver finds them. */
+export async function missingConfigurations(db: Connection<any>, map: ReadonlyMap<string, string>): Promise<string[]> {
   const { rows } = await sql<{ name: string }>`select cfgname::text as name from pg_ts_config where pg_ts_config_is_visible(oid)`.execute(db);
   const known = new Set(rows.map((row) => row.name));
-  const missing = configurations(map).filter((name) => !known.has(name));
-  if (missing.length > 0) {
-    throw new SearchSetupError(
-      withCode(
-        'Q9',
-        `The search languages map to the text search configuration${missing.length === 1 ? '' : 's'} ${missing.join(', ')}, which the database does not have. ` +
-          'Create it in a migration, or map the language to another one in defineSearch({ languages }).',
-      ),
-    );
+  return configurations(map).filter((name) => !known.has(name));
+}
+
+/** What is wrong when the database lacks configurations of the language map, and what to do. */
+export function missingConfigurationsMessage(missing: readonly string[]): string {
+  return (
+    `The search languages map to the text search configuration${missing.length === 1 ? '' : 's'} ${missing.join(', ')}, which the database does not have. ` +
+    'Create it in a migration, or map the language to another one in defineSearch({ languages }).'
+  );
+}
+
+/** The GIN indexes of the search migration on Postgres, each with the end its definition has (as `pg_get_indexdef` prints it). */
+const PGSQL_INDEXES = [
+  { name: 'search_documents_vector_index', definition: ' USING gin (vector)' },
+  { name: 'search_documents_filters_index', definition: ' USING gin (filters jsonb_path_ops)' },
+] as const;
+
+/**
+ * Which of the schema objects of the search migration a Postgres database lacks or has in another form: the tables, the column
+ * `vector` of type `tsvector` and the GIN indexes. Each name is looked up through the search path, as the driver's statements find it.
+ */
+export async function pgsqlSchemaGaps(db: Connection<any>): Promise<{ readonly name: string; readonly problem: 'missing' | 'other-type' | 'other-definition' }[]> {
+  const { rows } = await sql<{ documents: boolean; rebuilds: boolean; vector: string | null }>`select
+      to_regclass('search_documents') is not null as documents,
+      to_regclass('search_rebuilds') is not null as rebuilds,
+      (select format_type(a.atttypid, a.atttypmod) from pg_attribute a
+        where a.attrelid = to_regclass('search_documents') and a.attname = 'vector' and a.attnum > 0 and not a.attisdropped) as vector`.execute(db);
+  const [state] = rows;
+  const gaps: { name: string; problem: 'missing' | 'other-type' | 'other-definition' }[] = [];
+  if (state?.rebuilds !== true) gaps.push({ name: 'search_rebuilds', problem: 'missing' });
+  if (state?.documents !== true) return [{ name: 'search_documents', problem: 'missing' }, ...gaps];
+  if (state.vector === null) gaps.push({ name: 'search_documents.vector', problem: 'missing' });
+  else if (state.vector !== 'tsvector') gaps.push({ name: 'search_documents.vector', problem: 'other-type' });
+  // An index a failed concurrent build left behind is invalid: its definition reads right, but no query uses it.
+  const { rows: indexes } = await sql<{ name: string; definition: string; usable: boolean }>`select c.relname::text as name, pg_get_indexdef(i.indexrelid) as definition, i.indisvalid and i.indisready as usable
+    from pg_index i join pg_class c on c.oid = i.indexrelid where i.indrelid = to_regclass('search_documents')`.execute(db);
+  const found = new Map(indexes.map((index) => [index.name, index]));
+  for (const { name, definition } of PGSQL_INDEXES) {
+    const index = found.get(name);
+    if (index === undefined) gaps.push({ name, problem: 'missing' });
+    else if (!index.usable || !index.definition.endsWith(definition)) gaps.push({ name, problem: 'other-definition' });
   }
+  return gaps;
 }
 
 /**

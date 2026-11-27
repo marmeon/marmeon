@@ -82,6 +82,35 @@ export async function rebuildTarget(connections: Connections, index: string): Pr
   return rows[0]?.target ?? undefined;
 }
 
+/** @internal Whether the default database has the table `search_rebuilds`, looked up the way a statement finds it. */
+export async function hasRebuildsTable(connections: Connections): Promise<boolean> {
+  const driver = connections.options('default').driver as string;
+  const query =
+    driver === 'pgsql'
+      ? sql<{ present: unknown }>`select 1 as present where to_regclass('search_rebuilds') is not null`
+      : driver === 'mysql'
+        ? sql<{ present: unknown }>`select 1 as present from information_schema.tables where table_schema = database() and table_name = 'search_rebuilds'`
+        : sql<{ present: unknown }>`select 1 as present from sqlite_master where type = 'table' and name = 'search_rebuilds'`;
+  const { rows } = await query.execute(connections.get('default'));
+  return rows.length > 0;
+}
+
+/** The target a run of a driver with `swap()` fills: known from the run before the run records it. */
+function targetOf(index: string, run: string): string {
+  return `${index}__rebuild_${run.slice(0, 8)}`;
+}
+
+/**
+ * @internal The target of every unfinished rebuild, by index name, from `search_rebuilds`; `undefined` when the database has no such
+ * table, so no rebuild can run. A run creates its target before it records it, so a row without one names the target its run makes.
+ * Read by `inspect()` of a driver with `swap()`, to tell a rebuild's target from a leftover.
+ */
+export async function rebuildTargets(connections: Connections): Promise<ReadonlyMap<string, string> | undefined> {
+  if (!(await hasRebuildsTable(connections))) return undefined;
+  const { rows } = await sql<{ index_name: string; run: string; target: string | null }>`select index_name, run, target from search_rebuilds`.execute(connections.get('default'));
+  return new Map(rows.map((row) => [row.index_name, row.target ?? targetOf(row.index_name, row.run)]));
+}
+
 /**
  * Rebuilds an index from its rows: keyset batches over `source()`, each written and checkpointed in `search_rebuilds`, under a lock that
  * one run holds at a time. The `database` driver then sweeps the documents whose rows are gone; a driver with `swap()` fills a target
@@ -135,7 +164,7 @@ export class Rebuilder {
       let target: string | undefined;
       if (driver.swap !== undefined) {
         // A resumed run keeps its target; prepare() runs again without harm.
-        target = row.target ?? `${name}__rebuild_${row.run.slice(0, 8)}`;
+        target = row.target ?? targetOf(name, row.run);
         // The index itself must exist too: a swap needs both, and a job that cannot write to it never reaches the target either,
         // so on a first rebuild every change made while it runs would be lost.
         await driver.prepare?.(info);
@@ -176,19 +205,10 @@ export class Rebuilder {
   }
 
   /** Whether the database has the table `search_rebuilds`. */
-  async #hasTable(): Promise<boolean> {
-    const connections = this.#parts.connections();
-    const driver = connections.options('default').driver as string;
-    const db = this.#db;
-    const query =
-      driver === 'pgsql'
-        ? sql<{ present: unknown }>`select 1 as present where to_regclass('search_rebuilds') is not null`
-        : driver === 'mysql'
-          ? sql<{ present: unknown }>`select 1 as present from information_schema.tables where table_schema = database() and table_name = 'search_rebuilds'`
-          : sql<{ present: unknown }>`select 1 as present from sqlite_master where type = 'table' and name = 'search_rebuilds'`;
-    const { rows } = await query.execute(db);
-    return rows.length > 0;
+  #hasTable(): Promise<boolean> {
+    return hasRebuildsTable(this.#parts.connections());
   }
+
 
   /**
    * Takes the lock of an index: a first run inserts the row, a later one takes it over when no run holds it or its lock ran out.

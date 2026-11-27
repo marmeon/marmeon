@@ -48,7 +48,10 @@ const definition: ApplicationDefinition = {
 };
 
 const env = { DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' };
-const getterMessage = "app.search needs @marmeon/search in the app and a fake: createTestApp(…, { search: 'fake' }) — with SEARCH_DRIVER=database the real driver is used.";
+const databaseMessage = "app.search has no fake: with SEARCH_DRIVER=database the test searches its own database with the real driver. For the fake: createTestApp(…, { search: 'fake' }).";
+const realMessage = "app.search has no fake: the test chose createTestApp(…, { search: 'real' }), so the configured search driver is used.";
+const overrideMessage = "app.search has no fake: the test's override binds a SearchDriver of its own.";
+const providerMessage = 'app.search needs the provider of @marmeon/search, which the app does not register: run marmeon discover, or add SearchServiceProvider to its providers.';
 
 /** Keeps the database driver out of a test that only asks which driver the test app chose: `override` runs after the choice. */
 const standIn = (container: Container) => container.instance(SearchDriver, configured);
@@ -81,7 +84,7 @@ describe('app.search', () => {
     await using app = await createTestApp(definition, { env: { ...env, ...driver }, override: standInAfter(seen) });
     expect(seen).toHaveProperty('binding');
     expect(seen.binding).not.toBeInstanceOf(SearchFake);
-    expect(() => app.search).toThrow(new Error(getterMessage));
+    expect(() => app.search).toThrow(new Error(databaseMessage));
   });
 
   it("is in place with search: 'fake', also on the database driver", async () => {
@@ -93,13 +96,13 @@ describe('app.search', () => {
   it("is not in place with search: 'real': the configured driver stays", async () => {
     await using app = await createTestApp(definition, { env: { ...env, SEARCH_DRIVER: 'configured' }, search: 'real' });
     expect(app.make(SearchDriver)).toBe(configured);
-    expect(() => app.search).toThrow(new Error(getterMessage));
+    expect(() => app.search).toThrow(new Error(realMessage));
   });
 
   it("is not in place when the test's override binds a driver of its own", async () => {
     await using app = await createTestApp(definition, { env: { ...env, SEARCH_DRIVER: 'configured' }, override: standIn });
     expect(app.make(SearchDriver)).toBe(configured);
-    expect(() => app.search).toThrow(new Error(getterMessage));
+    expect(() => app.search).toThrow(new Error(overrideMessage));
   });
 
   it('refuses an option that is neither fake nor real', async () => {
@@ -114,7 +117,7 @@ describe('app.search', () => {
   it('is absent from an app without the provider, which still starts', async () => {
     await using app = await createTestApp({ root: tempDir('marmeon-testing-search-none-'), discover: false, modules: [defineModule({ name: 'no-search' })] });
     expect(app.container.has(SearchDriver)).toBe(false);
-    expect(() => app.search).toThrow(new Error(getterMessage));
+    expect(() => app.search).toThrow(new Error(providerMessage));
   });
 });
 

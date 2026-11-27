@@ -1,9 +1,11 @@
 import type { Application } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
 import { withCode } from '@marmeon/core/internal';
 import { SearchConfig } from '../../config.ts';
 import type { SearchDriver, SearchDriverContext, SearchDriverFactory } from '../../driver.ts';
 import { SearchSetupError } from '../../errors.ts';
 import { importFetch, MeilisearchClient, meilisearchApiKey, meilisearchUrl, type FetchModule, type Lookup, type Now, type Sleep } from './client.ts';
+import { rebuildTargets } from '../../rebuild.ts';
 import { MeilisearchDriver } from './driver.ts';
 
 function setup(message: string): SearchSetupError {
@@ -27,7 +29,7 @@ export function createMeilisearchDriver(context: SearchDriverContext, options: {
     return module;
   };
   const client = new MeilisearchClient({ url, apiKey, http: () => context.container.make(loaded().HttpClient), fetch: loaded, lookup: options.lookup, sleep: options.sleep, now: options.now });
-  const driver = new MeilisearchDriver(client, context.logger);
+  const driver = new MeilisearchDriver(client, context.logger, () => rebuildTargets(context.container.make(Connections)));
   return Object.assign(driver, {
     async boot(app: Application): Promise<void> {
       const found = await importFetch();

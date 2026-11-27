@@ -1,7 +1,8 @@
 import { Application, Clock, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers, withCode } from '@marmeon/core/internal';
 import { Connections, SchemaRequirements, type ProviderMigrations } from '@marmeon/database';
-import type { CommandClass } from 'marmeon';
+import type { AppCheckClass, CommandClass } from 'marmeon';
+import { SearchIndexesCheck } from './check.ts';
 import { SearchFlushCommand } from './commands/flush.ts';
 import { SearchRebuildCommand } from './commands/rebuild.ts';
 import { BUILT_IN_SEARCH_DRIVERS, SearchConfig } from './config.ts';
@@ -102,6 +103,8 @@ export class SearchServiceProvider implements ServiceProvider {
   /** The tables of `SEARCH_DRIVER=database`, copied into an app by `marmeon publish @marmeon/search`. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
   static commands: readonly CommandClass[] = [SearchRebuildCommand, SearchFlushCommand];
+  /** `search-indexes` for `marmeon check`: what the selected driver's `inspect()` finds missing or different. See `docs/check.md#the-app-checks`. */
+  static checks: readonly AppCheckClass[] = [SearchIndexesCheck];
 
   /** The driver, once built — closed at shutdown. */
   #driver: SearchDriver | undefined;
