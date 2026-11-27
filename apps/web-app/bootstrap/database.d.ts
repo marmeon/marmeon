@@ -64,6 +64,37 @@ declare module '@marmeon/database' {
       failed_at: number;
     };
     /**
+     * Owned by `handbook`.
+     * Timestamps.
+     * Primary key: id.
+     */
+    handbook_articles: {
+      id: Generated<number>;
+      locale: string;
+      title: string;
+      summary: string;
+      body: string;
+      audience: 'public' | 'members';
+      published_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
+     * Owned by `handbook`.
+     * Timestamps.
+     * Primary key: id.
+     */
+    handbook_faqs: {
+      id: Generated<number>;
+      locale: string;
+      question: string;
+      answer: string;
+      audience: 'public' | 'members';
+      published_at: Timestamp | null;
+      created_at: Generated<Timestamp>;
+      updated_at: Generated<Timestamp>;
+    };
+    /**
      * Owned by `system`.
      * Primary key: id.
      */
@@ -322,6 +353,39 @@ declare module '@marmeon/database' {
     /**
      * Owned by `system`.
      * Primary key: id.
+     * Unique: (index_name, key).
+     */
+    search_documents: {
+      id: Generated<number>;
+      index_name: string;
+      key: string;
+      locale: string | null;
+      config: string | null;
+      filters: Generated<JsonColumn<'search_documents.filters'>>;
+      a: Generated<Secret<string>>;
+      b: Generated<Secret<string>>;
+      c: Generated<Secret<string>>;
+      d: Generated<Secret<string>>;
+      revision: Generated<number>;
+    };
+    /**
+     * Owned by `system`.
+     * Primary key: index_name.
+     */
+    search_rebuilds: {
+      index_name: string;
+      run: string;
+      phase: 'copy' | 'sweep';
+      after: string | null;
+      target: string | null;
+      holder: string | null;
+      held_until: number | null;
+      started_at: Timestamp;
+      fingerprint: string | null;
+    };
+    /**
+     * Owned by `system`.
+     * Primary key: id.
      */
     sessions: {
       id: string;
@@ -522,6 +586,8 @@ declare module '@marmeon/database' {
     cache_locks: 'key';
     email_changes: 'user_id';
     failed_jobs: 'uuid';
+    handbook_articles: 'id';
+    handbook_faqs: 'id';
     jobs: 'id';
     lab_one_time_links: 'id';
     lab_survey_questions: 'id';
@@ -539,6 +605,8 @@ declare module '@marmeon/database' {
     password_reset_tokens: 'email';
     personal_access_tokens: 'id';
     profile_links: 'id';
+    search_documents: 'id';
+    search_rebuilds: 'index_name';
     sessions: 'id';
     sign_ins: 'id';
     social_accounts: 'id';
@@ -553,6 +621,8 @@ declare module '@marmeon/database' {
     cache_locks: 'system';
     email_changes: 'auth';
     failed_jobs: 'system';
+    handbook_articles: 'handbook';
+    handbook_faqs: 'handbook';
     jobs: 'system';
     lab_one_time_links: 'lab';
     lab_survey_questions: 'lab';
@@ -570,6 +640,8 @@ declare module '@marmeon/database' {
     password_reset_tokens: 'auth';
     personal_access_tokens: 'auth';
     profile_links: 'user-profile';
+    search_documents: 'system';
+    search_rebuilds: 'system';
     sessions: 'system';
     sign_ins: 'auth';
     social_accounts: 'system';
@@ -587,6 +659,7 @@ declare module '@marmeon/database' {
     'back-office': true;
     bookmarks: true;
     dashboard: true;
+    handbook: true;
     help: true;
     lab: true;
     locale: true;

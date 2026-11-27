@@ -297,6 +297,9 @@ or an audience, and pass the user's values in every search:
 await this.#search.query({ in: PageIndex, term, filters: { tenant: ctx.user.tenantId, audience: ['public', ctx.user.role] } });
 ```
 
+The example app in `apps/web-app` searches this way: the `handbook` module indexes its published articles and questions, and
+gives a guest the audience `public` and a member with a confirmed address `public` and `members`.
+
 Search refuses a filter that would quietly widen a search:
 
 - A filter that an index does not declare is a type error, and throws a `TypeError`. With several indexes, a filter must be declared

@@ -38,6 +38,7 @@
     "@marmeon/redis": "workspace:*",
     "@marmeon/router": "workspace:*",
     "@marmeon/scheduler": "workspace:*",
+    "@marmeon/search": "workspace:*",
     "@marmeon/server": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/storage": "workspace:*",

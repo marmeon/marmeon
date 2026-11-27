@@ -386,6 +386,9 @@ importers:
       '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
+      '@marmeon/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@marmeon/server':
         specifier: workspace:*
         version: link:../../packages/server
