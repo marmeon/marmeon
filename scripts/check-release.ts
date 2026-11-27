@@ -55,6 +55,30 @@ const VERIFY_HINT = 'pnpm release:verify';
  * listed entry must stand under its release.
  */
 export const UPGRADING_ANCHORS: Readonly<Record<string, readonly string[]>> = {
+  '1.3.0': [
+    'low-a-table-refuses-a-nul-character-or-half-of-a-surrogate-pair-in-its-search-filters-and-row-keys',
+    'low-an-upload-name-with-a-nul-character-is-refused-and-a-long-one-is-cut-by-code-points',
+    'low-cookiesset-refuses-a-value-with-half-of-a-surrogate-pair-and-options-a-browser-would-ignore',
+    'low-password-refuses-a-nul-character-and-a-password-of-more-than-4096-characters-as-typed',
+    'low-json-and-view-throw-for-a-status-outside-200-to-599',
+    'low-a-migration-that-drops-a-name-postgres-would-cut-stops-with-d5-and-names-are-judged-by-the-database',
+    'low-schemacreate-and-schemarename-refuse-a-table-name-with-a-dot-in-an-up',
+    'low-a-new-migration-is-stamped-behind-the-migrations-of-every-module',
+    'low-a-statement-that-reaches-a-transaction-after-its-commit-or-rollback-is-refused',
+    'low-an-aborted-commit-and-a-transaction-left-open-end-in-d24',
+    'low-a-job-key-that-names-the-lock-of-another-job-is-refused-and-queuework-warns-at-its-start',
+    'low-queue-log-lines-name-a-dispatched-job-apart-from-the-running-one',
+    'low-schedulework-waits-for-a-run-that-hangs-at-the-stop-and---stop-timeout-has-an-upper-bound',
+    'low-claimedby-in-a-command-answers-as-in-a-request',
+    'low-a-route-pattern-that-can-be-empty-matches-the-path-',
+    'low-the-storage-routes-answer-range-requests-with-206-and-416',
+    'low-tinker-finds-its-helpers-by-their-package-and-refuses---sandbox-beside-a-second-copy-of-the-database-package',
+    'low-a-failed-log-write-stops-the-logger-instead-of-ending-the-process',
+    'low-auth-and-the-queue-finish-their-work-before-they-depend-on-the-logger',
+    'low-discovery-and-the-database-look-for-packages-and-lockfiles-only-up-to-your-workspace',
+    'low-the-vite-peer-range-starts-at-836',
+    'low-a-sync-delay-a-scheduled-job-of-another-class-and-a-second-copy-of-a-package-are-warned-about',
+  ],
   '1.2.3': ['low-startserver-holds-a-response-to-its-length-answers-a-failed-body-and-refuses-a-fetched-response'],
   '1.2.2': [
     'low-a-command-of-your-own-named-add-doctor-upgrade-or-dbquery-needs-another-name',

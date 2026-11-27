@@ -1,5 +1,69 @@
 # marmeon
 
+## 1.3.0
+
+### Features
+
+- Let a provider register jobs with static [providerJobs] by @maxeckel in https://github.com/marmeon/marmeon/pull/892
+- Add r.string().wellFormed() to refuse lone surrogates by @maxeckel in https://github.com/marmeon/marmeon/pull/893
+- Let a disk open one range of a file by @maxeckel in https://github.com/marmeon/marmeon/pull/908
+- Document sources of a package in an app's workspace by @maxeckel in https://github.com/marmeon/marmeon/pull/900
+- Stamp a new migration behind those of every module by @maxeckel in https://github.com/marmeon/marmeon/pull/903
+- Open ranges on S3 disks by @maxeckel in https://github.com/marmeon/marmeon/pull/909
+- Answer Range requests for files of a disk by @maxeckel in https://github.com/marmeon/marmeon/pull/910
+- Share one instance of a workspace package in an app's tests by @maxeckel in https://github.com/marmeon/marmeon/pull/899
+- List the jobs of providers in modules:list and the app overview by @maxeckel in https://github.com/marmeon/marmeon/pull/929
+- Serve the default locale without a prefix when APP_LOCALE_PREFIX is false by @maxeckel in https://github.com/marmeon/marmeon/pull/945
+
+### Fixes
+
+- Count a provider's jobs as listed in modules:check, check and tinker by @maxeckel in https://github.com/marmeon/marmeon/pull/894
+- Warn when the sync connection ignores a delay by @maxeckel in https://github.com/marmeon/marmeon/pull/895
+- Warn when a scheduled job's name belongs to another class by @maxeckel in https://github.com/marmeon/marmeon/pull/898
+- Name a name that Postgres cut as the cause of D3 by @maxeckel in https://github.com/marmeon/marmeon/pull/896
+- Name the copy under node_modules when type stripping refuses a source by @maxeckel in https://github.com/marmeon/marmeon/pull/897
+- Warn about a second copy of a framework package in one version by @maxeckel in https://github.com/marmeon/marmeon/pull/902
+- Free a unique job's lock when its dispatch fails before the job exists by @maxeckel in https://github.com/marmeon/marmeon/pull/914
+- Refuse a NUL character in password() by @maxeckel in https://github.com/marmeon/marmeon/pull/915
+- Refuse a cookie value with half of a surrogate pair when it is set by @maxeckel in https://github.com/marmeon/marmeon/pull/916
+- Find tinker's db, jobs, mail, repos and sandbox by their package's class by @maxeckel in https://github.com/marmeon/marmeon/pull/918
+- Exit schedule:work with its code when a run hangs at the stop by @maxeckel in https://github.com/marmeon/marmeon/pull/919
+- Refuse a response status outside 200 to 599 in json() and view() by @maxeckel in https://github.com/marmeon/marmeon/pull/920
+- Treat a job as encrypted wherever its payload is encrypted by @maxeckel in https://github.com/marmeon/marmeon/pull/922
+- Discover again when a package of the app's workspace changes its package.json by @maxeckel in https://github.com/marmeon/marmeon/pull/927
+- End a thief's sessions before logging the theft by @maxeckel in https://github.com/marmeon/marmeon/pull/935
+- Ask Postgres whether a migration's index and constraint names fit by @maxeckel in https://github.com/marmeon/marmeon/pull/930
+- Answer claimedBy() in a command as in a request by @maxeckel in https://github.com/marmeon/marmeon/pull/942
+- Name a dispatched job apart from the job that is running in queue log lines by @maxeckel in https://github.com/marmeon/marmeon/pull/923
+- Find the injection list of a class a package imports and exports again by @maxeckel in https://github.com/marmeon/marmeon/pull/926
+- Look for an app's packages only up to its workspace by @maxeckel in https://github.com/marmeon/marmeon/pull/936
+- Refuse a NUL character in a table's search and row keys by @maxeckel in https://github.com/marmeon/marmeon/pull/932
+- Refuse an upload name with a NUL character and cut it by code points by @maxeckel in https://github.com/marmeon/marmeon/pull/933
+- Refuse to drop or rename a table or column by a name Postgres would cut by @maxeckel in https://github.com/marmeon/marmeon/pull/931
+- Refuse a job key that names the lock of another job, and warn at queue:work start by @maxeckel in https://github.com/marmeon/marmeon/pull/924
+- Name the package of a provider that is no class at boot by @maxeckel in https://github.com/marmeon/marmeon/pull/939
+- Keep a failed log write from throwing or hanging the process by @maxeckel in https://github.com/marmeon/marmeon/pull/941
+- Keep a failing log sink from changing how auth's failure paths end by @maxeckel in https://github.com/marmeon/marmeon/pull/944
+- Emit JobFailed even when the logger's error() rejects by @maxeckel in https://github.com/marmeon/marmeon/pull/938
+- Stop the database's lockfile search at the last trusted folder above the app by @maxeckel in https://github.com/marmeon/marmeon/pull/943
+- Refuse a tinker sandbox when a second copy of the database package is installed by @maxeckel in https://github.com/marmeon/marmeon/pull/937
+- Refuse a table name with a dot in schema.create() and schema.rename() by @maxeckel in https://github.com/marmeon/marmeon/pull/934
+- Update dependencies and raise the vite peer floor to 8.3.6 by @maxeckel in https://github.com/marmeon/marmeon/pull/947
+- Update Kysely to 0.29.9 and keep its aborted-commit error inside the driver by @maxeckel in https://github.com/marmeon/marmeon/pull/948
+- Refuse a statement that reaches a transaction's connection after its commit or rollback by @maxeckel in https://github.com/marmeon/marmeon/pull/949
+
+### Documentation
+
+- Say when pnpm installs a framework package twice by @maxeckel in https://github.com/marmeon/marmeon/pull/901
+- Show how to test a generated migration by @maxeckel in https://github.com/marmeon/marmeon/pull/904
+- Show generators how a data step holds its content by @maxeckel in https://github.com/marmeon/marmeon/pull/905
+- Say that a Response with a body serves one request by @maxeckel in https://github.com/marmeon/marmeon/pull/917
+- Say that a logger handles the failures of its own writes by @maxeckel in https://github.com/marmeon/marmeon/pull/925
+- Say which newest migration stamps are refused by @maxeckel in https://github.com/marmeon/marmeon/pull/940
+- Make package development a docs section of its own by @maxeckel in https://github.com/marmeon/marmeon/pull/946
+
+**Full Changelog**: https://github.com/marmeon/marmeon/compare/v1.2.3...v1.3.0
+
 ## 1.2.3
 
 ### Fixes
