@@ -112,7 +112,7 @@ how to keep it.
 | `get(key)` | The file's bytes. |
 | `text(key)` | The file as UTF-8 text. |
 | `stream(key)` | The file as a stream, for large files. |
-| `open(key)` | A stream with the file's size, time and content type. |
+| `open(key, { range }?)` | A stream with the file's size, time and content type. With `range`, only those bytes: `{ start }`, `{ start, end }` (both included) or `{ last }` (the last bytes). The S3 disk asks the store for just those bytes. See [opening a range](#opening-a-range). |
 | `exists(key)` | Whether there is a file. |
 | `delete(key)` | Removes the file, and says whether there was one. |
 | `move(from, to)`, `copy(from, to)` | On the same disk, replacing the target. |
@@ -126,6 +126,39 @@ A `Disk` is given to your code by `storage.disk()`; it is not meant to be implem
 A missing file throws `FileNotFoundError`. A reader never sees half a file: the local driver writes to a temporary file and
 renames it into place. The content type comes from the key's extension on a local disk, and from what was stored on S3 and in
 memory: `put()`'s `contentType` counts there only.
+
+### Opening a range
+
+`open(key, { range })` opens some of a file's bytes. The result's `size` is always the whole file's, and `range` says which bytes the
+`body` holds:
+
+```ts
+const file = await disk.open('exports/report.csv', { range: { start: 100, end: 199 } });
+// file.range is { start: 100, end: 199 }; file.size is the whole file's size
+```
+
+- `{ start }` reads to the end of the file, `{ start, end }` through byte `end` (included), and `{ last: 500 }` reads the last 500
+  bytes. An `end` past the file's end is cut to it, and a `last` bigger than the file gives the whole file.
+- A range that starts at or after the file's end, or asks for the last 0 bytes, has `range: 'unsatisfiable'` and an empty body.
+  A `last` on an empty file gives that file, with no `range`.
+- Anything that is not `{ start, end? }` or `{ last }` throws a `RangeError`, and so do a number that is not whole or is below 0,
+  an `end` before its `start`, and a `last` together with a `start` or an `end`. The check runs before the file is looked at, on every disk.
+- `acceptsRanges: true` says the disk honours the option. The local, memory and S3 disks do. A custom driver that does not
+  returns the whole file and no `range`: check `range` before you treat the body as a slice.
+- `size`, `lastModified` and the bytes come from one look at the file. A file that `put()` replaces afterwards keeps its old bytes
+  for a body you hold, and a second `open()` sees the new file, so two reads can come from two versions. Store a changed file under
+  a new key instead of replacing it under the same one. A file that grows after the open is read no further than the range's last
+  byte. A local file that gets shorter while you read a range of it makes the body fail with a `StorageError`.
+- On S3 a range is one `GetObject` with a `Range` header, and only its bytes leave the store. When the store refuses the range, a
+  `HeadObject` tells the file's size. That happens when the range starts behind the end, or when `last` asks for bytes of an empty
+  file. A second `GetObject` then reads the whole file if the range was not behind its end after all. `{ last: 0 }` sends the
+  `HeadObject` alone. A store that ignores `Range` sends the whole file: you get it with no `range`, or an empty body with
+  `'unsatisfiable'` when the range starts behind its end. A reply with a `Content-Range` this disk cannot read, or with other bytes
+  than you asked for, throws a `StorageError`. A store that names no length and sends more or fewer bytes than the range makes the
+  body fail with a `StorageError` while you read it. `serveFile()` on S3 still streams every byte through your app. `temporaryUrl()` does
+  not, and S3 answers ranges there itself.
+
+`get()`, `stream()` and `copy()` always take the whole file.
 
 ## Public and private files
 
@@ -179,6 +212,45 @@ The start fails when a private local disk shares a directory with a public one, 
 through a symlink: its files would be served as public. So does a private disk with a `url`, and on S3 a private and a public
 disk in one bucket whose prefixes overlap.
 
+### Ranges and video
+
+The routes above answer a `Range` request of a GET, which a browser sends to play or seek in a video or an audio file, and to
+resume a download. A request for bytes `2-4` gets `206 Partial Content` with `Content-Range: bytes 2-4/10` and only those bytes.
+A range that starts at or after the file's end gets `416` with `Content-Range: bytes */10`, no body and `Cache-Control: no-store`,
+and so does `bytes=-0`. A file that supports ranges announces `Accept-Ranges: bytes`, also on a plain `200`, on `304` and on
+`HEAD`. `HEAD` ignores `Range`.
+
+With `ranges: true`, `serveFile()` understands one range of the unit `bytes`: `bytes=2-4`, `bytes=2-` or `bytes=-4`, the last four bytes. Any other
+`Range` header gets the whole file with `200`: another unit, a malformed value, an end before its start, or several ranges such as
+`bytes=0-1,4-5`. An end past the file's last byte is cut to it, and a suffix longer than the file gets the whole file as `206`. A
+number beyond `Number.MAX_SAFE_INTEGER` counts as that number. In an empty file every range that names a start gets `416` with
+`Content-Range: bytes */0`, and `bytes=-4` gets the empty file with `200`.
+
+- **Every answer keeps the safe headers.** `nosniff`, the sandbox, the disposition and the type are the ones of a whole file. A `206`
+  keeps the route's `Cache-Control`, so a public file stays `max-age=0, must-revalidate`.
+- **`If-Modified-Since` comes first.** A file that did not change is a `304` before any range is looked at. `If-Range` with the exact
+  `Last-Modified` text of a file at least a second old answers the range; any other `If-Range`, an entity tag included, gets the
+  whole file. No `ETag` is sent.
+- **A failed precondition is a `412`.** No `ETag` is issued, so an `If-Match` other than `*` fails, and so does an
+  `If-Unmodified-Since` older than the file's `Last-Modified`. The answer has no body and is not cached. It comes before
+  `If-Modified-Since` and holds for `HEAD` too.
+- **Only the slice leaves the disk.** The route asks the disk for those bytes alone.
+- **Only a disk from `Storage` answers a range.** A disk object of your own, or a wrapper around any disk, one from `Storage` included, gets the whole file. A route
+  that changes the bytes `serveFile()` returns leaves `ranges` off. A wrapper that changes no bytes, such as a key prefix or
+  logging, is not needed: map the key in the route and pass the disk from `Storage`.
+- **A signed link must cover the playback.** Every range request checks the signature and the expiry again, so `expiresIn` has to last
+  as long as someone watches, pauses and resumes. A signed link's `206` is `private, no-store`.
+- **Replace a file under a new key.** The bytes of two requests come from two looks at the file. A file that `put()` replaces under
+  the same key between two requests can reach a player as a mix of two versions, and a replacement within the second of the
+  file's `Last-Modified` goes unseen by `If-Range`.
+- **A middleware that tests for `status === 200` sees `206` and `416`.** A global middleware or proxy that changes the bytes of
+  a response, compresses it say, leaves `206` alone. The framework compresses no disk response. A throttle or a counter sees one
+  request per seek, so count a download in your own route, as [responses](responses.md#downloads) shows.
+- **A `<video src>` plays, the address bar downloads.** The video element needs ranges and the right type, and both come with the route.
+  Opening the URL in a tab still downloads the file, because everything but a raster image goes out as an attachment. The type
+  comes from the key's extension on a local disk (`.mp4`, `.webm` and `.ogv` are known, `.mov` and `.m4v` are not): a video under
+  a key without one is `application/octet-stream`, and a browser may refuse it.
+
 ## Keys
 
 A key is a relative path of `/`-separated segments, such as `avatars/7.webp`. Two measures keep a key inside its disk:
@@ -203,8 +275,11 @@ pnpm add @aws-sdk/client-s3@^3 @aws-sdk/s3-request-presigner@^3
 When the default disk or the uploads disk is on S3, the start checks that the SDK is installed and fails with this command if it
 is not. A disk the app only names somewhere says so when it is first used, and so does a disk without a bucket, such as an unset
 `S3_BUCKET`. Without `credentials` the SDK finds them itself: from the environment or the machine's role. With an `endpoint`, the
-bucket goes into the path, which most S3-compatible stores expect. When an S3 store sends no `Content-Length`, `open()` and
-`size()` report 0, and `serveFile()` sends the file to its end without a `Content-Length`. A disk that wraps such a disk's body keeps the body it was given, or passes on a size it knows.
+bucket goes into the path, which most S3-compatible stores expect. When an S3 store sends no `Content-Length`, `open()` without a
+range and `size()` report 0, and `serveFile()` sends the file to its end without a `Content-Length`. A range the store answers
+with a `Content-Range` reports the size from that header. A range the store answers without a `Content-Range` gives the whole
+file with no `range`, unless its length shows that the range lies behind the end. The same happens when the store sends no length
+for the size lookup of an unsatisfiable range. A disk that wraps such a disk's body keeps the body it was given, or passes on a size it knows.
 
 A disk's visibility is the disk's, not the object's. A public S3 disk needs a bucket policy that makes its files readable, since
 the disk sets no ACLs. `temporaryUrl()` presigns a download that is an attachment unless the file name is a raster image's, with
@@ -230,7 +305,9 @@ then sends a token in the file's place:
 
 1. **A target for the field.** The browser asks the form's own route for a target, with the file's name, size and type. The
    route's middleware, bindings and `authorize` run, so whoever may send the form may upload its files, and the field's `upload()`
-   rule decides the limit. The controller does not run. A field without the rule is a 404, a file that is too large a 422.
+   rule decides the limit. The controller does not run. A field without the rule is a 404, a file that is too large a 422. A name with a NUL character is a 400. A lone half of a
+   surrogate pair in the name is replaced with U+FFFD, and a name longer than 255 characters is cut to 255, counted in Unicode code
+   points, so a character that takes two UTF-16 units is never cut in half.
 2. **The bytes** stream onto the private `uploads` disk, never into memory, and are cut off at the size the browser announced (never
    above the rule's `maxBytes`), whatever its `Content-Length` says. A file that is cut off leaves nothing behind.
 3. **The token in the form.** On submit, before the schema runs, the token is checked: its signature, the session it was made
@@ -665,4 +742,5 @@ it('writes the notes to the private disk', async () => {
 ```
 
 `assertMissing(key)` and a check of the file's bytes complete the assertions, and `app.upload()` sends an upload through the real
-target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md#storage) page covers them.
+target. `createTestApp(app, { storage: 'real' })` keeps the configured disks. The [fakes](fakes.md#storage) page covers them. The
+fake's disks honour `range` even where a disk driver of your own does not, so test the whole-file answer of such a driver with `storage: 'real'`.

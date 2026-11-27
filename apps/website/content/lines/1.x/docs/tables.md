@@ -185,7 +185,8 @@ computed value that identifies a row becomes a key when the query selects from t
 [`TeamsTable`](#columns) above. A number column goes by name, `key: 'users.id'`, and is read as an integer.
 A text key says how to read it: `key: { column: 'users.uuid', type: 'uuid' }`, with the types `integer`, `bigint`, `string` and
 `uuid`. A text key by name alone is a compile error. Every key from the browser is parsed by its type before any query. One that
-does not parse is no row, so text never reaches an integer column. In the props, the key of a row is under its column's name:
+does not parse is no row, so text never reaches an integer column. A key with a NUL character or half of a surrogate pair is a
+422 before that, whatever the key's type. In the props, the key of a row is under its column's name:
 `users.id` becomes `id`.
 
 ### Filters
@@ -444,6 +445,7 @@ does not. Each of these is a **400**:
 - a filter that does not exist, `?filter[password]=x`, or a value its filter does not offer (for options computed per request: not in this request's list),
 - a page size that is not in `perPage`, `?per_page=10000`, or a page that is no whole number,
 - a repeated key, or a search longer than 100 characters,
+- a search or a filter value with a NUL character (Postgres refuses it) or half of a surrogate pair (a lone `\ud83d`, say),
 - sorting by a column the user cannot see, or a filter the user cannot see,
 - a search when no column the user can see is searchable.
 
@@ -481,7 +483,7 @@ browser ask first. The endpoint checks, in this order:
 
 1. the table's `authorize`, else 403,
 2. that the action exists, else 404, and is visible, else 403,
-3. the body, and the action's [input](#an-action-with-input) against its schema, else 422,
+3. the body, and the action's [input](#an-action-with-input) against its schema, else 422 (a key with a NUL character or half of a surrogate pair is a 422 here too),
 4. that the row is in the **base query**: another tenant's row, a deleted one or a made-up key is a 404,
 5. the action's policy for that row, else 403.
 
@@ -496,7 +498,7 @@ rest, and none of it runs when nothing is left.
 
 "All matching" sends the table's state, `{ all: true, query }`, never a list of keys. The server parses it again, as strictly as
 the URL, and refuses more rows than the action's `max`, 1000 by default, with a 422. It never acts on a list that was cut short.
-Chosen keys are held to `max` as well.
+Chosen keys are held to `max` as well. A chosen key with a NUL character or half of a surrogate pair refuses the whole request with a 422: it is neither left out nor counted as `missing`.
 
 **A table's actions belong to the module that defines it.** `defineTable()` closes the set of `actions` and `bulk`; another module
 cannot add one to a table it does not own. When a module above, one that imports `members`, should act on the rows of a table
@@ -866,7 +868,7 @@ Every endpoint starts again at the beginning. Nothing the browser sends is trust
 | "All matching" as a huge or forged list | The **state** is sent, never keys, and parsed again. More rows than `max` is a 422. |
 | A cell a spreadsheet runs, such as `=HYPERLINK(…)` | **Escaping** of every text cell that starts like a formula. |
 | An export as a denial of service | **`max`** before the first byte, an `authorize` of its own, and a `throttle()` on the table's routes. |
-| A key of the wrong type, such as text for an integer column | **Key types**: every key is parsed by its type before any query, and one that does not parse is no row. |
+| A key of the wrong type, such as text for an integer column | **Key types**: every key is parsed by its type before any query, and one that does not parse is no row. A key sent as text with a NUL character or half of a surrogate pair is a 422 for the whole request, whatever the key's type. |
 
 The [security](security.md#tables-and-exports) page puts the table's model next to the app's other defaults.
 

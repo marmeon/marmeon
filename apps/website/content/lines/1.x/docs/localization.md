@@ -101,7 +101,7 @@ what is published and, at a terminal, asks. `--check` is for migrations only: th
 
 ### Texts of a package
 
-A package that declares a `namespace` and `lang` in its `package.json` ships texts of its own (see [Pages of a package](package-development.md#pages-of-a-package)).
+A package that declares a `namespace` and `lang` in its `package.json` ships texts of its own (see [Pages of a package](package-pages.md#pages-of-a-package)).
 They load with the app's, under the package's namespace: a package with the namespace `status` and `lang/en.js` gives `status.title`
 and so on, in every locale the package has a file for. The package's English file declares its keys in `Translations` itself, as a
 module's does, so `t('title')` of `useTranslation('status')` is typed without anything in the app.
@@ -139,7 +139,7 @@ The browser gets a package's texts through a virtual module, merged the way the 
 `lang/<namespace>/<locale>.ts` laid over it key by key, so a key the locale's file has shows the same text on both sides (a key it leaves
 out falls back on the server only, see below). Where they go depends on the package:
 
-- A package **with an entry** (see [Pages of a package](package-development.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
+- A package **with an entry** (see [Pages of a package](package-pages.md#pages-of-a-package)): `virtual:marmeon/lang/<namespace>` holds them, and only its entry
   loads that module. A page of the app, and any other entry, never loads them, so texts meant for an admin area stay out of the public bundle.
   The entry hands them to the loader: `createMessageLoader(lang)` with `import lang from 'virtual:marmeon/lang/status'`. A namespace that no package declares with an entry is a build error.
 - A package **without an entry**: its texts are part of the app's `virtual:marmeon/lang`, next to the app's own.
@@ -293,7 +293,8 @@ is gone when the browser closes), so a shared cache must not store such pages pe
 `APP_LOCALE`. The page carries its `locale` and the fallback locale, never the messages: the browser loads those itself.
 
 `Locales` is a service of the whole app: `default`, `fallback`, `supported` with the default first, `explicit` for whether
-`APP_LOCALES` names them, and `find(value)`, which returns the supported locale a value names, or `undefined`.
+`APP_LOCALES` names them, `unprefixed`, the locale whose localized pages have no prefix (the default with `APP_LOCALE_PREFIX=false`,
+else `undefined`), and `find(value)`, which returns the supported locale a value names, or `undefined`.
 
 ### A page in the language of a record
 
@@ -371,8 +372,8 @@ async boot(app: Application): Promise<void> {
 }
 ```
 
-`@marmeon/i18n` also binds what the router needs to serve the routes, the locales a URL can name and the visitor's preferred
-one. That is the answer the URL without a locale redirects to: the session's locale, then the signed-in user's, then the browser's
+`@marmeon/i18n` also binds what the router needs to serve the routes: the locales a URL can name, the one without a prefix and the
+visitor's preferred one. The visitor's preferred locale is the answer the URL without a locale redirects to: the session's locale, then the signed-in user's, then the browser's
 languages, then `APP_LOCALE`. A group without a session skips the first two.
 
 The page object of a localized page carries `alternates`: the same page in every locale, as paths, with the query as it came,
@@ -386,12 +387,30 @@ A page built for a language switcher reads them from there; the head names them 
 [Pages in several languages](seo.md#pages-in-several-languages)). The paths come from the route's pattern and the
 parameters that matched, each encoded, never from the request's path. A page that is not localized has no `alternates`.
 
+With `APP_LOCALE_PREFIX=false` the default locale's page is the bare address (`de` is the default locale here), and `x-default` names it as well:
+
+```json
+{ "de": "/about?tab=1", "en": "/en/about?tab=1", "x-default": "/about?tab=1" }
+```
+
 `redirect().route()` to a localized route that names no `locale` takes the locale of the request (the URL's, on a localized page):
-`this.redirect().route('about')` from a German page leads to `/de/about`. Give `{ locale }` to choose another. `Router.url()`
+`this.redirect().route('about')` from a German page leads to `/de/about` (to `/about`, when `de` is the locale without a prefix). Give `{ locale }` to choose another. `Router.url()`
 never guesses: its `locale` is required, because a mail for Ada is in Ada's language, not the request's.
 
 The tab-sync epoch follows the visitor's *preferred* locale (session, account, browser), not the URL's. Moving from `/de/about` to
 `/en/about` changes nothing for the other tabs, which would otherwise discard everything and load again.
+
+#### The default locale at the bare address
+
+`APP_LOCALE_PREFIX=false` answers the pages of the default locale (`APP_LOCALE`) at the address without a locale: with `APP_LOCALE=de`,
+`/about` is the German page and `/en/about` the English one. The bare address is that page, not a redirect. Session, account and
+`Accept-Language` do not decide its language, so a visitor who chose English sees German at `/about` until they follow a link to `/en/about`. (`SetLocale` still reads the session for the preferred locale that the tab-sync epoch follows.) `Locales.unprefixed`
+says which locale has no prefix. The [routing](routing.md#the-default-locale-without-a-prefix) page describes the `301` from `/de/about`, the
+route order at the root and what to check when you switch.
+
+The page object of every page carries `urlLocales: { unprefixed, supported }` while a locale has no prefix, and has no such field otherwise. The browser builds
+the address of a route by it: with `de` as the default, a link on an English page leads to `/en/about`, on a German page to `/about`. A parameter whose value
+looks like a locale (`/:username` with `EN`) keeps the prefix there too.
 
 #### Translated paths
 
@@ -433,7 +452,8 @@ page itself among them.
 - **`x-default`.** The address without a locale keeps the path it was given and redirects to the visitor's language, so for a
   German visitor `/help/getting-started` leads to `/de/help/getting-started`, a 404. Give `x-default` a `locale` and it names
   that language's page instead. Without `locale` it is the address without a locale, which suits pages with one path in every
-  language.
+  language. With `APP_LOCALE_PREFIX=false` that address is the page of the default locale with the path you gave, so `x-default`
+  without `locale` is that page and never a redirect.
 - **Another language's path.** The same redirect lets a visitor arrive on a slug of another language. The controller looks the
   path up in the other languages and redirects: `this.redirect().route('help.page', { locale, path }).status(301)`, to the page's
   path in the language of the address.
@@ -445,8 +465,10 @@ page itself among them.
 A localized URL is one language, so a cache can key a page by its URL alone. That is a condition for a shared cache, not a
 promise: a page of the `web` group still carries a nonce, a CSRF token and the session cookie, and stays private. A CDN fits a
 group without a session, where nothing belongs to one visitor, like the `public` group above. The URL without a locale
-depends on the cookie and the browser's language, so it is `private, no-store`. See
-[pages in a shared cache](csp.md#pages-in-a-shared-cache).
+depends on the cookie and the browser's language, so it is `private, no-store`. With
+[`APP_LOCALE_PREFIX=false`](#the-default-locale-at-the-bare-address) the bare address is the default locale's page instead, one language
+like any other localized URL: it has no `Vary: accept-language`, and the `private, no-store` of the redirect does not apply. The `301` of the
+prefixed address carries `Cache-Control: max-age=3600` and nothing that depends on the visitor. See [pages in a shared cache](csp.md#pages-in-a-shared-cache).
 
 ### A language switcher
 
@@ -471,6 +493,10 @@ export function LanguageSwitch() {
 the other language's page: it loads that locale's language files and changes no stored choice, so the session's `locale` and the
 account's stay as they were. The links on the new page take its language by themselves
 ([links to routes](navigation.md#links-to-routes)).
+
+With [`APP_LOCALE_PREFIX=false`](#the-default-locale-at-the-bare-address) the entry of the default locale `de` has the url `/about` and the one of `en` has `/en/about`
+(the `alternates` of the page object say `{ de: '/about', en: '/en/about' }`), and the switcher above needs no change. The choice of a language lives in the links of the pages: on an English page every link takes the
+locale of the page, so the visitor stays in English. A visit to a bare address starts in the default locale, whatever was chosen before.
 
 A page that is not localized, or a switcher that is meant to remember the choice, posts the chosen locale, checks it with
 `Locales` and writes it into the session:
@@ -569,6 +595,7 @@ message follow the same order.
 | `APP_LOCALE` | `en` | The default locale, for visitors whose session, account and browser name none of the supported ones. |
 | `APP_FALLBACK_LOCALE` | `en` | Where a message missing in a locale comes from: the language of the source files. |
 | `APP_LOCALES` | every locale with language files | The supported locales, comma-separated: `en,de`. |
+| `APP_LOCALE_PREFIX` | `true` | `false` [answers the default locale's localized pages without a prefix](routing.md#the-default-locale-without-a-prefix): with `APP_LOCALE=de`, `/about` is the German page and the other locales keep theirs (`/en/about`). `GET` and `HEAD` of the default locale's prefixed address (`/de/about`) get a `301` to `/about`, other methods a `404`; a page whose address without a prefix would start with a locale (`/de/en`) keeps its prefix. Only `true`, `false`, `1` and `0` are values: any other stops the start. |
 | `APP_TIMEZONE` | the zone of the process | The IANA time zone dates and times are shown in when a call names none: `Europe/Berlin`. |
 
 Each value must be a language tag, such as `en` or `de-AT`. With `APP_LOCALES` set, `APP_LOCALE` and `APP_FALLBACK_LOCALE` must be

@@ -120,7 +120,7 @@ own:
 | `storage/framework/cache/` | The cache of the `file` driver. |
 | `storage/framework/devtools/` | What the [devtools](devtools.md) recorded. Development only. |
 | `storage/framework/compile-cache/` | Node's compile cache, which makes `marmeon start` faster. |
-| `storage/framework/testing/` | The SQLite databases of [refreshed test apps](database-testing.md), one per test worker. |
+| `storage/framework/testing/` | The SQLite databases of [refreshed test apps](database-testing.md), one per test worker, and what a test of a [generated migration](database-testing.md#testing-a-generated-migration) writes: its module and a database of its own. |
 
 ### The files in the root
 

@@ -153,7 +153,7 @@ pnpm marmeon make:job SendInvoiceReminderJob --module=billing
 ```
 
 The job lands in `modules/billing/jobs/SendInvoiceReminderJob.ts` with the name `billing.send-invoice-reminder`. A worker runs
-only the jobs its app knows, so `make:job` adds the class to its module (`--no-register` prints the lines instead). The module ends up like this:
+only the jobs its app knows: a module's `jobs`, or a provider's `static [providerJobs]` (see [package development](package-commands.md#jobs)). `make:job` adds the class to its module (`--no-register` prints the lines instead). The module ends up like this:
 
 ```ts title="modules/billing/index.ts"
 import { defineModule } from '@marmeon/core';
@@ -165,8 +165,8 @@ export default defineModule({
 });
 ```
 
-A dispatch of a job no module lists throws and says where to add it; `marmeon dev` and `marmeon build` warn about a job class
-no module lists (see the [development server](console.md#the-development-server)). Two jobs with one name, or a name under `marmeon.`, which
+A dispatch of a job that neither a module nor a provider lists throws and says where to add it; `marmeon dev` and `marmeon build` warn about a job class
+that no module lists and no provider your app lists (see the [development server](console.md#the-development-server)). Two jobs with one name, or a name under `marmeon.`, which
 belongs to the framework, stop the app at the start.
 
 ### The job class
@@ -224,7 +224,7 @@ export class SendRemindersController extends Controller {
 
 | Option | What it does |
 | --- | --- |
-| `delay` | A [`Duration`](time.md#spans-of-time), seconds or an object such as `{ minutes: 5 }`, before the job may run. |
+| `delay` | A [`Duration`](time.md#spans-of-time), seconds or an object such as `{ minutes: 5 }`, before the job may run. The `sync` connection runs the job without it and logs a warning; see [Drivers](#drivers). |
 | `queue` | The queue's name. Without it the connection's default queue, `default` unless configured. |
 | `connection` | The queue connection. Without it `QUEUE_DRIVER`. |
 
@@ -311,7 +311,7 @@ Node cannot stop a running promise from outside. A job's `timeout` is therefore 
 
 `retryAfterSeconds`, 90 seconds by default, is how long a claimed job stays with its worker before another worker may take it again. It
 must be longer than every job's `timeout` plus `--stop-timeout`, or a second worker would run a job the first one still runs.
-`queue:work` checks every job of the app at its start and refuses to start with a message that names the jobs and what to change.
+`queue:work` checks every job of the app at its start and refuses to start with a message that names the jobs and what to change. It also warns about job names that can share a lock (see [Unique jobs](#unique-jobs)).
 
 Every server's clock must be synchronised (NTP). Claims, delays, locks and rate-limit windows of the `database` and `file` stores compare times taken on different machines; a clock ahead by more than `retryAfterSeconds − (timeout + --stop-timeout)` runs a job twice.
 
@@ -353,7 +353,15 @@ package stops the app at its start, with what to do.
 | --- | --- | --- |
 | `database` | The `jobs` table. | The default. No extra service, and a dispatch is part of the app's transaction. |
 | `redis` | Lists and sorted sets in Redis. | Many jobs, in an app that runs Redis anyway. |
-| `sync` | Nowhere: `handle()` runs at the dispatch, in a scope of its own, and its error is the dispatch's. | Scripts, and tests that want the work done at once. |
+| `sync` | Nowhere: `handle()` runs at the dispatch, in a scope of its own, and its error is the dispatch's. It ignores `delay`, `tries` and `backoff`. | Scripts, and tests that want the work done at once. |
+
+A `sync` job runs once, at its dispatch, or at the commit when you dispatch inside a transaction. It ignores `delay`, `tries` and
+`backoff`. A delay logs one warning per app, connection and job name. A queued listener gets one per event and listener, a notification one per
+notification. A `job.release()`, a `withoutOverlapping()` that finds its key taken and a chat webhook that answers
+429 or 503 with a `Retry-After` fail the job with a `QueueError`, because nothing runs a job a second time. A busy `job.once()` fails
+it with a `JobOnceBusyError`. A `unique` lock is taken at the dispatch and freed when the job has run, or when it starts with
+`uniqueUntil: 'processing'`, and at the latest after `uniqueFor`. So it is no debounce. Queue a job that has to wait or retry on
+`database` or `redis`.
 
 Exactly one worker claims a job, also with many workers on Postgres or Redis. The `redis` driver needs `@marmeon/redis`, which
 brings the Redis client. The [Redis](redis.md#which-connection-a-driver-uses) page covers its connection.
@@ -396,12 +404,14 @@ the [error reporters](errors.md#reporting) of the app (`source` `job`), with its
 its payload. An attempt that will run again is only logged. A job that a reporter queued is logged but not reported when it fails,
 so a reporter that queues an alert cannot start a loop.
 
+On the `sync` connection a job gets one attempt. When that fails, its error goes to the caller, and the job is not written to the failed jobs. See [Drivers](#drivers).
+
 A job can also end an attempt on its own:
 
 | Call | What happens |
 | --- | --- |
 | `job.discard(reason)` | The job ends without a retry and without a failed entry. For a record that is gone. |
-| `job.release(delay)` | The job goes back to the queue, to run again after `delay`, a [`Duration`](time.md#spans-of-time). The attempt counts, so a release on the last attempt fails the job. |
+| `job.release(delay)` | The job goes back to the queue, to run again after `delay`, a [`Duration`](time.md#spans-of-time). The attempt counts, so a release on the last attempt fails the job. On the `sync` connection the job then fails with a `QueueError`. |
 | `job.fail(reason)` | The job fails now, without further attempts. |
 
 Some jobs can never succeed, and they fail at once, after one attempt:
@@ -518,8 +528,9 @@ export class RefreshMemberStats {
 ```
 
 Ten registrations in a burst queue one rebuild. The key belongs to the job class: `stats:1` of one job does not block another job.
+A unique key and a `withoutOverlapping()` key without `shared` are named by the job's name and the key, so `reports` with the key `daily:7` and `reports:daily` with the key `7` would name one lock. The queue refuses such a unique key with a `QueueError` at dispatch: with both jobs registered, `dispatch(ReportsJob, payload, { unique: 'daily:7' })` throws. A `withoutOverlapping()` key of `reports` that continues past `daily:` fails the job at once, without retrying, with the same error: it goes to the failed jobs (on `sync`, the dispatch call throws). Rename one of the jobs so it does not begin with the other's name and a colon, or build the key so it does not start with `daily:`. A rename does not change the stored jobs, so keep the old name registered until its waiting jobs are gone. `queue:work` also warns at its start when two job names meet that way. A job named `<name>:schedule` makes `s.job()` of the job `<name>` fail with a `ScheduleError`, because the unique key of a scheduled job starts with `schedule:`. Rename that job.
 A lock in the app's cache holds the key. It is taken at the dispatch, outside any transaction, so every process sees it at once, and
-it is freed again when the transaction around the dispatch rolls back. Otherwise it is freed:
+it is freed again when the dispatch fails or the transaction around it rolls back. Otherwise it is freed:
 
 - with `uniqueUntil: 'done'`, the default, when the job leaves the queue: processed, failed or discarded,
 - with `uniqueUntil: 'processing'`, when a worker starts the job. A dispatch during the run queues the next one,
@@ -571,7 +582,7 @@ export class RebuildMemberStatsJob {
 An attempt that finds the key taken does not run. It goes back to the queue for `releaseAfter`, 5 seconds by default. That counts
 as an attempt, so a job with this middleware needs `tries`. The key can depend on the payload:
 `` withoutOverlapping<typeof RebuildStatsJob>((payload) => `stats:${payload.userId}`) ``. The lock expires after `expiresAfter`,
-by default the connection's `retryAfterSeconds`. `releaseAfter` and `expiresAfter` take seconds or a duration such as `{ minutes: 1 }`. `shared: true` shares the key with other jobs.
+by default the connection's `retryAfterSeconds`. `releaseAfter` and `expiresAfter` take seconds or a duration such as `{ minutes: 1 }`. `shared: true` shares the key with other jobs. A shared key is the same lock as the per-job key K of a job J whenever it reads `J:K`: the shared key `stats:1` and the key `1` of the job `stats` are one lock.
 
 A middleware of your own implements `handle(context, next)`. `context` holds the `payload`, the `job` context, the job's timeout in `timeoutSeconds`,
 the connection's `retryAfterSeconds` and `cache()`. Call `next()` to run the job, or end the attempt with `context.job.release()` or
@@ -583,7 +594,7 @@ Every step of a job is an event of the app's event dispatcher:
 
 | Event | When | Fields besides `connection`, `queue`, `job` and `jobId` |
 | --- | --- | --- |
-| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction; never for a transaction you began yourself. | `delaySeconds` |
+| `JobQueued` | The job was queued, after the commit when it was dispatched in a transaction; never for a transaction you began yourself. | `delaySeconds`, as asked |
 | `JobProcessing` | An attempt starts. | `attempt` |
 | `JobProcessed` | An attempt ran to its end. | `attempt`, `ms`, `discarded` |
 | `JobReleased` | An attempt ended and the job went back to the queue, to run again after `delaySeconds`. | `attempt`, `delaySeconds`, `reason`, `ms` |

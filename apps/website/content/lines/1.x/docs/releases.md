@@ -123,12 +123,14 @@ The promise of a version covers the public API. These are part of it:
   version and never has a default. `UserProvider` and `Hasher` are interfaces: a security-relevant member is added the same way; any
   other member is optional.
 - Other interfaces an app implements itself, such as the drivers of cache, queue and storage: a new required member is a break. An
-  extension arrives as an optional member.
+  extension arrives as an optional member, or as an optional argument a driver may ignore.
 - Interfaces your code is given but does not implement: `Disk`, `Storage`, `Broadcaster`, `HttpKernel`, `Prompt`, `Output`,
   `CommandInput` and `DevtoolsStore`. A later release may add a member to them. A disk of your own implements `DiskDriver`.
 - A class you extend (`Repository`, `Controller` …) may gain members in a minor release. A member of your subclass
   with the same name may then need another name; the [upgrade guide](../UPGRADING.md) lists each such member with a `Low` line.
 - The names and defaults of environment variables.
+- The export condition `@marmeon/source`: its name and its meaning, as [a package in your app's workspace](package-workspace.md#a-package-in-your-apps-workspace)
+  uses it. `@marmeon/vite` applies it to what it resolves in development and in tests. An installed `marmeon build` and `marmeon start` never add it.
 - The commands of `marmeon`, their flags and exit codes. A minor version may add a command. A command of your own with the same
   name then stops `marmeon build` and the start with K8 and needs another name; the [upgrade guide](../UPGRADING.md) lists each new
   command with a `Low` line. A name in your module's group, such as `notes:prune` (the default of `make:command`), does not meet one.
@@ -140,7 +142,7 @@ The promise of a version covers the public API. These are part of it:
   never moves to another error, and an error may get a code later. The text of a message is not API.
 - The documents `--json` prints, by their `format`.
 - The place of the documentation of an installed version, `node_modules/marmeon/docs/`, and `docs/index.json` there (`format` 1: `version` and `sections` with each page's `slug`, `label`, `title` and `file`, relative to the package).
-- The table schemas of the migrations the framework ships, the stubs and the `make:*` tables. The migrations the framework's packages ship, the starter kit's among them, are append-only: a released file never changes, and a change of a table is a new file ([tables](package-development.md#tables)).
+- The table schemas of the migrations the framework ships, the stubs and the `make:*` tables. The migrations the framework's packages ship, the starter kit's among them, are append-only: a released file never changes, and a change of a table is a new file ([tables](package-tables.md#tables)).
 - `defineMigration`, `up(schema)` and the schema builder, including which plans they accept and what they create: a migration that ran keeps its meaning.
 - The protocol between client and server: headers ([listed here](navigation.md#the-headers-of-the-protocol)) and the page object.
 - Stored and wire formats: queue payloads, sessions, encrypted values, tokens, cookies, the record of migrations and the generated files, as
@@ -292,7 +294,7 @@ the docs, and warned about once per process as soon as it is used, **only** when
 the warning is a Node `DeprecationWarning`: `node --no-deprecation` turns it off, and `node --throw-deprecation` turns it into
 an error; in the browser it goes to the console. It is removed at the earliest in the next breaking release (a major version from 1.0
 on, a minor before); its `@deprecated` tag says which one (from 1.0 on, `Removed in 2.0` and the like, never a minor). The removal has an entry in the [upgrade guide](../UPGRADING.md).
-[Package development](package-development.md#deprecating-an-api) shows how a package deprecates an API.
+[Package development](package-publishing.md#deprecating-an-api) shows how a package deprecates an API.
 
 ## A broken release
 

@@ -331,7 +331,7 @@ change an app has to follow. [Releases](releases.md#libraries-the-framework-buil
 
 | Method | What it does |
 | --- | --- |
-| `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). |
+| `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). The `sync` queue connection sends without it and logs one warning for all queued mails. |
 | `mailer.send(mail)` | Composes the mail and sends it now. Resolves with the message and the `messageId` the provider gave it. |
 
 `messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends. It is `undefined` with `log`

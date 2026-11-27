@@ -72,7 +72,7 @@ The definition is what ships. What only one boot decides is not part of it: `def
 `defineApplication({ root, override: … })` are type errors, so a test double or a foreign environment cannot end up in the
 app that runs in production. A definition that carries one anyway, through a variable or a spread the types cannot see, is refused
 when `createApplication()` boots it. A package that adds an option to the definition declares it on `ApplicationDefinition` (see [extending
-the app's types](package-development.md#extending-the-apps-types)).
+the app's types](package-pages.md#extending-the-apps-types)).
 
 `createApplication(definition, options)` boots an app from its definition and returns it. The `marmeon` command and
 `createTestApp()` call it for you. The options are the ones a boot decides:
@@ -102,11 +102,11 @@ its own:
 | `routes` | Its route file, loaded into the `web` group. See [routing](routing.md#route-files). | `@marmeon/http` |
 | `apiRoutes` | Its route file for the `api` group, under `/api`. | `@marmeon/http` |
 | `commands` | Its [console commands](console.md). | `marmeon` |
-| `checks` | Its [checks for `marmeon check`](package-development.md#checks). | `marmeon` |
+| `checks` | Its [checks for `marmeon check`](package-commands.md#checks). | `marmeon` |
 | `migrations` | The folder of its [migrations](migrations.md): `new URL('./migrations/', import.meta.url)`. | `@marmeon/database` |
 | `seeders` | Its [seeders](seeding.md). | `@marmeon/database` |
 | `exposes` | The tables other modules may read and join. See [repositories](queries.md#module-boundaries). | `@marmeon/database` |
-| `jobs` | Its [queued jobs](queues.md). A worker runs only registered jobs. | `@marmeon/queue` |
+| `jobs` | Its [queued jobs](queues.md). A worker runs only registered jobs: a module's `jobs` or a provider's `static [providerJobs]`. | `@marmeon/queue` |
 | `notifications`, `recipients` | Its [notifications](notifications.md) and who may receive them. | `@marmeon/notifications` |
 | `liveAuthorizers` | Who may follow its [live channels](realtime.md#who-may-follow-a-channel). | `@marmeon/live` |
 | `schedule` | Its [scheduled work](scheduling.md). | `@marmeon/scheduler` |
@@ -177,8 +177,8 @@ module runner) the container reports K16 instead. Break the cycle by letting one
 ## Listing the modules
 
 `marmeon modules:list` shows what the app defines: the packages it found, the providers of the app, and for each module its
-providers, commands, jobs, notifications, seeders and migrations folder. Below the modules come the events with the listeners of each
-one. A part a module does not have is left out. The document of `--json` also names the environment variables the configuration reads.
+providers, commands, jobs, notifications, seeders and migrations folder. The jobs are the module's own; below the modules come the jobs of providers (`static [providerJobs]`), each with its provider, and then the events with the listeners of each
+one. A part a module does not have is left out. The document of `--json` also names the environment variables the configuration reads and has the jobs of providers as `providerJobs`, empty when no provider lists any.
 
 ```sh
 pnpm marmeon modules:list
@@ -195,6 +195,9 @@ notes
   notifications: NoteShared (notes.shared)
   seeders: NoteSeeder
   migrations: modules/notes/migrations
+
+Provider jobs
+  MediaProvider: ProcessMediaJob (media.process)
 
 Events
   NoteCreated → IndexNote (queued)
@@ -221,6 +224,13 @@ yours. It reads only the fields it prints. A configuration value, a default, a v
       "migrations": "modules/notes/migrations"
     }
   ],
+  "providerJobs": [
+    {
+      "provider": "MediaProvider",
+      "modules": [],
+      "jobs": [{ "class": "ProcessMediaJob", "job": "media.process" }]
+    }
+  ],
   "events": [
     {
       "event": "NoteCreated",
@@ -241,6 +251,7 @@ yours. It reads only the fields it prints. A configuration value, a default, a v
   folder relative to the app root, or `null`. With a warning in `warnings`, the folder is elsewhere, in a monorepo for one, and `null` stands for it: `<module>: its migrations
   folder lies outside the app root` (also when a link inside the app leads out of it), or `<module>: its migrations folder is not a
   path on this machine` (a URL that is no `file:` URL). Without a warning, the module has no folder.
+- `providerJobs` has one entry per provider class that lists jobs in its `static [providerJobs]`, the ones discovery adds included, in registration order. `jobs` are its classes; a `job` is `null` without a string `static job`. `modules` names the modules that list the provider in their `providers`, empty for one only the app or discovery lists. The array is empty when no provider lists jobs.
 - `events` are sorted by `event`, the class name; `name` is its `static event` when that is a string, else `null`. The listeners
   keep the order they were registered in. `defined` says where a listener comes from: `app` (the `listeners` of
   `defineApplication`), `module` (the `listeners` of a module, `module` names it) or `provider` (a provider registered it in
@@ -276,8 +287,18 @@ alone, so no injection code reaches a client bundle.
 
 `marmeon discover` walks the app's dependencies and writes what it found to `.marmeon/manifest.json`: the providers of each
 package, and the injection lists of the classes the packages export. You rarely run it yourself. The app writes the file again
-by itself whenever `package.json`, the lockfile or the resolution conditions change, so `pnpm marmeon add redis` (or `pnpm add -E @marmeon/redis@<version of your app>`) needs no extra
-step. It also writes it again when a listed package is gone, such as after a production install without the dev dependencies.
+by itself when `package.json`, the lockfile or the resolution conditions change, so `pnpm marmeon add redis`
+(or `pnpm add -E @marmeon/redis@<version of your app>`) needs no extra step. It also does so when the `package.json` of a package in your workspace changes. The app also writes it again when a folder from your app up to your workspace gains or loses a workspace marker or a lockfile, or starts or stops being trusted. An app without a workspace counts the folders above it up to the first untrusted one. Your workspace is the first folder, from your app upwards, that has a `pnpm-workspace.yaml` (or a `package.json` with `workspaces`) or a
+lockfile, else your app's folder. An app with a lockfile of its own is therefore its own workspace: a pnpm workspace with one lockfile per
+project does not watch the packages beside the app. The search for your workspace stops below the first folder above your app that everyone can
+write to or that a user other than you, root or the owner of your app owns; on a mount where every folder is writable by everyone (WSL
+`/mnt/c`, some bind mounts), discovery then sees only what your app's `node_modules` and the install trees of the packages linked there hold. There, run `marmeon discover` after an install. That check does not run on Windows, and it lets
+a folder pass that only a group can write to. Discovery looks for a package in the `node_modules` of the package that needs it and of each
+folder above it, up to your workspace. A package linked from outside your workspace is looked up only in its own install tree and is not
+watched; a name that is not installed there stays absent. A package in a `dependencies` list that is installed but out of that reach is named in a warning when the app starts, once per
+process. The app also writes the file again when a listed package is gone,
+such as after a production install without the dev dependencies.
+It also writes it once more when a listed provider is no longer a class, which can mean the list is out of date; only if the fresh list still names it does the app stop with `K7`.
 `marmeon build` writes the production list.
 
 The file is data and is never imported, so rewriting it restarts no development server. Git ignores `.marmeon/`.
