@@ -442,7 +442,7 @@ Nothing is changed then. Without a row, the command says that nothing is to reso
 `done` resolves the oldest row, one per call. `retry` after an `up()` covers every row of an `up()`: a `retry` run that starts a migration before the retried one and stops
 there leaves a row of its own, and the next `retry` takes both. So `retry` means you undid every migration the rows name. `migrate:status` shows the oldest row only: list all of them with
 `select name, direction, started_at from migration_interruption order by started_at`, or from the error lines each run printed. A row of a `down()`, or of a migration that is recorded or has no file,
-beside the rows of an `up()` refuses `retry` with D32, and nothing changes: resolve that row first. Marmeon never leaves a row of a migration that is recorded; such a row comes from a hand-edited table, so check the database and delete it by hand.
+beside the rows of an `up()` refuses `retry` with D32, and nothing changes: resolve that row first: a row of a `down()` with `--interrupted=done` or `--interrupted=retry` when it is the oldest (its migration stays recorded until the `down()` ends, so that is the normal state after a rollback that stopped). Marmeon never leaves a row of an `up()` whose migration is recorded; such a row comes from a hand-edited table, so check the database and delete it by hand.
 
 On a development database, `migrate:fresh` drops every table, the one with the row included, and starts over: it deletes all data.
 It is the way out when you do not want to undo anything by hand. In a protected environment (production, or `NODE_ENV` unset) it needs `--force` ([where the app is protected](#where-the-app-is-protected)).
