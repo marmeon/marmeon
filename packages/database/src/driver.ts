@@ -2,6 +2,7 @@ import { TransactionError, TransactionFinishedError } from '@marmeon/core';
 import { anyTransactionOf, leftTransactionOf, transactionOf, withCode, type TransactionFrame } from '@marmeon/core/internal';
 import { CompiledQuery, isAbortedTransactionError, type DatabaseConnection, type Dialect, type DialectAdapter, type Driver, type QueryResult, type TransactionSettings } from 'kysely';
 import { changesSchema, isRawSchemaChange, type SchemaMetadata } from './metadata.ts';
+import { noteMysqlDuplicate } from './mysql-duplicates.ts';
 import { transactionControls } from './mysql-transaction-control.ts';
 import { PREFIX, SECRET } from './placeholders.ts';
 import type { Driver as SqlDriver } from './schema/blueprint.ts';
@@ -677,6 +678,7 @@ export class MarmeonDriver implements Driver {
       // The schema of a managed connection is the migrations', not the catalog's: a statement that changes the catalog changes nothing there.
       if (metadata && !metadata.managed) hooks.ran = (query) => this.#ran(serial!, query, metadata);
       if (this.#context.driver === 'mysql') hooks.refuse = (query) => this.#refuse(serial!, query);
+      if (this.#context.driver === 'mysql' && metadata) hooks.failed = (error) => noteMysqlDuplicate(error, metadata);
       if (!this.#detached) hooks.admit = (query) => this.#admit(serial!, query);
       if (this.#context.driver === 'pgsql') {
         hooks.failed = (error) => this.#failed(serial!, error);

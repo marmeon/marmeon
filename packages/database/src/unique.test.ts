@@ -46,7 +46,7 @@ describe.each(drivers)('the unique index is the truth — on %s', (driver) => {
     expect(await failOnDuplicate('email', () => users.update(ada.id, { name: 'Ada L.' }))).toMatchObject({ name: 'Ada L.' });
   });
 
-  // Only Postgres reports the constraint's name, so only there are the columns read from the projection's array; the other drivers build a fresh one.
+  // Postgres and MySQL report the index by name, so only there are the columns read from the metadata's arrays; SQLite builds a fresh one.
   it('hands out its own copy of the columns: changing them changes nothing for the next call', async () => {
     const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const columnsOf = async () => {

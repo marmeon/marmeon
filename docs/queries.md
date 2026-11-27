@@ -303,7 +303,8 @@ if (!created.ok) {
 name, so its columns are exact. An index from raw SQL that no migration describes is read from what the driver reports: the
 index's name on SQLite, and on Postgres when the error has no `detail`. Its columns are the column names that occur in that name,
 so a word of the name that is also a column can be counted. Name such an index `{table}_{columns}_unique`, or describe it in a
-migration. `tryUpdate()` reports `columns` the same way. The starter kit registers a user this way:
+migration. MySQL cannot be selected yet; when it can, its error names only the index, so `columns` is empty for an index that no migration
+describes. `tryUpdate()` reports `columns` the same way. The starter kit registers a user this way:
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { PasswordHash } from '@marmeon/auth';
@@ -735,7 +736,7 @@ The migrator records which module's migration created each table. That record is
 
 | Function | Says |
 | --- | --- |
-| `isUniqueViolation(error)` | Whether the error is a unique violation, on SQLite and Postgres. |
+| `isUniqueViolation(error)` | Whether the error is a unique violation, on SQLite and Postgres, and on MySQL once it can be selected. |
 | `uniqueViolationColumns(error)` | The violated index's columns, as far as the driver names them. |
 | `missingTable(error)` | The table a statement could not find, or `undefined`. |
 

@@ -6,6 +6,7 @@ import type { Driver } from './schema/blueprint.ts';
 import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 import { Connections } from './connections.ts';
 import { shielded, unshielded } from './driver.ts';
+import { mysqlDuplicateKey, uniqueIndexColumns } from './mysql-duplicates.ts';
 import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
@@ -624,12 +625,17 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * The table's columns a unique violation hit. An index the migrations describe is looked up by its name (Postgres's constraint,
    * SQLite's `index '…'`): exact, also when the driver gives no detail. Any other index is read from what the driver reports: the
    * name where that is all there is (the longest known columns first, so `tenant_id` wins over `id`), otherwise the words of its
-   * message that are columns of the table. `[]` on a connection without Marmeon's plugins, where no column is known.
+   * message that are columns of the table. On MySQL, which names only the index, the columns come from the exact index name or are `[]`.
+   * `[]` on a connection without Marmeon's plugins, where no column is known.
    */
   async #duplicateColumns(error: unknown): Promise<readonly string[]> {
     const metadata = metadataOf(this.#db);
     if (!metadata) return [];
     if (!metadata.fresh) await sql`select 1`.execute(this.#db);
+    if (metadata.driver === 'mysql') {
+      const key = mysqlDuplicateKey(error);
+      return key?.table === this.#name ? [...(uniqueIndexColumns(metadata, key.table, key.index) ?? [])] : [];
+    }
     const named = (error as { constraint?: unknown }).constraint;
     const name = typeof named === 'string' ? named : /UNIQUE constraint failed: index '(.+)'/.exec(String((error as Error).message))?.[1];
     const indexed = name === undefined ? undefined : metadata.projection?.tables.get(this.#name)?.indexes.find((index) => index.unique && index.name === name);
