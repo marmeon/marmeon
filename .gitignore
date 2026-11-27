@@ -16,6 +16,10 @@ storage/
 !/packages/create-marmeon/template/base/storage/
 .claude/*
 !.claude/launch.json
+# The project's Claude Code subagents and the skill they preload, so every worktree has them.
+!.claude/agents/
+.claude/agents/reviewer.md
+!.claude/skills/
 CLAUDE.local.md
 # The documentation of a version, copied into the marmeon package by `pnpm build` (scripts/docs-ship.ts).
 /packages/cli/docs/
