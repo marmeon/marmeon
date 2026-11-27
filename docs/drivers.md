@@ -310,7 +310,7 @@ instead of an error of your own. The `reason` tells the queue what to do:
 - `refused`: you refused the mail before any request. The job fails at once.
 - `rejected`: the provider refused the mail. The job fails at once.
 - `unauthorized`: the credentials are wrong. The job fails at once.
-- `throttled` and `unavailable`: the job waits `retryAfterSeconds` when your error sets it, rounded up, at least 1 second and at most an hour. Each wait uses one of the five tries, and the last try fails the job with your error.
+- `throttled` and `unavailable`: the job waits `retryAfterSeconds` when your error sets it, or the job's own backoff for that try (10, 60, then 300 seconds), whichever is longer, rounded up and at most an hour. Each wait uses one of the five tries, and the last try fails the job with your error.
 - `throttled` and `unavailable` without `retryAfterSeconds`, a `retryAfterSeconds` that is not a finite number of at least 0, and any other error: the job tries again with its usual backoff.
 
 Keep the provider's response text, your credentials and any cause out of the message: the error takes no `cause`, and the response can echo addresses and content.

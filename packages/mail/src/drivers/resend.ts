@@ -3,7 +3,7 @@ import type { HttpClient } from '@marmeon/fetch';
 import { MailDeliveryError } from '../mailer.ts';
 import type { MailMessage } from '../message.ts';
 import type { MailReceipt, MailSendOptions, MailTransport } from '../transports.ts';
-import { checkAttachments, checkHeaders, formatAddress, messageIdOf, postJson, type FetchModule } from './api.ts';
+import { checkAttachments, checkHeaders, checkSubject, formatAddress, messageIdOf, postJson, type FetchModule } from './api.ts';
 
 const ENDPOINT = 'https://api.resend.com/emails';
 
@@ -58,7 +58,7 @@ export class ResendTransport implements MailTransport {
       ...(message.cc.length > 0 ? { cc: list(message.cc) } : {}),
       ...(message.bcc.length > 0 ? { bcc: list(message.bcc) } : {}),
       ...(message.replyTo ? { reply_to: formatAddress(message.replyTo) } : {}),
-      subject: message.subject,
+      subject: checkSubject(message.subject),
       html: message.html,
       text: message.text,
       ...(headers.length > 0 ? { headers: Object.fromEntries(headers.map(({ name, value }) => [name, value])) } : {}),

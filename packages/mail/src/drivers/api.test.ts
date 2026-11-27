@@ -1,6 +1,7 @@
+import * as fetch from '@marmeon/fetch';
 import { describe, expect, it } from 'vitest';
 import { MailDeliveryError } from '../mailer.ts';
-import { checkHeaders, formatAddress, importFetch, messageIdOf, retryAfterSeconds } from './api.ts';
+import { checkHeaders, formatAddress, importFetch, messageIdOf, postJson, retryAfterSeconds } from './api.ts';
 
 describe('formatAddress', () => {
   it('quotes a display name, so that it cannot add a recipient to a comma-separated list', () => {
@@ -122,5 +123,50 @@ describe('importFetch', () => {
     await expect(
       importFetch(() => Promise.reject(error("Cannot find package 'missing-dependency' imported from /app/node_modules/@marmeon/fetch/dist/index.js", 'ERR_MODULE_NOT_FOUND'))),
     ).rejects.toThrow('missing-dependency');
+  });
+});
+
+describe('postJson reads an answer up to 64 KiB only', () => {
+  /** An answer whose body never ends: 16 KiB a pull, counted, and a record of the cancel; no read-ahead, so a pull is a read. */
+  const endless = (status: number) => {
+    const seen = { pulls: 0, cancelled: false };
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        seen.pulls++;
+        controller.enqueue(new Uint8Array(16 * 1024));
+      },
+      cancel() {
+        seen.cancelled = true;
+      },
+    }, { highWaterMark: 0 });
+    const run = () =>
+      postJson({
+        http: () => ({ fetch: async () => new Response(body, { status }) }) as never,
+        fetch,
+        clock: { now: () => 0 },
+        driver: 'test',
+        credential: 'MAIL_TEST_KEY',
+        url: 'https://api.test/mail',
+        headers: {},
+        json: {},
+        codeOf: () => undefined,
+      });
+    return { seen, run };
+  };
+
+  it('resolves an accepted mail without reading on, and cancels the stream', async () => {
+    const { seen, run } = endless(200);
+    expect(await run()).toBeUndefined();
+    expect(seen.pulls).toBeLessThanOrEqual(5);
+    expect(seen.cancelled).toBe(true);
+  });
+
+  it('fails a 500 as unavailable without reading on, and cancels the stream', async () => {
+    const { seen, run } = endless(500);
+    const error = await run().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MailDeliveryError);
+    expect((error as MailDeliveryError).reason).toBe('unavailable');
+    expect(seen.pulls).toBeLessThanOrEqual(5);
+    expect(seen.cancelled).toBe(true);
   });
 });

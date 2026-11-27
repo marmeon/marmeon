@@ -87,6 +87,12 @@ export function checkHeaders(headers: Readonly<Record<string, string>>, driver: 
   return checked;
 }
 
+/** Refuses, before any request, a subject that is not a single line of text: a provider puts it into a header. @internal */
+export function checkSubject(subject: unknown): string {
+  if (typeof subject !== 'string' || /[\r\n]/.test(subject)) throw new MailDeliveryError('refused', 'The mail was refused: the subject is not a single line of text.');
+  return subject;
+}
+
 /**
  * Refuses, before any request, an attachment whose `filename` or `contentType` is not a single-line string: the provider puts both
  * into the MIME headers of the part, where a line break would add a header. Returns the attachments' fields as the transport sends them.
@@ -163,19 +169,16 @@ export async function postJson(options: PostJsonOptions): Promise<unknown> {
       json: options.json,
       redirect: 'error',
       timeout: 15,
-      maxResponseBytes: 64 * 1024,
+      // The client throws before the status is known when the answer declares more than this, which would turn an accepted mail into a
+      // retry: so the client's limit is out of the way, and the body is read bounded below.
+      maxResponseBytes: Number.MAX_SAFE_INTEGER,
       headers: { accept: 'application/json', ...options.headers },
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   } catch (error) {
     throw failed(options.fetch, driver, error);
   }
-  let text = '';
-  try {
-    text = await response.text();
-  } catch {
-    // an answer that cannot be read still has its status
-  }
+  const text = await readBounded(response);
   let body: unknown;
   try {
     body = JSON.parse(text);
@@ -193,11 +196,38 @@ export async function postJson(options: PostJsonOptions): Promise<unknown> {
   throw answered(options, response.status, code, response.headers.get('retry-after'));
 }
 
+const MAX_BODY_BYTES = 64 * 1024;
+
+/** The answer's text up to 64 KiB; a longer body, or one that cannot be read, is no text — the status of the answer still counts. */
+async function readBounded(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      total += next.value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        void reader.cancel().catch(() => {});
+        return '';
+      }
+      chunks.push(next.value);
+    }
+  } catch {
+    return '';
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function answered(options: PostJsonOptions, status: number, code: string | undefined, retryAfter: string | null): MailDeliveryError {
   let reason: 'unauthorized' | 'throttled' | 'unavailable' | 'rejected';
   let seconds: number | undefined;
   if (status === 401 || status === 403) {
-    reason = 'unauthorized';
+    // Only the provider's own error code blames the credential: a proxy or firewall in front of it answers 403 as well, and a permanent
+    // verdict there would drop a mail the next try could deliver.
+    reason = code === undefined ? 'unavailable' : 'unauthorized';
   } else if (status === 429) {
     reason = 'throttled';
     seconds = retryAfterSeconds(retryAfter, options.clock.now());
@@ -222,7 +252,9 @@ function answered(options: PostJsonOptions, status: number, code: string | undef
 function failed(fetch: FetchModule, driver: string, error: unknown): MailDeliveryError {
   const base = `The mail was not delivered: the request to ${driver} `;
   if (!(error instanceof fetch.FetchError)) return new MailDeliveryError('unavailable', `${base}failed.`);
-  if (error.reason === 'refused') return new MailDeliveryError('refused', `${base}was refused by the HTTP client.`);
+  // Only the address policy on the DNS answer refuses at run time (the checks before the request rule out the transport's other refusals),
+  // and that answer can change: the next try checks again.
+  if (error.reason === 'refused') return new MailDeliveryError('unavailable', `${base}was refused by the HTTP client.`);
   if (error.reason === 'redirects') return new MailDeliveryError('rejected', `${base}was answered with a redirect, which is not followed.`);
   return new MailDeliveryError('unavailable', `${base}${error.reason === 'timeout' ? 'timed out' : error.reason === 'aborted' ? 'was aborted' : 'failed'}.`);
 }

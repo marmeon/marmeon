@@ -2,7 +2,7 @@ import type { Clock } from '@marmeon/core';
 import type { HttpClient } from '@marmeon/fetch';
 import type { MailMessage } from '../message.ts';
 import type { MailReceipt, MailSendOptions, MailTransport } from '../transports.ts';
-import { checkAttachments, checkHeaders, formatAddress, messageIdOf, postJson, type FetchModule } from './api.ts';
+import { checkAttachments, checkHeaders, checkSubject, formatAddress, messageIdOf, postJson, type FetchModule } from './api.ts';
 
 const ENDPOINT = 'https://api.postmarkapp.com/email';
 
@@ -52,7 +52,7 @@ export class PostmarkTransport implements MailTransport {
       ...(message.cc.length > 0 ? { Cc: list(message.cc) } : {}),
       ...(message.bcc.length > 0 ? { Bcc: list(message.bcc) } : {}),
       ...(message.replyTo ? { ReplyTo: formatAddress(message.replyTo) } : {}),
-      Subject: message.subject,
+      Subject: checkSubject(message.subject),
       HtmlBody: message.html,
       TextBody: message.text,
       ...(headers.length > 0 ? { Headers: headers.map(({ name, value }) => ({ Name: name, Value: value })) } : {}),

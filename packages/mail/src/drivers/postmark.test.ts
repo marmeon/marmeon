@@ -101,14 +101,14 @@ describe('PostmarkTransport', () => {
     });
   });
 
-  it('asks the client for a 15 second limit, a 64 KiB answer and no redirect', async () => {
+  it('asks the client for a 15 second limit and no redirect, and leaves its size limit out of the way', async () => {
     const http = new HttpClientFake().respond(ENDPOINT, Response.json({ MessageID: 'id-1' }));
     const seen: Record<string, unknown>[] = [];
     const client = { fetch: (url: string, options: Record<string, unknown>) => (seen.push(options), http.fetch(url, options as never)) };
     const transport = new PostmarkTransport({ token: TOKEN, http: () => client as never, fetch, clock: { now: () => NOW } });
     await transport.send(message());
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ method: 'POST', timeout: 15, maxResponseBytes: 64 * 1024, redirect: 'error' });
+    expect(seen[0]).toMatchObject({ method: 'POST', timeout: 15, maxResponseBytes: Number.MAX_SAFE_INTEGER, redirect: 'error' });
   });
 
   it('sends an attachment as base64, with a default content type', async () => {
@@ -204,8 +204,8 @@ describe('PostmarkTransport', () => {
     expect(broken.retryAfterSeconds).toBeUndefined();
   });
 
-  it('maps the other statuses: 403 unauthorized, 408/409/425 unavailable, 400 and 404 rejected', async () => {
-    const expected: [number, string][] = [[403, 'unauthorized'], [408, 'unavailable'], [409, 'unavailable'], [425, 'unavailable'], [400, 'rejected'], [404, 'rejected']];
+  it('maps the other statuses: 408/425 unavailable, 400 and 404 rejected', async () => {
+    const expected: [number, string][] = [[408, 'unavailable'], [409, 'unavailable'], [425, 'unavailable'], [400, 'rejected'], [404, 'rejected']];
     for (const [status, reason] of expected) {
       const { http, transport } = setup();
       http.respond(ENDPOINT, new Response('', { status }));
@@ -213,13 +213,63 @@ describe('PostmarkTransport', () => {
     }
   });
 
-  it('refuses before any request when the host resolves to a private address', async () => {
+  it('a 401 or 403 is unauthorized only with the provider\'s own error code: a proxy\'s answer is unavailable and retried', async () => {
+    for (const status of [401, 403]) {
+      const coded = setup();
+      coded.http.respond(ENDPOINT, Response.json({ ErrorCode: 10 }, { status }));
+      expect((await failure(coded.transport.send(message()))).reason, `${status} with a code`).toBe('unauthorized');
+      for (const answer of [new Response('<html>Forbidden</html>', { status }), new Response('', { status }), Response.json({ message: 'blocked' }, { status })]) {
+        const plain = setup();
+        plain.http.respond(ENDPOINT, answer);
+        const error = await failure(plain.transport.send(message()));
+        expect(error.reason, `${status} without a code`).toBe('unavailable');
+        expect(error.permanent).toBe(false);
+      }
+    }
+  });
+
+  // The real client throws `too-large` before the status is known when the answer declares more than `maxResponseBytes`.
+  const strictClient = (http: HttpClientFake) => ({
+    fetch: async (url: string, options: { maxResponseBytes?: number }) => {
+      const response = await http.fetch(url, options as never);
+      const declared = Number(response.headers.get('content-length') ?? 0);
+      if (declared > (options.maxResponseBytes ?? 5 * 1024 * 1024)) throw new fetch.FetchError('too-large', 'The response is larger than maxResponseBytes.');
+      return response;
+    },
+  });
+  const withClient = (http: HttpClientFake) => new PostmarkTransport({ token: TOKEN, http: () => strictClient(http) as never, fetch, clock: { now: () => NOW } });
+
+  it('keeps the status of an answer that declares 70 KiB: an accepted mail is not a retry', async () => {
+    const http = new HttpClientFake().respond(ENDPOINT, new Response('x'.repeat(100), { status: 200, headers: { 'content-length': '71680' } }));
+    expect(await withClient(http).send(message())).toEqual({ messageId: undefined });
+  });
+
+  it('reads a body of more than 64 KiB as no body, and keeps the status', async () => {
+    const http = new HttpClientFake().respond(ENDPOINT, new Response('x'.repeat(70 * 1024), { status: 200 }));
+    expect(await withClient(http).send(message())).toEqual({ messageId: undefined });
+  });
+
+  it('keeps the reason and Retry-After of a throttled answer with a large body', async () => {
+    const http = new HttpClientFake().respond(ENDPOINT, new Response('x'.repeat(100), { status: 429, headers: { 'content-length': '71680', 'retry-after': '12' } }));
+    const error = await failure(withClient(http).send(message()));
+    expect(error.reason).toBe('throttled');
+    expect(error.retryAfterSeconds).toBe(12);
+  });
+
+  it('keeps a 403 with a large body unavailable when it has no provider code', async () => {
+    const http = new HttpClientFake().respond(ENDPOINT, new Response('x'.repeat(100), { status: 403, headers: { 'content-length': '71680' } }));
+    expect((await failure(withClient(http).send(message()))).reason).toBe('unavailable');
+  });
+
+  it('sends nothing when the host resolves to a private address, and the failure is retryable', async () => {
     const { http, transport } = setup();
     http.dns('api.postmarkapp.com', ['10.0.0.5']);
     const error = await failure(transport.send(message()));
-    expect(error.reason).toBe('refused');
-    expect(error.permanent).toBe(true);
+    // the address policy answers for the DNS of this moment, so the next try checks again
+    expect(error.reason).toBe('unavailable');
+    expect(error.permanent).toBe(false);
     expect(error.cause).toBeUndefined();
+    expect(error.message).toContain('refused by the HTTP client');
     expect(error.message).not.toContain('10.0.0.5');
     http.assertNothingSent();
   });
@@ -277,6 +327,16 @@ describe('PostmarkTransport', () => {
     for (const overrides of hostile) {
       const { http, transport } = setup();
       const error = await failure(transport.send(message(overrides)));
+      expect(error.reason).toBe('refused');
+      expect(error.message).not.toContain('attacker');
+      http.assertNothingSent();
+    }
+  });
+
+  it('refuses a subject with a line break, or no string, before any request', async () => {
+    for (const subject of ['Hi\r\nBcc: x@attacker.example', 'Hi\n', 5 as never, null as never]) {
+      const { http, transport } = setup();
+      const error = await failure(transport.send(message({ subject })));
       expect(error.reason).toBe('refused');
       expect(error.message).not.toContain('attacker');
       http.assertNothingSent();

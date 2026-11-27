@@ -86,9 +86,12 @@ export class SendQueuedMail {
       if (error instanceof MailDeliveryError) {
         // A transport parses the provider's Retry-After, so this is the first framework code to see the number: it is checked
         // and clamped here, and a wait is only worth a try while one is left (a release on the last attempt would hide the delivery error).
+        // The wait is never shorter than the job's own backoff for this attempt: a provider that says "1 second" must not turn five tries
+        // into four seconds, which a burst of throttled mails would drain into the failed jobs.
         const seconds = error.retryAfterSeconds;
         if ((error.reason === 'throttled' || error.reason === 'unavailable') && seconds !== undefined && Number.isFinite(seconds) && seconds >= 0 && job.attempt < job.tries) {
-          return job.release(Math.min(MAX_RELEASE_SECONDS, Math.max(1, Math.ceil(seconds))));
+          const backoff = SendQueuedMail.backoff[Math.min(Math.max(job.attempt, 1), SendQueuedMail.backoff.length) - 1] ?? 0;
+          return job.release(Math.min(MAX_RELEASE_SECONDS, Math.max(1, Math.ceil(seconds), backoff)));
         }
         if (error.permanent) return job.fail(error);
       }

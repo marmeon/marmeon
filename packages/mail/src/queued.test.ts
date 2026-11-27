@@ -442,11 +442,23 @@ describe('SendQueuedMail delivery errors', () => {
     expect(calls).toEqual({ released: [], failed: [error] });
   });
 
-  it.each<MailDeliveryReason>(['throttled', 'unavailable'])('releases the job for the seconds the provider named when it is %s', async (reason) => {
-    const { transport } = failing(new MailDeliveryError(reason, 'later', { retryAfterSeconds: 7 }));
+  it.each<MailDeliveryReason>(['throttled', 'unavailable'])('releases the job for the seconds the provider named when it is %s and longer than the backoff', async (reason) => {
+    const { transport } = failing(new MailDeliveryError(reason, 'later', { retryAfterSeconds: 90 }));
     const { job: ctx, calls } = context();
     await new SendQueuedMail(transport).handle(await payload(), ctx);
-    expect(calls).toEqual({ released: [7], failed: [] });
+    expect(calls).toEqual({ released: [90], failed: [] });
+  });
+
+  it.each([
+    [1, 1, 10],
+    [2, 1, 60],
+    [3, 5, 300],
+    [4, 1, 300],
+  ])('on attempt %s a wait of %s s is raised to the backoff of %s s', async (attempt, seconds, expected) => {
+    const { transport } = failing(new MailDeliveryError('throttled', 'later', { retryAfterSeconds: seconds }));
+    const { job, calls } = context();
+    await new SendQueuedMail(transport).handle(await payload(), { ...job, attempt });
+    expect(calls).toEqual({ released: [expected], failed: [] });
   });
 
   it('rethrows unavailable without seconds, for the job\'s own retries', async () => {
@@ -502,6 +514,15 @@ describe('a queued mail whose transport throws a MailDeliveryError, through the 
     expect(failed!.payload).not.toContain('ada@example.com');
   });
 
+  it('holds a throttled mail back for the job\'s 10 s backoff when the provider names 1 s', async () => {
+    const { queue, clock } = await queued(delivery('throttled', 1));
+    expect(await queue.work()).toMatchObject({ released: 1 });
+    clock.travel({ seconds: 9 });
+    expect(await queue.work()).toMatchObject({ processed: 0 });
+    clock.travel({ seconds: 1 });
+    expect(await queue.work()).toMatchObject({ processed: 1 });
+  });
+
   it('releases a throttled mail for the seconds the provider named, not 10', async () => {
     const { queue, clock } = await queued(delivery('throttled', 90));
     expect(await queue.work()).toMatchObject({ released: 1 });
@@ -521,10 +542,11 @@ describe('a queued mail whose transport throws a MailDeliveryError, through the 
   });
 
   it.each([
-    [0, 1],
-    [1.5, 2],
+    [0, 10],
+    [1.5, 10],
+    [11.5, 12],
     [86_400, 3600],
-  ])('holds a wait of %s s back for %s s (rounded up, at least 1 s, at most an hour)', async (seconds, expected) => {
+  ])('holds a wait of %s s back for %s s (rounded up, at least the 10 s backoff, at most an hour)', async (seconds, expected) => {
     const { queue, clock } = await queued(delivery('unavailable', seconds));
     expect(await queue.work()).toMatchObject({ released: 1 });
     clock.travel({ milliseconds: (expected - 0.25) * 1000 });
@@ -551,9 +573,9 @@ describe('a queued mail whose transport throws a MailDeliveryError, through the 
 
   it.each<MailDeliveryReason>(['throttled', 'unavailable'])('fails the last attempt of a %s mail with the delivery error, after four waits and one key', async (reason) => {
     const { queue, clock, keys } = await queued(delivery(reason, 7));
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (const wait of [10, 60, 300, 300]) {
       expect(await queue.work()).toMatchObject({ released: 1, failed: 0 });
-      clock.travel({ seconds: 7 });
+      clock.travel({ seconds: wait });
     }
     expect(await queue.work()).toMatchObject({ released: 0, failed: 1 });
     expect(keys).toHaveLength(5);

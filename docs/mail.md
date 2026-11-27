@@ -127,10 +127,10 @@ a `cause`. A redirect from Postmark is not followed.
   through.
 - **Names** of recipients are quoted, or encoded when they are not ASCII, so a name with a comma is never an extra recipient. An attachment whose filename or content type holds a line break is refused as well.
 - **Failures** are a `MailDeliveryError`, and its `reason` says what a retry can do:
-  - `unauthorized`: Postmark refuses the token (401, 403).
+  - `unauthorized`: Postmark refuses the token (401, 403 with an `ErrorCode`). A 401 or 403 without one, as a proxy or firewall in front of Postmark sends it, is `unavailable`.
   - `rejected`: any other answer Postmark gives, such as 422 for an inactive recipient, and a redirect, which is not followed.
-  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, 408, 409, 425 and every 5xx.
-  - `refused`: before any request, for a reserved header, an address that is not a plain `local@host` or an attachment whose filename or content type has a line break, and when the HTTP client blocks the address.
+  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, an address the HTTP client blocks (it checks again on every try), 408, 409, 425 and every 5xx.
+  - `refused`: before any request, for a reserved header, an address that is not a plain `local@host` or an attachment whose filename or content type has a line break, or a subject with one.
 
   `providerCode` holds Postmark's `ErrorCode` on any error answer that has a plain one. The message names the status and the code, never Postmark's text. A queued mail retries for `throttled` and `unavailable`
   and fails at once for the others, as described in [Sending mails](#sending-mails).
@@ -165,10 +165,10 @@ a `cause`. A redirect from Resend is not followed.
   second mail. Resend answers 409 while the first request is still being processed; every 409 counts as `unavailable` and is
   retried, except `invalid_idempotent_request` (the same key with another mail), which is `rejected`. Resend remembers a key for 24 hours. `mailer.send()` sends no key.
 - **Failures** are a `MailDeliveryError`, and its `reason` says what a retry can do:
-  - `unauthorized`: Resend refuses the key (401, 403).
+  - `unauthorized`: Resend refuses the key (401, 403 with an error `name`). A 401 or 403 without one, as a proxy or firewall in front of Resend sends it, is `unavailable`.
   - `rejected`: any other answer Resend gives, such as 422 for an invalid address, and a redirect, which is not followed.
-  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, 408, 409 (except `invalid_idempotent_request`, which is `rejected`), 425 and every 5xx.
-  - `refused`: before any request, for a reserved header, an address that is not a plain `local@host`, an attachment whose filename or content type has a line break or an idempotency key Resend cannot take, and when the HTTP client blocks the address.
+  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, an address the HTTP client blocks (it checks again on every try), 408, 409 (except `invalid_idempotent_request`, which is `rejected`), 425 and every 5xx.
+  - `refused`: before any request, for a reserved header, an address that is not a plain `local@host`, an attachment whose filename or content type has a line break, a subject with one, or an idempotency key Resend cannot take.
 
   `providerCode` holds the `name` of Resend's error on any error answer that has a plain one. A daily or monthly quota answer from Resend is a 429 as well and goes through the normal tries. The message names the status and the code, never Resend's text. A queued mail retries for `throttled` and `unavailable`
   and fails at once for the others, as described in [Sending mails](#sending-mails).
@@ -430,7 +430,7 @@ Queue a mail whenever a request sends it:
 - **Inside a transaction**, a queued mail goes out only once the transaction commits. A registration that rolls back sends nothing.
 - **A refusal is not retried.** A transport that throws a `MailDeliveryError` for a mail the provider rejected, or for credentials
   that are wrong, puts the job among the failed jobs at once, instead of trying five times. A provider that is busy or down and says
-  how long to wait is waited for: the job runs again after that many seconds, rounded up, at least 1 and at most an hour. Each wait uses one of the five tries,
+  how long to wait is waited for: the job runs again after that many seconds, rounded up, or after its own backoff for that try (10 seconds, a minute, five minutes), whichever is longer, and at most an hour. Each wait uses one of the five tries,
   and the last try fails the job with the delivery error. On the `sync` queue connection a mail with such a wait reaches the caller of `mailer.queue()` as a `QueueError`,
   because nothing runs a job again there. See [mail transports](drivers.md#mail-transports).
 - **A worker can send it twice**: one that dies after the mail server took the mail and before it marked the job done runs it
