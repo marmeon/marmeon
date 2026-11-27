@@ -27,10 +27,10 @@ export interface SearchIndexStatics {
 export type SearchIndexClass<I extends SearchIndex<any> = SearchIndex<any>> = SearchIndexStatics & (new (...args: any[]) => I);
 
 /** The row type an index class reads from its source, taken from its `toDocument()`. */
-type IndexRow<I extends SearchIndexClass> = InstanceType<I>['toDocument'] extends (row: infer Row) => unknown ? Row : never;
+export type IndexRowOf<I extends SearchIndexClass> = InstanceType<I>['toDocument'] extends (row: infer Row) => unknown ? Row : never;
 
 /** The type of an index's key: the type of the key column in its rows, narrowed to a string or a number. */
-export type KeyOf<I extends SearchIndexClass> = I['key'] extends keyof IndexRow<I> ? Extract<IndexRow<I>[I['key']], string | number> : string | number;
+export type KeyOf<I extends SearchIndexClass> = I['key'] extends keyof IndexRowOf<I> ? Extract<IndexRowOf<I>[I['key']], string | number> : string | number;
 
 /** The names of the fields an index declares. */
 export type FieldsOf<I extends SearchIndexClass> = DeclaredFields<I>;

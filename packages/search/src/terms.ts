@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
  * Turns what a user types into values a driver binds: a term for `websearch_to_tsquery`, a token-only string for `to_tsquery`, an
  * FTS5 `MATCH` of quoted phrases and a Meilisearch filter. Tokens, the `to_tsquery` text, the FTS5 `MATCH` and the filter hold no
  * syntax from the input; the term for `websearch_to_tsquery` keeps its web-search syntax, which that function never rejects. No
- * IO. Internal: `index.ts` does not export it.
+ * IO. Internal: `index.ts` exports only the type `ExcerptSegment`.
  */
 
 /** The most characters (code points) of a term that are read; the rest is cut off. */

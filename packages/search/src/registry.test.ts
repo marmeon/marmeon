@@ -5,6 +5,7 @@ import { SearchSetupError } from './errors.ts';
 import { SearchServiceProvider } from './provider.ts';
 import { SearchIndexes } from './registry.ts';
 import { SearchIndex, type AnyDocument } from './search-index.ts';
+import { MemoryDriver } from './test-helpers/memory-driver.ts';
 
 // Index classes come from modules and providers; the start checks each definition exactly and stops with Q9, naming the class and
 // where it was listed.
@@ -49,10 +50,15 @@ function variant(name: string, statics: Record<string, unknown>): typeof PageInd
 const provider = (name: string, searchIndexes: unknown): ServiceProviderClass =>
   ({ [name]: class { static searchIndexes = searchIndexes; boot(): void {} } })[name] as unknown as ServiceProviderClass;
 
+/** A driver the built-in ones stand in for: the start builds the selected driver, and this file tests the indexes. */
+class MemoryDriverProvider {
+  static searchDrivers = { memory: () => new MemoryDriver('after-commit') };
+}
+
 function boot(options: { modules?: ModuleDefinition[]; providers?: ServiceProviderClass[] }): Promise<Application> {
   return createApplication(
-    { root: import.meta.dirname, discover: false, providers: [SearchServiceProvider, ...(options.providers ?? [])], modules: options.modules ?? [] },
-    { env: { LOG_LEVEL: 'silent', NODE_ENV: 'test' } },
+    { root: import.meta.dirname, discover: false, providers: [SearchServiceProvider, MemoryDriverProvider, ...(options.providers ?? [])], modules: options.modules ?? [] },
+    { env: { LOG_LEVEL: 'silent', NODE_ENV: 'test', SEARCH_DRIVER: 'memory' } },
   );
 }
 
