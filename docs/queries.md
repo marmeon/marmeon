@@ -328,7 +328,7 @@ To answer a form with "taken" at its field instead, wrap the write in `failOnDup
 [validation](validation.md#the-unique-index-is-the-truth) page shows it.
 
 `insertMany()` and `tryInsertMany()` are for an import of thousands of rows. Both cut them into statements the driver accepts, since one statement takes at most
-65 535 parameters on Postgres and 32 766 on SQLite (a row of two columns: about 32 000 and 16 000 rows), and writes all of them in one
+65 535 parameters on Postgres and MySQL and 32 766 on SQLite (a row of two columns: about 32 000 and 16 000 rows; on MySQL with `returning`, and in `insertMissing()`, rows are written one by one, see [Writing on MySQL](#writing-on-mysql)), and writes all of them in one
 transaction, or in a savepoint inside an open one. When the third of five chunks fails, the first two are rolled back with it: all rows
 or none. `insertMany()` throws on a duplicate in any chunk, as `insert()` does. `tryInsertMany()` returns the same `err` as `tryInsert()`, with
 `columns`; the transaction around it stays usable, and returning the `err` from its callback rolls it back. Any other failure throws. Every row needs the same columns, and at least one, else a
@@ -386,9 +386,20 @@ A UUID key is compared as it is written, in the case it was stored in (Marmeon m
 finds no row and returns `undefined`, so pass the id in lower case. A trigger that changes a primary key the row names is not supported on MySQL: the row is read back by the key that was given, which can find another row that has it.
 
 `tryInsert()` reports `columns` for the primary key and for the unique indexes a migration describes, other than a partial one, and an
-empty list otherwise. For now `insertMany()` and `tryInsertMany()` with `returning`, `insertMissing()`, `create()` and `createMany()` of a
-relation, `attach()` and `sync()` when they link a row, and a factory's `create()` are refused with D29 on MySQL, as are the builder's
-`returning()`, `onConflict()` and merge. `detach()`, a `sync()` that only detaches and a factory's `make()` run.
+empty list otherwise.
+
+`insertMany()` and `tryInsertMany()` with `returning` write and read row by row, two statements per row, in one transaction (a
+savepoint inside one), so a duplicate in any row leaves nothing of the earlier rows; every row passes the checks of `insert()`. Without
+`returning` they write in chunks as on the other drivers. `insertMissing()` writes row by row too. It skips a row when MySQL reports the
+duplicate on a unique index over exactly the `on` columns (found by its name in the migrations; the primary key when `on` is exactly its
+columns). MySQL names only the first index a row violates, so when it names another one, `insertMissing()` reads the table for a row whose `on` values equal
+the row's exactly (text with text, and a number or bigint with the same whole number as text: `5` is never `'05'`) and skips the row only if it finds one; a value that is a
+`Date`, bytes, an object or a number that is not a whole number within 2^53 is never skipped that way (`true` and `false` count as `1` and `0`). A read that fails throws its own error, with the duplicate as its `cause` when the error has none. Every other duplicate throws and rolls the call back, and an `on` that no unique index backs throws before a row is
+written. It uses no `INSERT IGNORE`, which would also hide other errors. An `on` column that MySQL generates (auto-increment) needs a positive
+whole number in every row, since `0` would become a new id on every run: any other value is a `TypeError`. With `managed: false` only the primary key can be `on`, any
+other columns are refused with D29, and every primary key value in `on` must be a positive whole number: Marmeon cannot tell a key column from an auto-increment one there, so any other value is a `TypeError`. `create()` and `createMany()` of a
+relation, `attach()` and `sync()` when they link a row, and a factory's `create()` are refused with D29 on MySQL for now, as are the
+builder's `returning()`, `onConflict()` and merge. `detach()`, a `sync()` that only detaches and a factory's `make()` run.
 
 ### Route binding
 

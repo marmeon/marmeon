@@ -49,6 +49,7 @@ interface WriteTables extends FixtureTables {
   };
   slots: { slug: string; seats: Generated<number> };
   teams: { id: Generated<string>; name: string };
+  memberships: { id: Generated<number>; team_id: number; email: string; badge: string | null };
 }
 
 class Coupons extends Repository<'coupons', WriteTables> {
@@ -56,6 +57,9 @@ class Coupons extends Repository<'coupons', WriteTables> {
 }
 class Slots extends Repository<'slots', WriteTables> {
   static table = 'slots' as const;
+}
+class Memberships extends Repository<'memberships', WriteTables> {
+  static table = 'memberships' as const;
 }
 class Teams extends Repository<'teams', WriteTables> {
   static table = 'teams' as const;
@@ -91,6 +95,11 @@ async function attempt(connections: Connections, work: () => Promise<unknown>): 
     stop();
   }
 }
+/**
+ * A statement that changes data or opens a transaction: what a refusal must not send. Reads are not counted: a refusal may read the
+ * schema (the catalog, once) or, for a duplicate, the table, to decide.
+ */
+const isWrite = (query: string) => /^\s*(insert|update|delete|begin|savepoint|start)/i.test(query);
 const count = async (connections: Connections, table: string) => Number((await sql<{ n: string }>`select count(*) as n from ${sql.id(table)}`.execute(connections.get<any>())).rows[0]!.n);
 
 withMysql('writing on MySQL without RETURNING', () => {
@@ -254,12 +263,9 @@ withMysql('writing on MySQL without RETURNING', () => {
       }
     });
 
-    it.each(['insertMany with returning', 'tryInsertMany with returning', 'insertMissing', 'relation().create()', 'a factory'] as const)('refuses %s with D29 and sends no statement of its own', async (name) => {
+    it.each(['relation().create()', 'a factory'] as const)('refuses %s with D29 and sends no statement of its own', async (name) => {
       const user = await new Users(connections).insert({ name: 'Owner', email: `${name.replaceAll(/\W/g, '')}@example.com` });
       const works = {
-        'insertMany with returning': () => coupons.insertMany([row('m1@example.com', 'M1')], { returning: ['id'] }),
-        'tryInsertMany with returning': () => coupons.tryInsertMany([row('m2@example.com', 'M2')], { returning: ['id'] } as never),
-        insertMissing: () => coupons.insertMissing([row('m3@example.com', 'M3')], { on: ['email'] }),
         'relation().create()': () => (new Users(connections) as any).relation(user.id, 'articles').create({ title: 'T' }),
         'a factory': () => new Factories(connections).for(UserFactory).create(),
       };
@@ -294,12 +300,16 @@ withMysql('writing on MySQL without RETURNING', () => {
       role_user: { role_id: number; user_id: number };
       audit_lines: { line: string };
       items: { id: Generated<number>; name: string };
+      texts: { slug: string };
     }
     class RoleUser extends Repository<'role_user', PlainTables> {
       static table = 'role_user' as const;
     }
     class AuditLines extends Repository<'audit_lines', PlainTables> {
       static table = 'audit_lines' as const;
+    }
+    class Texts extends Repository<'texts', PlainTables> {
+      static table = 'texts' as const;
     }
     class Items extends Repository<'items', PlainTables> {
       static table = 'items' as const;
@@ -309,6 +319,7 @@ withMysql('writing on MySQL without RETURNING', () => {
       const d = plain.connections.get<any>();
       await sql`create table role_user (role_id int not null, user_id int not null, primary key (role_id, user_id))`.execute(d);
       await sql`create table audit_lines (line varchar(40) not null)`.execute(d);
+      await sql`create table texts (slug varchar(40) not null primary key)`.execute(d);
       await sql`create table items (id bigint not null auto_increment primary key, name varchar(40) not null)`.execute(d);
     }, 30_000);
     afterAll(() => plain.close());
@@ -331,6 +342,37 @@ withMysql('writing on MySQL without RETURNING', () => {
       expect((error as Error).message).toMatch(/\[marmeon:D29\].*no value for its key column id/);
       expect(await count(plain.connections, 'items')).toBe(0);
       expect(await items.insert({ id: 3, name: 'b' } as never)).toMatchObject({ id: 3, name: 'b' });
+    });
+    it('refuses insertMany() with returning on a table without a primary key before it writes', async () => {
+      const { error, sent } = await attempt(plain.connections, () => new AuditLines(plain.connections).insertMany([{ line: 'a' }, { line: 'b' }], { returning: ['line'] }));
+      expect(error).toBeInstanceOf(UnsupportedDriverError);
+      expect(sent.filter(isWrite)).toEqual([]);
+      expect(await count(plain.connections, 'audit_lines')).toBe(0);
+    });
+
+    it('refuses insertMissing() on a primary key it cannot tell from an auto-increment one when the value is no positive whole number', async () => {
+      const text = /primary key column that Marmeon cannot tell from an auto-increment one on a connection with managed: false.*pass a positive whole number, or match on a migration-managed connection/;
+      const texts = await attempt(plain.connections, () => new Texts(plain.connections).insertMissing([{ slug: 'a' }], { on: ['slug'] }));
+      expect(texts.error).toBeInstanceOf(TypeError);
+      expect((texts.error as Error).message).toMatch(text);
+      expect(texts.sent.filter(isWrite)).toEqual([]);
+      const zero = await attempt(plain.connections, () => new Items(plain.connections).insertMissing([{ id: 0, name: 'z' }], { on: ['id'] }));
+      expect(zero.error).toBeInstanceOf(TypeError);
+      expect((zero.error as Error).message).toMatch(text);
+      expect(zero.sent.filter(isWrite)).toEqual([]);
+      expect(await count(plain.connections, 'texts')).toBe(0);
+    });
+
+    it('refuses insertMissing() on a column other than the primary key before it sends anything, and matches on the primary key', async () => {
+      const items = new Items(plain.connections);
+      const before = await count(plain.connections, 'items');
+      const { error, sent } = await attempt(plain.connections, () => items.insertMissing([{ id: 20, name: 'm1' }], { on: ['name'] }));
+      expect(error).toBeInstanceOf(UnsupportedDriverError);
+      expect((error as Error).message).toMatch(/\[marmeon:D29\].*managed: false.*primary key/);
+      expect(sent.filter(isWrite)).toEqual([]);
+      expect(await count(plain.connections, 'items')).toBe(before);
+      expect(await items.insertMissing([{ id: 21, name: 'm2' }, { id: 21, name: 'm3' }], { on: ['id'] })).toBe(1);
+      expect(await items.insertMissing([{ id: 21, name: 'm4' }, { id: 22, name: 'm5' }], { on: ['id'], returning: ['id', 'name'] })).toEqual([{ id: 22, name: 'm5' }]);
     });
   });
 
@@ -457,6 +499,214 @@ withMysql('writing on MySQL without RETURNING', () => {
       expect(await coupons.tryUpdate(987_654 as never, { note: 'x' })).toEqual({ ok: false, error: { kind: 'missing' } });
       const updated = await coupons.tryUpdate(first.id as never, { note: 'done' });
       expect(updated.ok && updated.value).toMatchObject({ id: first.id, note: 'done' });
+    });
+  });
+
+  describe('insertMany(), tryInsertMany() and insertMissing()', () => {
+    const fresh = (tag: string, n: number) => Array.from({ length: n }, (_, i) => row(`${tag}-${i}@example.com`, `${tag.toUpperCase()}-${i}`));
+    const emails = async (tag: string) => (await db().selectFrom('coupons').select('email').where('email', 'like', `${tag}-%`).execute()).length;
+
+    it('insertMany() returns the rows in input order with their ids', async () => {
+      const rows = await coupons.insertMany(fresh('many', 3), { returning: ['id', 'email'] });
+      expect(rows.map((r) => r.email)).toEqual(['many-0@example.com', 'many-1@example.com', 'many-2@example.com']);
+      expect(new Set(rows.map((r) => r.id)).size).toBe(3);
+      expect(Object.keys(rows[0]!).sort()).toEqual(['email', 'id']);
+      for (const written of rows) expect((await coupons.find(written.id as never))?.email).toBe(written.email);
+    });
+
+    it('insertMany() with a duplicate in the third row writes none of the rows before it', async () => {
+      await coupons.insert(row('dup3-taken@example.com', 'DUP3-TAKEN') as never);
+      const rows = [...fresh('dup3', 2), row('dup3-taken@example.com', 'DUP3-NEW')];
+      await expect(coupons.insertMany(rows, { returning: ['id'] })).rejects.toMatchObject({ errno: 1062 });
+      expect(await emails('dup3')).toBe(1); // the taken row only
+      expect(await coupons.insertMany(rows.slice(0, 2))).toBe(2);
+    });
+
+    it('insertMany() with returning runs the key checks of insert() on every row, before anything is sent', async () => {
+      const users = new Users(connections);
+      const before = await count(connections, 'users');
+      const rows = [{ id: 1, name: 'A', email: 'chk1@example.com' }, { id: '0600', name: 'B', email: 'chk2@example.com' }];
+      const { error, sent } = await attempt(connections, () => users.insertMany(rows as never, { returning: ['id'] }));
+      expect(error).toBeInstanceOf(UnsupportedDriverError);
+      expect(sent.filter(isWrite)).toEqual([]);
+      const spelled = await failure(() => users.insertMany([{ İd: 1, name: 'A', email: 'chk3@example.com' }, { İd: 2, name: 'B', email: 'chk4@example.com' }] as never, { returning: ['id'] }));
+      expect(spelled).toBeInstanceOf(UnsupportedDriverError);
+      expect(await count(connections, 'users')).toBe(before);
+    });
+
+    it('tryInsertMany() answers the duplicate with its columns, writes nothing and leaves a surrounding transaction usable', async () => {
+      await coupons.insert(row('try-taken@example.com', 'TRY-TAKEN') as never);
+      const rows = [...fresh('try', 2), row('try-taken@example.com', 'TRY-NEW')];
+      expect(await coupons.tryInsertMany(rows, { returning: ['id'] })).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['email'] } });
+      expect(await emails('try')).toBe(1); // the taken row only
+      await connections.transaction(async () => {
+        expect((await coupons.tryInsertMany(rows, { returning: ['id'] })).ok).toBe(false);
+        expect((await coupons.tryInsertMany(fresh('tryok', 2), { returning: ['id'] })).ok).toBe(true);
+      });
+      expect(await emails('tryok')).toBe(2);
+      expect(await emails('try')).toBe(1); // the savepoint of the failed call was rolled back, not committed with the outer transaction
+    });
+
+    it('insertMissing() skips an existing email, writes the new rows and returns only them', async () => {
+      await coupons.insert(row('miss-0@example.com', 'MISS-OLD') as never);
+      const written = await coupons.insertMissing(fresh('miss', 3), { on: ['email'], returning: ['email'] });
+      expect(written.map((r) => r.email).sort()).toEqual(['miss-1@example.com', 'miss-2@example.com']);
+      expect(await coupons.insertMissing(fresh('miss', 3), { on: ['email'] })).toBe(0);
+      expect(await coupons.insertMissing([row('same@example.com', 'SAME-1'), row('same@example.com', 'SAME-2')], { on: ['email'] })).toBe(1);
+    });
+
+    it('insertMissing() on the primary key skips a duplicate of it', async () => {
+      expect(await slots.insertMissing([{ slug: 'pk-a' }, { slug: 'pk-a' }, { slug: 'pk-b' }], { on: ['slug'] })).toBe(2);
+    });
+
+    it('insertMissing() throws and writes nothing for a duplicate on another index', async () => {
+      await coupons.insert(row('other-old@example.com', 'OTHER-C') as never);
+      const rows = [row('other-1@example.com', 'OTHER-1'), row('other-new@example.com', 'OTHER-C')];
+      await expect(coupons.insertMissing(rows, { on: ['email'] })).rejects.toMatchObject({ errno: 1062 });
+      await expect(coupons.insertMissing(rows, { on: ['email'], returning: ['id'] })).rejects.toMatchObject({ errno: 1062 });
+      expect(await emails('other')).toBe(1);
+    });
+
+    it('insertMissing() is not fooled by a value that imitates the key name of another index', async () => {
+      await coupons.insert(row('craft-old@example.com', "x' for key 'coupons.coupons_email_unique") as never);
+      const rows = [row('craft-1@example.com', 'CRAFT-1'), row('craft-new@example.com', "x' for key 'coupons.coupons_email_unique")];
+      await expect(coupons.insertMissing(rows, { on: ['email'] })).rejects.toMatchObject({ errno: 1062 });
+      expect(await emails('craft')).toBe(1);
+    });
+
+    it('insertMissing() does not take an index whose name only begins like the one over on', async () => {
+      await sql`create unique index coupons_email_uniquex on coupons (note)`.execute(db());
+      try {
+        await coupons.insert(row('look-old@example.com', 'LOOK-OLD', { note: 'look-note' }) as never);
+        const rows = [row('look-1@example.com', 'LOOK-1', { note: 'look-free' }), row('look-new@example.com', 'LOOK-NEW', { note: 'look-note' })];
+        await expect(coupons.insertMissing(rows, { on: ['email'] })).rejects.toMatchObject({ errno: 1062 });
+        expect(await emails('look')).toBe(1);
+      } finally {
+        await sql`drop index coupons_email_uniquex on coupons`.execute(db());
+      }
+    });
+
+    it('insertMissing() skips a row that is there already when MySQL names another index first', async () => {
+      const users = new Users(connections);
+      const rows = [{ id: 9001, name: 'Id one', email: 'idrun-1@example.com' }, { id: 9002, name: 'Id two', email: 'idrun-2@example.com' }];
+      expect(await users.insertMissing(rows as never, { on: ['email'] })).toBe(2);
+      expect(await users.insertMissing(rows as never, { on: ['email'] })).toBe(0);
+      expect(await users.insertMissing(rows as never, { on: ['email'], returning: ['id'] })).toEqual([]);
+      const both = fresh('idboth', 2);
+      expect(await coupons.insertMissing(both, { on: ['code'] })).toBe(2);
+      expect(await coupons.insertMissing(both, { on: ['code'] })).toBe(0);
+      expect(await coupons.insertMissing([...both, row('idboth-new@example.com', 'IDBOTH-NEW')], { on: ['code'] })).toBe(1);
+    });
+
+    it('insertMissing() does not skip a row whose on value only matches loosely, and throws the duplicate', async () => {
+      const memberships = new Memberships(connections);
+      await memberships.insert({ team_id: 7, email: 'loose@example.com', badge: '05' });
+      // The pair of team and email clashes first; the badge 5 is `'05'` only to MySQL's comparison, never exactly.
+      await expect(memberships.insertMissing([{ team_id: 7, email: 'loose@example.com', badge: 5 as never }], { on: ['badge'] })).rejects.toMatchObject({ errno: 1062 });
+      expect(await memberships.insertMissing([{ team_id: 7, email: 'loose@example.com', badge: '05' }], { on: ['badge'] })).toBe(0);
+    });
+
+    it('insertMissing() skips only a duplicate of the table it writes, not one raised by a trigger in another', async () => {
+      await sql`create trigger slots_into_memberships after insert on slots for each row insert into memberships (id, team_id, email) values (4242, 1, 'trigger')`.execute(db());
+      try {
+        await expect(slots.insertMissing([{ slug: 't1' }, { slug: 't2' }], { on: ['slug'] })).rejects.toMatchObject({ errno: 1062 });
+        expect(await db().selectFrom('slots').select('slug').where('slug', 'in', ['t1', 't2']).execute()).toEqual([]);
+      } finally {
+        await sql`drop trigger slots_into_memberships`.execute(db());
+      }
+    });
+
+    it('insertMissing() takes an index over exactly the on columns, in any order, and one with a name of its own', async () => {
+      const memberships = new Memberships(connections);
+      const pair = [{ team_id: 3, email: 'pair@example.com' }];
+      expect(await memberships.insertMissing(pair, { on: ['email', 'team_id'] })).toBe(1);
+      expect(await memberships.insertMissing(pair, { on: ['email', 'team_id'] })).toBe(0);
+      await expect(memberships.insertMissing(pair, { on: ['email'] })).rejects.toThrow(/found no unique index on memberships \(email\)/);
+      const badge = [{ team_id: 4, email: 'badge@example.com', badge: 'B-1' }];
+      expect(await memberships.insertMissing(badge, { on: ['badge'] })).toBe(1);
+      expect(await memberships.insertMissing(badge, { on: ['badge'] })).toBe(0);
+    });
+
+    it('insertMissing() binds the exact text, so a number finds the one stored row among look-alikes', async () => {
+      const memberships = new Memberships(connections);
+      await memberships.insertMany([{ team_id: 100, email: 'lim-a', badge: '00005' }, { team_id: 101, email: 'lim-b', badge: '0005' }, { team_id: 102, email: 'lim2', badge: '5' }]);
+      expect(await memberships.insertMissing([{ team_id: 102, email: 'lim2', badge: 5 as never }], { on: ['badge'] })).toBe(0);
+    });
+
+    it('insertMissing() skips a boolean for a stored 1, and never a number that has no exact text', async () => {
+      const memberships = new Memberships(connections);
+      await memberships.insertMany([{ team_id: 110, email: 'bool', badge: '1' }, { team_id: 111, email: 'frac', badge: '0.5' }, { team_id: 112, email: 'big', badge: String(2 ** 53) }]);
+      expect(await memberships.insertMissing([{ team_id: 110, email: 'bool', badge: true as never }], { on: ['badge'] })).toBe(0);
+      await expect(memberships.insertMissing([{ team_id: 111, email: 'frac', badge: 0.5 as never }], { on: ['badge'] })).rejects.toMatchObject({ errno: 1062 });
+      await expect(memberships.insertMissing([{ team_id: 112, email: 'big', badge: 2 ** 53 as never }], { on: ['badge'] })).rejects.toMatchObject({ errno: 1062 });
+    });
+
+    it('insertMissing() lets the error of its own read through, with the duplicate as its cause', async () => {
+      await coupons.insert(row('readfail-old@example.com', 'READFAIL-OLD') as never);
+      const stop = connections.onQuery((query) => {
+        if (/for share/i.test(query.sql)) throw Object.assign(new Error('Deadlock found when trying to get lock'), { errno: 1213 });
+      });
+      try {
+        const error = await failure(() => coupons.insertMissing([row('readfail-old@example.com', 'READFAIL-NEW')], { on: ['code'] }));
+        expect(error).toMatchObject({ errno: 1213 });
+        expect((error as Error).cause).toMatchObject({ errno: 1062 });
+      } finally {
+        stop();
+      }
+    });
+
+    it('insertMissing() does not skip a duplicate that a trigger raised in another table, for a row that is here', async () => {
+      await coupons.insert(row('trg-old@example.com', 'TRG-OLD') as never);
+      await db().insertInto('memberships').values({ id: 4300, team_id: 5, email: 'trg2' }).execute();
+      await sql`create trigger coupons_trigger_clash before insert on coupons for each row insert into memberships (id, team_id, email) values (4300, 6, 'trg3')`.execute(db());
+      try {
+        await expect(coupons.insertMissing([row('trg-old@example.com', 'TRG-OLD')], { on: ['email'] })).rejects.toMatchObject({ errno: 1062 });
+      } finally {
+        await sql`drop trigger coupons_trigger_clash`.execute(db());
+        await db().deleteFrom('memberships').where('id', '=', 4300).execute();
+      }
+    });
+
+    it('insertMissing() is not turned into a TypeError by an error whose text quotes the SQLite refusal', async () => {
+      // MySQL cuts a duplicate's value short, so the text reaches an error another way: a trigger's own message.
+      const text = 'ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint';
+      await sql`create trigger coupons_quote before insert on coupons for each row begin if new.code = 'QUOTE' then signal sqlstate '45000' set message_text = ${sql.lit(text)}; end if; end`.execute(db());
+      try {
+        const error = await failure(() => coupons.insertMissing([row('quote@example.com', 'QUOTE')], { on: ['email'] }));
+        expect(error).not.toBeInstanceOf(TypeError);
+        expect((error as Error).message).toContain(text);
+      } finally {
+        await sql`drop trigger coupons_quote`.execute(db());
+      }
+    });
+
+    it.each([0, 0n, '0', false, 0.4, '', '5x'])('insertMissing() refuses the id %s in an auto-increment on column, and writes nothing on either run', async (id) => {
+      const users = new Users(connections);
+      const before = await count(connections, 'users');
+      const rows = [{ id, name: 'Zero', email: 'zero-on@example.com' }];
+      for (let run = 0; run < 2; run++) {
+        const { error, sent } = await attempt(connections, () => users.insertMissing(rows as never, { on: ['id'] }));
+        expect(error).toBeInstanceOf(TypeError);
+        expect((error as Error).message).toMatch(/auto-increment column on MySQL/);
+        expect(sent.filter(isWrite)).toEqual([]);
+      }
+      expect(await count(connections, 'users')).toBe(before);
+    });
+
+    it('insertMissing() keeps a skipped duplicate and a later write in one surrounding transaction', async () => {
+      await coupons.insert(row('keep-old@example.com', 'KEEP-OLD') as never);
+      await connections.transaction(async () => {
+        expect(await coupons.insertMissing([row('keep-old@example.com', 'KEEP-OLD'), row('keep-new@example.com', 'KEEP-NEW')], { on: ['email'] })).toBe(1);
+        await coupons.insert(row('keep-later@example.com', 'KEEP-LATER') as never);
+      });
+      expect(await emails('keep')).toBe(3);
+    });
+
+    it('insertMissing() throws its TypeError for columns no unique index backs, before a statement', async () => {
+      const { error, sent } = await attempt(connections, () => coupons.insertMissing([row('t@example.com', 'T', { note: 'n' })], { on: ['note'] }));
+      expect(error).toBeInstanceOf(TypeError);
+      expect((error as Error).message).toMatch(/found no unique index on coupons \(note\)/);
+      expect(sent.filter(isWrite)).toEqual([]);
     });
   });
 });

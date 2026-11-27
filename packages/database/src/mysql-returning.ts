@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { withCode } from '@marmeon/core/internal';
 import type { Connection } from './builder.ts';
 import type { SchemaMetadata } from './metadata.ts';
+import { mysqlDuplicateKey } from './mysql-duplicates.ts';
 import { UnsupportedDriverError } from './supported-driver.ts';
 
 // MySQL has no RETURNING. A write returns its row by reading it back by the primary key, in the transaction (or savepoint) the write ran
@@ -121,16 +122,11 @@ function positive(value: unknown): bigint | undefined {
 }
 
 /**
- * @internal Inserts `row` and reads it back by its primary key. The caller holds a transaction or a savepoint: a failure here has to
- * undo the insert. The key is the insert's `insertId` for the identity column (MySQL answers with the stored value, also for an explicit
- * `0` or `null`), the row's own value for any other.
+ * @internal Inserts `row` and answers the values of its primary key. The key is the insert's `insertId` for the identity column (MySQL
+ * answers with the stored value, also for an explicit `0` or `null`), the row's own value for any other. The caller holds a transaction or
+ * a savepoint: a failure after this insert has to undo it.
  */
-export async function insertAndRead(
-  db: Connection<any>,
-  key: ReadBackKey,
-  row: Record<string, unknown>,
-  method: string,
-): Promise<Record<string, unknown>> {
+export async function insertKeyed(db: Connection<any>, key: ReadBackKey, row: Record<string, unknown>, method: string): Promise<Record<string, unknown>> {
   const result = await db.insertInto(key.table).values(row).executeTakeFirst();
   const values: Record<string, unknown> = {};
   for (const column of key.columns) {
@@ -146,7 +142,113 @@ export async function insertAndRead(
     }
     values[column] = result.insertId;
   }
-  return readByKey(db, key, values, 'all', method);
+  return values;
+}
+
+/** @internal {@link insertKeyed}, then the row read back by that key: every column, or the `select` ones. */
+export async function insertAndRead(
+  db: Connection<any>,
+  key: ReadBackKey,
+  row: Record<string, unknown>,
+  select: readonly string[] | 'all',
+  method: string,
+): Promise<Record<string, unknown>> {
+  return readByKey(db, key, await insertKeyed(db, key, row, method), select, method);
+}
+
+/**
+ * @internal The names of the unique indexes of `table` over exactly `columns`: `PRIMARY` for the primary key, and every index a migration
+ * describes that is unique, not partial and has those columns (two equal indexes are both named: MySQL may report either).
+ */
+export function uniqueIndexNames(metadata: SchemaMetadata, table: string, columns: readonly string[]): ReadonlySet<string> {
+  const wanted = new Set(columns);
+  const same = (candidate: readonly string[]) => new Set(candidate).size === wanted.size && candidate.every((column) => wanted.has(column));
+  const names = new Set<string>();
+  const primary = metadata.primaryKeys.get(table);
+  if (primary !== undefined && primary.length > 0 && same(primary)) names.add('PRIMARY');
+  for (const index of metadata.projection?.tables.get(table)?.indexes ?? []) {
+    if (index.unique && index.where === undefined && same(index.columns)) names.add(index.name);
+  }
+  return names;
+}
+
+/** @internal Refuses (D29) an `on` no known unique index backs, on a connection that reads no migrations and so knows only the primary key's index. */
+export function refuseUnmanagedOn(table: string, method: string): never {
+  return refuse(`${method}() on MySQL matches on columns that are no unique index Marmeon knows: on a connection with managed: false it knows only the primary key's index of ${table}, so it cannot tell a row that is there from another duplicate. Match on the primary key.`);
+}
+
+/**
+ * @internal Whether `error` is MySQL's duplicate-key error of `table` on one of the indexes `names`. Only the index named at the end of
+ * the message counts, by exact equality: a duplicate on any other index is a different fault that must not be skipped.
+ */
+export function isDuplicateOn(error: unknown, table: string, names: ReadonlySet<string>): boolean {
+  const key = mysqlDuplicateKey(error);
+  return key !== undefined && key.table === table && names.has(key.index);
+}
+
+/**
+ * The text a primitive `on` value is compared by: text as it is, a bigint or a whole number within 2^53 as its integer text (`5` is `'5'`,
+ * never `'05'`), `true` and `false` as `'1'` and `'0'`. A `Date`, bytes, an object and a number that is not a whole number within 2^53 have none:
+ * they are never skipped.
+ */
+function exactText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'bigint') return String(value);
+  if (typeof value === 'number') return Number.isSafeInteger(value) ? String(value) : undefined;
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  return undefined;
+}
+
+/**
+ * @internal Whether a duplicate `error` of `table` is one `insertMissing()` may skip. MySQL names only the first index a row violates (the
+ * primary key, then the unique indexes in key order), so a row that is there already can also clash on an index before the one over `on`.
+ * The duplicate is then skipped only when the table holds a row whose `on` values equal this row's exactly: read in the same transaction,
+ * no soft-delete filter, bound as their exact text (an exact lookup on the unique index, which returns at most one row, so no limit can cut it off)
+ * and compared here again, since MySQL treats `5` and `'05'` alike. A value without an exact text (see `exactText`) or an error that is not a
+ * duplicate of this table means no skip. A failing read throws, with the duplicate as its `cause` when the error has none: a deadlock must reach the caller.
+ */
+export async function skipsDuplicate(
+  db: Connection<any>,
+  error: unknown,
+  table: string,
+  names: ReadonlySet<string>,
+  on: readonly string[],
+  row: Readonly<Record<string, unknown>>,
+): Promise<boolean> {
+  if (isDuplicateOn(error, table, names)) return true;
+  if (mysqlDuplicateKey(error)?.table !== table) return false;
+  const wanted = on.map((column) => exactText(row[column]));
+  if (wanted.includes(undefined)) return false;
+  try {
+    let query = db.selectFrom(table).select(on as string[]);
+    on.forEach((column, at) => (query = query.where(column, '=', wanted[at])));
+    const found = (await query.forShare().execute()) as Record<string, unknown>[];
+    return found.some((candidate) => on.every((column, at) => exactText(candidate[column]) === wanted[at]));
+  } catch (readError) {
+    if (typeof readError === 'object' && readError !== null && !('cause' in readError)) (readError as { cause?: unknown }).cause = error;
+    throw readError;
+  }
+}
+
+/**
+ * @internal Refuses (a `TypeError`, like a null) an `on` value MySQL would replace by a generated id, so the row would be written on every run: `0`,
+ * `'0'`, `0.4`, `false` or non-numeric text in an auto-increment column. On a connection with `managed: false` every primary key column counts, as Marmeon cannot tell a key
+ * column from an auto-increment one there (a column's kind does not: MySQL's text and float columns read as `other`).
+ */
+export function checkOnIdentity(metadata: SchemaMetadata, table: string, on: readonly string[], rows: readonly Record<string, unknown>[], method: string): void {
+  const generated = metadata.managed
+    ? (metadata.projection?.tables.get(table)?.columns.filter((column) => column.identity).map((column) => column.name) ?? [])
+    : (metadata.primaryKeys.get(table) ?? []);
+  for (const column of on.filter((candidate) => generated.includes(candidate))) {
+    rows.forEach((row, index) => {
+      if (positive(row[column]) !== undefined) return;
+      throw new TypeError(
+        metadata.managed
+          ? `${method}() matches on ${column}, an auto-increment column on MySQL, but row ${index} has a value for it that is not a positive whole number: MySQL would replace it with a new id, so the row would be written again on every run.`
+          : `${method}() matches on ${column}, which is a primary key column that Marmeon cannot tell from an auto-increment one on a connection with managed: false, and row ${index} has a value for it that is not a positive whole number: pass a positive whole number, or match on a migration-managed connection.`,
+      );
+    });
+  }
 }
 
 /**

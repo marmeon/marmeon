@@ -1,7 +1,7 @@
 import { TestClock } from '@marmeon/core/testing';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { compareKeys } from './repository.ts';
 import { isUniqueViolation, Migrator, Repository, type Connections } from './index.ts';
@@ -18,11 +18,12 @@ const modules: ModuleDefinition[] = [
   { name: 'keys', migrations: new URL('./__fixtures__/migrations/relations-secrets/', import.meta.url) },
 ];
 
-// Two columns per row: 70 000 rows are 140 000 parameters, more than one statement takes on either driver.
+// MySQL runs when MARMEON_TEST_MYSQL_URL is set. It writes `insertMissing()` and `returning` row by row, so the cases that need a chunk boundary stay off it.
+// Two columns per row: 70 000 rows are 140 000 parameters, more than one statement takes on any driver.
 const people = (count: number, prefix = 'person') => Array.from({ length: count }, (_, index) => ({ name: `Person ${index}`, email: `${prefix}-${index}@example.com` }));
 const START = Date.parse('2031-03-04T05:06:07.089Z');
 
-describe.each(drivers)('Repository.insertMissing() on %s', (driver) => {
+describe.each(driversWithMysql)('Repository.insertMissing() on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
@@ -64,7 +65,7 @@ describe.each(drivers)('Repository.insertMissing() on %s', (driver) => {
     expect(await users.insertMissing([], { on: ['email'], returning: ['id'] })).toEqual([]);
   });
 
-  it('counts across chunks', async () => {
+  it.runIf(driver !== 'mysql')('counts across chunks', async () => {
     await users.insertMany(people(10));
     expect(await users.insertMissing(people(70_000), { on: ['email'] })).toBe(69_990);
     expect(await users.count()).toBe(70_000);
@@ -139,7 +140,7 @@ describe.each(drivers)('Repository.insertMissing() on %s', (driver) => {
     expect(await users.count()).toBe(before);
   });
 
-  it('a clash in a later chunk rolls the earlier chunks back', async () => {
+  it.runIf(driver !== 'mysql')('a clash in a later chunk rolls the earlier chunks back', async () => {
     await users.insert({ name: 'Taken', email: 'taken@example.com' });
     const rows = people(70_000).map((row, index) => ({ ...row, id: 10_000 + index }));
     rows[69_999] = { id: 99_999_999, name: 'Clash', email: 'taken@example.com' };
@@ -174,7 +175,7 @@ describe.each(drivers)('Repository.insertMissing() on %s', (driver) => {
 
   it('a soft-deleted row counts as present', async () => {
     const row = await users.insert({ name: 'Gone', email: 'gone@example.com' });
-    await connections.get<FixtureTables>().updateTable('users').set({ deleted_at: new Date(START).toISOString() } as never).where('id', '=', row.id).execute();
+    await connections.get<FixtureTables>().updateTable('users').set({ deleted_at: new Date(START) } as never).where('id', '=', row.id).execute();
     expect(await users.insertMissing([{ name: 'Back', email: 'gone@example.com' }], { on: ['email'] })).toBe(0);
   });
 
@@ -208,7 +209,7 @@ describe.each(drivers)('Repository.insertMissing() on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('Repository.insertMany() and tryInsertMany() with returning on %s', (driver) => {
+describe.each(driversWithMysql)('Repository.insertMany() and tryInsertMany() with returning on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
@@ -226,7 +227,7 @@ describe.each(drivers)('Repository.insertMany() and tryInsertMany() with returni
     await connections.get<FixtureTables>().deleteFrom('users').execute();
   });
 
-  it('returns the named columns of every row, over a chunk boundary', async () => {
+  it.runIf(driver !== 'mysql')('returns the named columns of every row, over a chunk boundary', async () => {
     const rows = await users.insertMany(people(70_000), { returning: ['id', 'email'] });
     expectTypeOf(rows).toEqualTypeOf<{ id: number; email: string }[]>();
     expect(rows).toHaveLength(70_000);

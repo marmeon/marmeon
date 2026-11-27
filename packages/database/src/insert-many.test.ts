@@ -1,6 +1,6 @@
 import type { Application, ModuleDefinition, Result } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { isUniqueViolation, Migrator, Repository, type Connections, type DuplicateError } from './index.ts';
 
@@ -10,10 +10,11 @@ class UserRepository extends Repository<'users', FixtureTables> {
 
 const modules: ModuleDefinition[] = [{ name: 'auth', migrations: new URL('./__fixtures__/migrations/auth/', import.meta.url) }];
 
-// Two columns per row: 70 000 rows are 140 000 parameters, more than one statement takes on either driver.
+// MySQL runs when MARMEON_TEST_MYSQL_URL is set.
+// Two columns per row: 70 000 rows are 140 000 parameters, more than one statement takes on any driver.
 const people = (count: number, prefix = 'person') => Array.from({ length: count }, (_, index) => ({ name: `Person ${index}`, email: `${prefix}-${index}@example.com` }));
 
-describe.each(drivers)('Repository.tryInsertMany() on %s', (driver) => {
+describe.each(driversWithMysql)('Repository.tryInsertMany() on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
@@ -38,7 +39,7 @@ describe.each(drivers)('Repository.tryInsertMany() on %s', (driver) => {
   }, 60_000);
 
   it('inserts exactly as many rows as one statement takes, and one more', async () => {
-    const perStatement = Math.floor((driver === 'pgsql' ? 65_535 : 32_766) / 2);
+    const perStatement = Math.floor((driver === 'sqlite' ? 32_766 : 65_535) / 2);
     expect(await users.tryInsertMany(people(perStatement))).toEqual({ ok: true, value: perStatement });
     expect(await users.tryInsertMany(people(perStatement + 1, 'second'))).toEqual({ ok: true, value: perStatement + 1 });
     expect(await users.count()).toBe(2 * perStatement + 1);
@@ -114,7 +115,7 @@ describe.each(drivers)('Repository.tryInsertMany() on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('Repository.insertMany() on %s', (driver) => {
+describe.each(driversWithMysql)('Repository.insertMany() on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
