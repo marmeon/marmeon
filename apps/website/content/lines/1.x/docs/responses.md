@@ -48,7 +48,7 @@ is `undefined` not at all. Send only what the page shows. Every prop reaches the
 never be in it.
 
 The status defaults to 200. A last argument of options sets another, and headers:
-`this.view('notes/Gone', { id }, { status: 410 })`. The [pages](pages.md) page covers views, layouts and the head.
+`this.view('notes/Gone', { id }, { status: 410 })`. A status that is not a whole number from 200 to 599 throws a `TypeError`, and a view always has a body, so 204, 205 and 304 throw too. The [pages](pages.md) page covers views, layouts and the head.
 
 ### Props that load later
 
@@ -277,7 +277,7 @@ export class PinNoteController extends Controller {
 }
 ```
 
-The status defaults to 200; `this.json(data, { status: 201 })` sends another. `this.json(undefined)` answers 204 with no body.
+The status defaults to 200; `this.json(data, { status: 201 })` sends another. `this.json(undefined)` answers 204 with no body. A status that is not a whole number from 200 to 599 throws a `TypeError`, and so does 204, 205 or 304 with data.
 An API client gets the same JSON, and the [actions](actions.md) page shows how a page calls such a route without leaving.
 
 ## Conflict
@@ -456,6 +456,8 @@ them is a breaking change of the framework. The types you augment (`Views`, `Sha
 `ctx.cookies.set(name, value, options)` queues a cookie for whatever response the request ends with, a page, a redirect or an
 error page alike. The [requests](requests.md#cookies) page covers the options and their defaults.
 
+`set()` throws a `TypeError` that names the cookie when the value has half of a surrogate pair, encrypted or not. Check a value with [`wellFormed()`](validation.md#lone-surrogates). The same error follows a `path` or `domain` with `;`, a control character or a character above U+00FF.
+
 ### Downloads
 
 `serveFile()` of `@marmeon/storage` answers with a file of a disk:
@@ -476,7 +478,11 @@ export class DownloadAttachmentController extends Controller {
 
   handle(ctx: HttpContext<Authenticated, { attachment: Row<'attachments'> }>) {
     const { attachment } = ctx.params;
-    return serveFile(this.#storage.disk('local'), attachment.path, ctx.request, { cacheControl: 'private, no-store', filename: attachment.name });
+    return serveFile(this.#storage.disk('local'), attachment.path, ctx.request, {
+      cacheControl: 'private, no-store',
+      filename: attachment.name,
+      ranges: true,
+    });
   }
 }
 ```
@@ -484,6 +490,19 @@ export class DownloadAttachmentController extends Controller {
 The file streams from the disk with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. Everything but
 raster images goes out as an attachment, so HTML, SVG or a PDF is downloaded instead of shown on your app's origin. A missing file
 is a 404. The route's middleware and policy decide who may download: check them as for any other route.
+
+A player seeks in a video by asking for parts of it. `ranges: true` makes `serveFile()` answer a `Range` request of a GET with
+`206 Partial Content`, or with `416` when the range starts at or after the file's end or asks for the last 0 bytes, and ask the
+disk for those bytes only, as the controller above does.
+
+Only a disk from `Storage` that honours ranges (local, memory, S3, or a driver with `acceptsRanges: true`) answers a range. A disk
+object of your own, or a wrapper around any disk, one from `Storage` included, gets the whole file. A route that changes the bytes `serveFile()` returns leaves
+`ranges` off. A wrapper that changes no bytes, such as a key prefix or logging, is not needed: map the key in the route and pass
+the disk from `Storage`.
+
+Without the option every request gets the whole file. Leave it off where one request must be one download: a route that counts
+downloads, spends a one-time link or throttles by bytes would see one request per seek. The
+[file storage](storage.md#ranges-and-video) page lists what a `206` keeps and what a route in front of it sees.
 
 A file your code makes, a JSON export say, goes out as a `Response` of its own. `contentDisposition()` of
 `@marmeon/http` names it (`@marmeon/storage` exports the same function): the encoder `serveFile()` and the table exports use, safe for any name, even one made from what a person typed.

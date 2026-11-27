@@ -287,7 +287,7 @@ checked over every file of the repository — tracked, or new and not ignored. E
     `@deprecated Use {@link isSensitiveRememberField}. Removed in 0.5; docs/forms.md#remembering-input.` Each
     `deprecated(id, message, removeIn)` call has three string literals: an id `<package>.<name>` whose package is the file's and
     that no other call uses, the message, and `removeIn` as `major.minor`. The version must lie after the current one — otherwise it
-    is a typo or overdue. From 1.0 on it is a major version (`Removed in 2.0`). [Package development](docs/package-development.md#deprecating-an-api) shows both.
+    is a typo or overdue. From 1.0 on it is a major version (`Removed in 2.0`). [Package development](docs/package-publishing.md#deprecating-an-api) shows both.
 
 11. **Only `@marmeon/database` imports the query builder**: no code file outside `packages/database/src/` (the other packages
     and their tests, apps, the template, stubs, scripts, the templates of `make:*`, the edits of an example) names `kysely` as a
@@ -345,7 +345,7 @@ A driver of another package, such as a queue driver for SQS, comes through the s
 (`static queueDrivers`), never through a change to the service's own package; see [drivers](docs/drivers.md).
 
 Third-party driver libraries follow one rule. Each package README names the part that applies to it, with the exact install
-command, and the [package development](docs/package-development.md#dependencies-of-drivers) page explains it to package authors:
+command, and the [package development](docs/package-publishing.md#dependencies-of-drivers) page explains it to package authors:
 
 1. A package that wraps exactly **one** third-party driver and is useless without it lists it in **`dependencies`**, at a caret
    range of the tested major: `@marmeon/redis` → `redis`, `@marmeon/validation` → `valibot` (its engine, never re-exported). The app
@@ -835,8 +835,11 @@ has three entry points that only the framework imports:
 
 ### The source condition and the manifests
 
-Inside this repository the packages resolve to their TypeScript sources through the `@marmeon/source` condition; a published
-package does not carry it (`publishConfig.exports`). `marmeon` runs a command in its own process and starts Node a second time
+The `@marmeon/source` condition is public: an app uses it for a package of its own workspace, and its name and meaning are API
+([what is public API](docs/releases.md#what-is-public-api)). The app sets `NODE_OPTIONS=--conditions=@marmeon/source` itself
+([a package in your app's workspace](docs/package-workspace.md#a-package-in-your-apps-workspace)); the installed CLI never does that for an app.
+Inside this repository the packages resolve to their TypeScript sources through the same condition, and the launcher adds it from its
+own location. A published package does not carry it (`publishConfig.exports`). `marmeon` runs a command in its own process and starts Node a second time
 only for what a running process cannot switch on: `node --watch` for `marmeon dev`, and the source condition when the CLI runs
 inside this repository — a `pnpm-workspace.yaml` above it lists its directory among `packages`. Never for `marmeon start`, which
 serves the packages' `dist/` here too. A copy of the CLI under `node_modules` (what `pnpm deploy` leaves) runs its `dist/` like a
@@ -1121,9 +1124,11 @@ shortened, never deleted.
 
 The docs under `docs/` are the framework's documentation: one page per topic, in the order `apps/website/docs.config.ts` lists
 them. They are the only source, written in English for people who build apps. **A change to a public API, an environment
-default or a command changes its docs page in the same commit.** No check compiles the examples, except those of the recipes and
-of "Your First App", which `pnpm test` and `pnpm pack:smoke` check against an app; for every other page that commit is where they
-stay true. Comments in the code follow [Comments](#comments).
+default or a command changes its docs page in the same commit.** No check compiles the examples, except those of the recipes, of
+"Your First App" and of the section "A package in your app's workspace" of `docs/package-workspace.md`, which `pnpm test` and
+`pnpm pack:smoke` check against an app; for every other page that commit is where they stay true. That section's heading, the titles
+of its code blocks and its `sh` block are tied to `scripts/workspace-package-smoke.ts`: the smoke writes the files from the blocks and
+runs the commands, so a rename there fails the smoke and `scripts/workspace-package-smoke.test.ts`. Comments in the code follow [Comments](#comments).
 `pnpm website:dev` shows the pages on http://localhost:3970. `docs/installation.md` and `docs/routing.md` are the model for every
 other page.
 

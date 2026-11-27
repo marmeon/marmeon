@@ -294,7 +294,8 @@ it('exports the notes as JSON to the private disk', async () => {
 
 `files()` lists every key on a disk. A disk name is checked by the compiler as in the app. `app.upload()` sends a file through
 the real upload target onto the fake, as the [HTTP tests](http-tests.md#uploads) page shows. The [file storage](storage.md)
-page covers disks.
+page covers disks. The fake's disks honour `range` even where a disk driver of your own does not. To test the whole-file answer of
+such a driver, use `createTestApp(app, { storage: 'real' })`.
 
 > [!WARNING]
 > With `storage: 'real'` the configured disks stay, and a test writes to and deletes from the real file system or bucket. Use it

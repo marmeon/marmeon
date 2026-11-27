@@ -249,6 +249,8 @@ export class UpdateNoteLayoutController extends Controller {
 `delete(name, { path, domain })` queue a cookie for whatever response the request ends with: a page, a redirect or an error page.
 Pass `delete` the same `path` and `domain` the cookie was set with. Incoming cookies whose names are not RFC 6265 tokens, such as `a[b]` or `x:y`, are ignored.
 
+`set` throws a `TypeError` for a value that has half of a surrogate pair, encrypted or not: check it with [`wellFormed()`](validation.md#lone-surrogates). It throws for a `path` or `domain` with `;`, a control character or a character above U+00FF, and `delete` does too. It throws for a `sameSite` other than `lax`, `strict` or `none`, a `maxAge` that is not a span of time and an `expires` that is not a valid date.
+
 | Option | Default |
 | --- | --- |
 | `path` | `/`. |

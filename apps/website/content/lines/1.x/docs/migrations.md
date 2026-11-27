@@ -42,8 +42,10 @@ The name decides what the file starts with. `create_…_table` creates a table w
 `_to_…_table`, `_from_…_table` or `_in_…_table` changes that table. Any other name gives an empty migration. The name must be
 snake_case, and `--module` must name a module that exists.
 
-The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the module's latest
-migration. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
+The file is named after the time it was made, `2026_10_01_120000_create_notes_table.ts`, and always after the latest migration of every
+module under `modules/*/migrations`: the later of now and one second after the newest file name there. Only a newest stamp in the future
+with a field out of range (the ranges are in [Registering what a generator writes](package-commands.md#registering-what-a-generator-writes)), or that leaves no room behind it, and a `migrations` folder of another module that cannot be read, are printed as a
+warning. The file is then stamped behind its own module's migrations whose stamps are dates, or with now if even that leaves no room. A module lists the folder of its migrations once; the command adds it to the module's `index.ts` when it is missing (or prints the
 line when the file has another shape or you pass `--no-register`):
 
 ```ts title="modules/notes/index.ts"
@@ -57,17 +59,16 @@ export default defineModule({
 });
 ```
 
-Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. The
-"after the module's latest migration" above holds within one module only: `make:migration` looks at the folder it writes
-to. A foreign key from one module's table to another's (`bookings.room_id` to `rooms`) therefore needs the referenced table
-to be created first, in time. Generate the migration of the referenced module first (`make:migration create_rooms_table --module=rooms`,
-then `make:migration create_bookings_table --module=bookings`), or rename the file of the later one so that its timestamp is the
-larger, and check that its timestamp is the smaller one for the referenced table: two commands in the same second get the same
-timestamp. On Postgres a file that runs too early stops with the database's error for a missing table. SQLite accepts the
-reference and only checks it when rows are written, so check the order with `migrate:status` before you deploy. Rename a file only before it has run. The starter kit's migrations start
-with `0001_01_01_` and come before any you write. A `.ts` or `.js` file in the folder whose name does not fit the pattern stops
-every migration command with the name it expects, and so do two migrations with the same name and a module whose `migrations`
-folder does not exist.
+Migrations run in the order of their file names across all modules, character by character, so the timestamp decides. A new file
+sorts behind every migration the app has, so a foreign key from one module's table to another's (`bookings.room_id` to `rooms`)
+finds the referenced table already created when the migration of the other module is generated later. The rule reads the file names
+under `modules/*/migrations`, as `marmeon publish` does; a migrations folder registered anywhere else is seen only by a booted
+`migrate`. Two files that two branches generate in the same second get the same stamp, and a branch merged late can bring a file
+that sorts before one that has already run: check the order with `migrate:status` before you deploy. On Postgres a file that runs
+too early stops with the database's error for a missing table. SQLite accepts the reference and only checks it when rows are written.
+Rename a file only before it has run. The starter kit's migrations start with `0001_01_01_` and come before any you write. A `.ts`
+or `.js` file in the folder whose name does not fit the pattern stops every migration command with the name it expects, and so do
+two migrations with the same name and a module whose `migrations` folder does not exist.
 
 ## Migration structure
 
@@ -114,7 +115,10 @@ the workspace is refused too.
 `migrate` also names a migration whose file changed after it ran ([see below](#a-migration-that-changed-after-it-ran)), but it sees only the file, not what the file imports.
 
 The workspace of an app is the directory of its lockfile when that declares one (`pnpm-workspace.yaml`, or `workspaces` in its
-`package.json`). A package of your own monorepo is fine, with the lockfile in the root of the monorepo. Without a declaration, or with
+`package.json`).
+The search for the lockfile stops below the first folder above your app that everyone can write to or that a user other than you, root or the owner of your app owns.
+A lockfile behind such a folder does not count, and neither does one planted in it.
+A package of your own monorepo is fine, with the lockfile in the root of the monorepo. Without a declaration, or with
 the workspace of a tool Marmeon does not read (Deno, Rush, Nx, Lerna), only the app's own directory counts. A package manager that
 keeps packages outside the repository (a cache, a global store, `link:` to another repository) puts them out of reach.
 A package cache inside the app, such as `DENO_DIR` or Bun's cache directory, is not recognised: keep it outside the app.
@@ -182,6 +186,53 @@ This is a guard against mistakes, not a sandbox. A connection taken from `db` wi
 is not looked into, and a raw statement is read by its words, not parsed. Keep to the query
 builder in a data step.
 
+### A data step a generator writes
+
+A generator that writes a migration with a `schema.data()` step writes the whole step into the file: the function that does the work
+and the data as they are when the file is generated. The file is what Marmeon records (a checksum of its bytes, [see below](#how-the-migrator-keeps-track)).
+It is also what a review reads; what it imports is neither. A helper the step takes from a package,
+or data it reads from one when it runs, can change with an update, and a database that is migrated later gets other data than the
+one before it, with nothing in the history to say so. The example is the file such a generator writes:
+
+```ts title="modules/notes/migrations/2026_10_05_090000_create_labels_table.ts"
+import { defineMigration } from '@marmeon/database';
+
+function tidy(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+const labels: Record<string, string> = JSON.parse('{"__proto__":"  Hidden  ","draft":"Not   published"}');
+
+export default defineMigration({
+  up: (schema) => {
+    schema.create('labels', (table) => {
+      table.id();
+      table.string('name').unique();
+      table.string('text');
+    });
+    schema.data(async (db) => {
+      const rows = Object.entries(labels).map(([name, text]) => ({ name, text: tidy(text) }));
+      await db.insertInto('labels').values(rows).execute();
+    });
+  },
+  down: (schema) => schema.drop('labels'),
+});
+```
+
+- **A helper is written out as source**, here `tidy`. `fn.toString()` is not a way to get it: it loses the variables the function
+  closes over and the types, and a compiler or minifier may have changed the text. If the step needs a helper of a package, the
+  generator copies its source into the file.
+- **Data is `JSON.parse` of JSON text, not an object literal.** Write the text with `JSON.stringify(JSON.stringify(data))`, which gives
+  a quoted string that is valid in the file. In an object literal `{ "__proto__": … }` does not become a key, so a key of that name is
+  dropped; `JSON.parse` keeps it as a key of its own. Build `data` in the generator with `JSON.parse` or `Object.fromEntries` too: data built
+  with an object literal has lost the key before `JSON.stringify` runs. This matters most for content people typed, where a key or a
+  field named `__proto__` is a value like any other.
+- **It runs on SQLite and Postgres, and on MySQL once it can be selected.** The callback gets the connection and, as its second
+  argument, `{ driver }` (`'sqlite'`, `'pgsql'` or `'mysql'`), for a statement that differs. On MySQL the step is a transaction of its own, see [MySQL](#mysql).
+- **D20 looks at the directory, not at the imports.** A file in a module's `migrations` folder and everything below it has to lie in
+  your app or its workspace ([migrations from a package](#migrations-from-a-package)). An `import` of a helper that lies somewhere
+  else is not followed, so a migration that imports its content passes the check and still changes with the package. Put the content into the file.
+
 ### Raw SQL
 
 `schema.raw()` adds a statement for what the blueprint cannot express, such as an extension or an index over an expression:
@@ -217,6 +268,8 @@ and `nullable()` changes (by the column's name after the renames), new checks, n
 `schema.data()` steps change nothing in it. `migrate` computes it before it runs the first pending migration, so a plan it cannot hold stops the run
 at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
 no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it, or a column in the `where` of an index); dropping such a table is allowed.
+
+A table name with a dot names a table together with its schema or database, and the migrations do not describe such a table. In an `up()`, `schema.create()` and the new name of `schema.rename()` refuse it with error D31 before any statement runs: use a name without a dot. `drop()` and `dropIfExists()` still accept one, for a table of another tool; `alter()` and the old name of `rename()` of such a table end in error D19, since the migrations do not know it. A `down()` is not checked against the migrations, so `create()`, `alter()` and `rename()` accept a name with a dot there, except a `oneOf()` change of such a table, which ends in error D19 as it does for any table the migrations do not know.
 
 Tables that nothing in the migrations creates, such as a table another tool made in the same database or one that raw SQL made, are not
 in it, and neither are their columns. Create a table with `schema.create()` when Marmeon is to know it.
@@ -265,6 +318,7 @@ skips that. `migrate:rollback` and `migrate:reset` do not write them: after a ro
 back in line. With `NODE_ENV=development`, `migrate` and `migrate:fresh` stop before any step (before `migrate:fresh` drops a table) when `bootstrap/database.d.ts` comes from a newer Marmeon, because they would have to write over it; `--no-types` skips this check. The [repositories and queries](queries.md#table-types) page explains the file.
 
 Run migrations with these commands. `Migrator` is the class behind them: its `status()`, `changed()`, `missing()`, `projection()` and `files()` read and are public, but the methods that run migrations are internal and may change.
+To test a migration a generator wrote, run the commands in a test app: see [testing a generated migration](database-testing.md#testing-a-generated-migration).
 
 `migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` take `--wait=<seconds>` (default 60): how long to wait for another migration to end, see [one migration at a time](#one-migration-at-a-time).
 
@@ -463,6 +517,31 @@ The projection says which tables and columns the database has now. After every m
   table Marmeon did not create has no secret columns, soft deletes or timestamps: create what the app reads with `schema.create()`, or
   type a table of another tool with `withTables<…>()` ([queries](queries.md)). Tables of an extension (PostGIS's `spatial_ref_sys`), SQLite's
   own and the leftovers of 0.3 are not named.
+
+Postgres cuts a table or column name at 63 bytes of the database's encoding without a word. A migration that leaves such a name usually
+ends in error D3, and the message names a name over 63 bytes of UTF-8 as the possible cause: use a shorter
+name. Creating a table, or a column in the same table, or renaming one, to a name that is cut to one already taken ends in Postgres's own
+error instead. The comparison before a run does not name this cause.
+
+The check compares only the names a migration leaves. A longer name that is gone by the end of the migration is not reported when a
+step of the same plan made it: the plan holds it under the long name, so a later step of that plan finds it by that name.
+
+A step that names a table, column, index or check constraint by a name Postgres would cut acts on the one that has the first 63 bytes of
+the name, which is not the one you named. `drop()`, `dropIfExists()`, `dropColumn()`, `dropIndex()` and `dropUnique()` with such a name end
+in error D5 before the first statement of the run, and of the rollback for a `down()`. `rename()`, `renameColumn()`, `dropCheck()`,
+`schema.alter()` of such a table, and `notNull()`, `nullable()` and `oneOf()` of such a column end in error D19 in an `up()`, where the
+migrations know which tables exist; in a `down()` all of them but `oneOf()` end in error D5. The table and column a foreign key points at (`constrained()`, `foreign()`), and the columns an index covers or filters on with `where`, are asked the same way, in an `up()` and in a `down()`, and end in D5. The exemption is one plan: a step may use a
+name when an earlier step of the same migration created it, renamed a table or column to it, or added it. A step on a name that Postgres cuts to the same name as one the plan made withdraws that exemption, because Postgres reads the two as one. Marmeon asks the server where it cuts, in the encoding of the database. For a qualified table the table part and the schema are compared by their cuts, and a name without a schema counts as every schema. A name an earlier migration
+gave is not exempt, so use the name as Postgres stored it. For a qualified table name such as `analytics.events`, Marmeon asks the schema
+and the table as Postgres reads them, each on its own. Names in `schema.raw()` and in `data()` steps are not checked, and Postgres cuts
+them in every statement, so use names of at most 63 bytes for temporary tables and columns too, and test your migrations on Postgres.
+
+The names a migration gives to an index, a check constraint or a foreign key (error D5) are not measured by Marmeon: it asks the server
+whether it would cut each one, so the answer is that of the database's own encoding. A name of 40 `é` is 80 bytes in UTF8 and refused,
+but 40 bytes in LATIN1 and kept; 22 of them are 66 bytes in EUC_JP and refused. The names of a whole run are asked before its first
+migration, and a rollback asks for the names of its `down()`s before the first one runs. The names a table renamed with `indexes: true`
+gives are read from the database, so they are asked when that migration runs: on Postgres it rolls back, and the migrations of the run
+before it stay. A name the encoding cannot hold ends in D5 too, naming the names it may be.
 
 A migration is also refused, before any migration of the run has started, when the order it runs in gives another schema than the order
 of the names. Every other process (the build, the types, the projection file, a second app server) replays the migrations by name, but
@@ -733,7 +812,7 @@ Every foreign key also describes two relations, one for each table. The
 
 `table.index(columns)` adds an index and `table.unique(columns)` a unique index, over one column or a list. Their names are
 `{table}_{columns}_index` and `{table}_{columns}_unique`, joined by underscores, unless you pass a name as the second argument.
-Postgres cuts a name at 63 bytes without a word, so on Postgres a migration that would create an index with a longer default
+Postgres cuts a name at 63 bytes of the database's encoding without a word, so on Postgres a migration that would create an index with a longer default
 name is refused. A table you made earlier may hold the cut name, so pass the name Postgres stored for it (`select indexname from
 pg_indexes where tablename = '…'`) in a migration that exists already, and a name of your own in a new one; a later `dropIndex`
 needs the name the database holds.
@@ -791,7 +870,7 @@ schema.create('memberships', (table) => {
 
 `oneOf()` works on `string()` and `text()` columns, and such a column is read as the union of its values. Each value is a string of 1 to 255 characters, none twice, and none with a NUL character or a backslash; anything else throws when the plan is built. The values are
 written into the statement as quoted literals, so a quote or a semicolon in one is plain text. The constraint is named
-`{table}_{column}_check` (on Postgres at most 63 bytes, like an index name). A `NULL` passes it, so a column that is not
+`{table}_{column}_check` (on Postgres at most 63 bytes of the database's encoding, like an index name). A `NULL` passes it, so a column that is not
 `nullable()` stays protected by `NOT NULL`. A `oneOf()` column can be added with `schema.alter()` on both drivers; an existing
 row that does not fit stops the migration, which is rolled back (not on MySQL, see [MySQL](#mysql)).
 
@@ -1044,7 +1123,7 @@ schema.rename('invoices', 'bills', { indexes: true });
 ```
 
 Every index and constraint whose name begins with `invoices_` is renamed to begin with `bills_`, and on Postgres the
-sequences of its identity columns too. A new name over 63 bytes is refused on Postgres, which would cut it: rename that index
+sequences of its identity columns too. A new name over 63 bytes of the database's encoding is refused on Postgres, which would cut it: rename that index
 yourself first, to a name of your choice. Without the option, `rename` changes the table's name only. MySQL renames the indexes only, and refuses a table whose foreign keys or checks start with the old name ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 The names of check constraints (`{table}_{column}_check` of `oneOf()`, and those of `check()`) follow on Postgres. SQLite keeps them as they were, so a later `dropCheck()` there is
 not possible in either case; Marmeon's description follows Postgres.
@@ -1287,7 +1366,7 @@ Both ways do the same: a `make:*-table` command is [`publish`](#publishing-the-m
 writes every migration of the package that your app lacks, with the rules of `publish` (a name that another package ships, a gap
 and the choice of the module), and ends with exit code 0 and "Nothing to publish" when they are all there. The package need not be
 in the `dependencies` of your app: the command comes from it. `marmeon publish <package>` also works for every package that
-[declares its migrations](package-development.md#declaring-the-migrations-a-package-ships).
+[declares its migrations](package-tables.md#declaring-the-migrations-a-package-ships).
 
 Each writes into the `system` module, or the module that `--module` names. The command creates the `system` module and adds it
 to `bootstrap/app.ts` when it does not exist yet; it adds `migrations` to an existing module that lacks it. A `make:*-table`
@@ -1326,7 +1405,9 @@ migrations, with what each lacks: `@acme/permissions — lacks 1: add_grants_tab
 `marmeon publish <package> [--module=<name>]` copies the migrations of one package without asking. The package must be in the
 `dependencies` or `devDependencies` of your app's `package.json` and installed in its `node_modules`: a package that only
 another package brought is not copied; the package is looked for in the `node_modules` of the app and, in a workspace, of the
-directories above it up to the first one with a lockfile. The module is `--module`; else the module whose `index.ts` carries the line `publish` writes when it creates a module for the
+directories above it up to the first one with a lockfile.
+The search stops below the first folder above your app that everyone can write to or that a user other than you, root or the owner of your app owns.
+The module is `--module`; else the module whose `index.ts` carries the line `publish` writes when it creates a module for the
 package; else the one the package proposes. With such a module, every file of the package that your app has must lie in it:
 a file in another module stops the command with exit code 1, also when nothing is missing, because it is either a module you
 moved the files to or a package that ships a name your app already uses. Without one, a file of the package in another module
@@ -1349,8 +1430,8 @@ A migration is known by its name without the timestamp, across the whole app. `p
 Everything is planned before anything is written: `publish` writes nothing when it refuses, and one refusal for any chosen
 package ends the command with exit code 1 and all the messages. If a write fails after the plan (a full disk, a directory
 without permission), the command names the files it had written by then. A new file is put behind the newest migration of
-your app, whatever its extension (`.ts`, `.js`, `.mts`, `.mjs`); a newest migration whose timestamp is no date, or that leaves no
-room behind it, stops the command with exit code 1 and names the file.
+your app, whatever its extension (`.ts`, `.js`, `.mts`, `.mjs`); a newest migration whose timestamp has a field out of range stops the command with exit code 1 and names the file. So does one that leaves no
+room behind it. A day past the end of its month rolls over and is no refusal.
 
 The command writes what is missing and skips a migration your app already has under the same name (say, one that `make:auth`
 wrote), so you can run it again: when nothing is left it ends with exit code 0 and says so. The files carry a timestamp one

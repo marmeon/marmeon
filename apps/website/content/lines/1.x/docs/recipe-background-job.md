@@ -102,8 +102,8 @@ export class AccountExportServiceProvider implements ServiceProvider {
 }
 ```
 
-The module lists the job and the provider. A worker runs only the jobs its app knows, and a dispatch of a job that no module
-lists throws. `make:job` adds the class for you; `make:module` wrote the file without a `jobs` or a `providers` key, so you add
+The module lists the job and the provider. A worker runs only the jobs its app knows, and a dispatch of a job that no module or provider
+registers throws. `make:job` adds the class for you; `make:module` wrote the file without a `jobs` or a `providers` key, so you add
 the provider yourself.
 
 ```ts title="modules/account-export/index.ts"
@@ -449,7 +449,7 @@ pnpm marmeon check
 pnpm marmeon route:list
 ```
 
-`marmeon check` finds what this recipe is built to avoid. `modules` warns about a job class under `modules/` that no module lists:
+`marmeon check` finds what this recipe is built to avoid. `modules` warns about a job class under `modules/` that no module lists and no provider your app lists:
 a job nobody registered would be queued and never run. `throttle` warns about a route that anyone may call to change something
 and nothing limits; the request is not reported because `authenticate()` declares that it only lets signed-in users through. The
 [check](check.md#the-app-checks) page lists the others.

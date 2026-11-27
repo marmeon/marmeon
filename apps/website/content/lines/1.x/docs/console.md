@@ -138,8 +138,10 @@ A command of your own, or of a package, prints its document with `output.json({ 
 - **The scheduler** starts when a module schedules tasks.
 - **`bootstrap/routes.ts`** is written on every start, and again when a view is added or removed. Route names and views are then
   known to the type checker without running `route:types` yourself.
-- **A warning** names every class under `modules/` with a literal `static job` or `static notification` that no module lists. The
-  files are only read, never run, and the registration stays explicit. `marmeon build` prints the same warning.
+- **A warning** names every class under `modules/` with a literal `static job` or `static notification` that no module lists.
+  A job also counts as listed when a provider of your app lists it (its `providers` or a module's), matched by the job's name.
+  A provider that only discovery adds does not count: a class under `modules/` with that package's job name still gets the warning, so give it a job name of its own. A package's provider that you list yourself does count. A job class of a workspace package below `modules/` gets the warning while only a discovered provider lists it: list it in a module, too.
+  The files are only read, never run, and the registration stays explicit. `marmeon build` prints the same warning.
 
 The worker and the scheduler stop and start with the server, so a code change reaches them too. One that ends on its own is
 started again a second later. One that ends right after its start, say with a configuration error, stays down until you save a
@@ -166,7 +168,7 @@ start`, and `marmeon dev` refuses it.
 | `start [--workers=N]` | Starts the production server on the build. It refuses to run when `NODE_ENV=development` or `test` comes from `.env` alone: use `marmeon dev`, set `NODE_ENV=production` to try the build, or set `NODE_ENV=development` in the shell to start the development stack on purpose. |
 | `route:list [--json]` | Every route with its method, path, name, group, middleware, who may call it (`ACCESS`) and action, with `(island)` after an island's controller. See [listing routes](routing.md#listing-routes). |
 | `route:types [--check]` | Writes `bootstrap/routes.ts`. `--check` fails when it is out of date, for CI. It also exits with 1 and lists every route that does not say who may call it, so `marmeon build` stops on one. See [typed route names](routing.md#typed-route-names) and [every route decides](authorization.md#every-route-decides). |
-| `modules:list [--json]` | The packages, the modules with their providers, commands, jobs, notifications and seeders, and the listeners of each event, without booting the app. See [listing the modules](modules.md#listing-the-modules). |
+| `modules:list [--json]` | The packages, the modules with their providers, commands, jobs, notifications and seeders, the jobs of providers, and the listeners of each event, without booting the app. See [listing the modules](modules.md#listing-the-modules). |
 | `discover` | Finds the installed packages and their providers. See [discovery](modules.md#marmeon-discover). |
 | `add <package>... [--dry-run]` | Installs framework packages at exactly the version of your app, runs `discover` and copies the migrations of a package that has some (`publish` boots the app, so that part needs a valid `.env`). `--dry-run` prints the commands and changes nothing. See [packages you add](packages.md#packages-you-add). |
 | `key:generate [--show] [--force]` | Sets `APP_KEY` in `.env`. |
@@ -177,7 +179,7 @@ start`, and `marmeon dev` refuses it.
 | `tinker [--sandbox] [--execute "<code>"] [--no-history]` | A REPL with the booted app. See [tinker](#tinker). |
 | `make:lint-config [--boundaries] [--force]` | Writes the lint preset. See [lint](#lint). |
 | `make:docker [--caddy \| --nginx] [--systemd] [--force]` | Writes the files for a production image. See [deployment](deployment.md#the-docker-image). |
-| `package:build [dirs…] [--clean]` | Builds framework packages for publishing. See [package development](package-development.md#building-and-publishing). |
+| `package:build [dirs…] [--clean]` | Builds framework packages for publishing. See [package development](package-publishing.md#building-and-publishing). |
 
 `key:generate` copies `.env.example` to `.env` when there is no `.env` yet, then writes a new key. `--show` only prints a key. An
 app that has a key keeps it unless you pass `--force`, which moves the old key to the front of `APP_PREVIOUS_KEYS`: sessions,
@@ -224,11 +226,11 @@ app (`make:command` registers it the way `marmeon build` does, no `.env` needed,
 | `make:middleware <Name> --module=<m>` | A middleware class in `middleware/`. |
 | `make:policy <Name> --module=<m> [--ability=<name>]` | A policy in `policies/` that allows the owner of a record (`user_id`) and answers everyone else with a 404, or with `--ability` one ability without a record that answers `false` until you decide. Needs `@marmeon/auth` in the app's dependencies. See [generating a policy](authorization.md#generating-a-policy). |
 | `make:test <name> --module=<m> [--path=/…]` | `modules/<m>/<name>.test.ts`: a test that boots the app and expects `--path` (default `/<m>`) to answer 200. It fails until the route exists — change it to what you test. See [creating the test app](testing.md#creating-the-test-app). |
-| `make:resource <Name> [--module=<m>] [--no-register]` | A new module for a record of the signed-in user: migration, repository, [policy](authorization.md#generating-a-policy), the six controllers with their requests, two pages and a test, added to `bootstrap/app.ts`. Needs the auth module of the starter kit. It never changes an existing module. See [adding a resource](starter-kit.md#adding-a-resource). |
+| `make:resource <Name> [--module=<m>] [--no-register]` | A new module for a record of the signed-in user: migration (stamped behind the migrations of every module), repository, [policy](authorization.md#generating-a-policy), the six controllers with their requests, two pages and a test, added to `bootstrap/app.ts`. Needs the auth module of the starter kit. It never changes an existing module. See [adding a resource](starter-kit.md#adding-a-resource). |
 | `make:repository <Name> --module=<m> [--table=<t>]` | `modules/<m>/<Name>Repository.ts`: a `Repository<'<t>'>` with its `static table`, the table being the plural of the name in snake case (`InvoiceLine` is `invoice_lines`) unless `--table` names it. Registers nothing: the container builds the class. Needs `@marmeon/database`. See [defining a repository](queries.md#defining-a-repository). |
 | `make:factory <Name> --module=<m> [--table=<t>]` | `modules/<m>/factories/<Name>Factory.ts`: a `defineFactory` of the table, with a note on `sequence` and `now()`. Registers nothing: a factory is imported where a test or seeder uses it. Needs `@marmeon/database`. See [defining factories](seeding.md#defining-factories). |
 | `make:table <Name> --module=<m> [--table=<t>]` | `modules/<m>/tables/<Name>Table.ts`: a `defineTable` of the table, typed with the module's `Database`, with its key, an `id` column and `authorize: () => false`, so nobody sees it until you say who may. Registers nothing: the page's route attaches `<Name>Table.endpoints()`. Needs `@marmeon/table`, `@marmeon/auth` and `@marmeon/database`. See [data tables](tables.md#generating-a-table). |
-| `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
+| `make:migration <snake_case_name> --module=<m> [--no-register]` | A timestamped migration in `migrations/`, stamped behind the migrations of every module; adds the folder to the module once. See [migrations](migrations.md#generating-migrations). |
 | `publish [<package>] [--module=<m>] [--only=migrations,lang] [--check] [--accept] [--force]` | The migrations a direct dependency of your app lists, into a module of the app; writes what is missing and skips what is there, and records them in `marmeon-stubs.json`. Without a package it lists them and, at a terminal, asks which to publish. `--check` writes nothing and ends with exit code 1 when something is missing, when a migration changed in the package since you published it (`D27`), or, once a direct dependency declares migrations, when `marmeon-stubs.json` cannot be read. Without a package, `publish` ends with exit code 1 on a changed migration instead of saying "Nothing to publish". `--accept` takes one package, writes no migration and records the package's current files for the migrations your app has. `--only=lang` copies the framework's texts of `@marmeon/i18n` into `lang/marmeon/`, and `--force` replaces files that are there. See [migrations](migrations.md#publishing-the-migrations-of-a-package) and [the framework's texts](localization.md#the-frameworks-texts). |
 | `make:sign-ins-table [--module=<m>]` | The migration of the `sign_ins` table that `DatabaseSignIns` uses: `publish` for `@marmeon/auth`. See [sign-ins](authentication.md#sign-ins). |
 | `make:social-accounts-table [--module=<m>]` | The migration of the `social_accounts` table that the linked provider accounts use: `publish` for `@marmeon/oauth`, which `marmeon add oauth` runs. `make:social-accounts-table` also works when the app links the package. Both skip a migration the app has. `publish` opens an existing `system` module only for a package from the registry. `publish` records the migration in `marmeon-stubs.json`; `make:social-accounts-table` does not. See [social login](oauth.md#storing-tokens). |
@@ -400,9 +402,17 @@ The TypeScript input relies on Node's `module.stripTypeScriptTypes`, which Node 
 | `config.<name>` | The resolved configuration: `config.app`, `config.mail`, … It shows secrets as they are, the `APP_KEY` bytes and SMTP and Redis passwords included: mind the scrollback and the CI logs of `tinker -e`. |
 
 Every class and token the container binds, every class a module lists, such as jobs, listeners and seeders, and every repository is
-there by its name: `make(Mailer)` and `jobs.dispatch(SendWelcomeMailJob, …)` need no import. A helper is built on first use, and
-one whose package the app lacks says what to install. A result that is a promise is awaited. Tab completes the helpers, the names,
-`repos.`, `config.` and route names in `url('`. `.ls` lists them all, `.help` the REPL's commands.
+there by its name: `make(Mailer)` and `jobs.dispatch(SendWelcomeMailJob, …)` need no import. A helper is built on first use.
+A result that is a promise is awaited. Tab completes the helpers, the names, `repos.`, `config.` and route names in `url('`.
+`.ls` lists them all, `.help` the REPL's commands.
+
+`db`, `repos`, `jobs`, `mail` and the `--sandbox` transaction come from `@marmeon/database`, `@marmeon/queue` and `@marmeon/mail`
+as your app's `package.json` lists them, and only when your app's container binds what the package provides. A class or token of
+the same name from anywhere else never stands in for them, and neither does a copy of the package that only another package
+depends on. A helper without its package says what to install. One whose package is installed but cannot be loaded says to
+reinstall it, and one whose provider is not registered says to run `marmeon discover`.
+
+Tinker also knows the jobs of every provider by class name. Such a name never takes the place of another name or of a helper. A repository takes its name back once the repositories are loaded, and an input that writes the name out loads them.
 
 The session has one scope from start to end. The log carries no request context.
 
@@ -419,6 +429,12 @@ A sandbox does not undo a mail sent directly, a file written to a disk, a Redis 
 cache, its locks and rate limits, and the sessions write: they use a connection of their own, also inside the sandbox. On SQLite,
 when they share the app's file, they cannot write inside the transaction at all. Tinker says so and suggests giving them a file of
 their own, which the [cache](cache.md#the-database-driver-and-transactions) page explains.
+
+`--sandbox` refuses to open when a second copy of `@marmeon/database` is installed anywhere in your app's dependency tree.
+A package that uses the other copy may write through a connection pool of its own, which the transaction cannot roll back.
+Tinker prints one line for each second copy, like those of [`marmeon check`](check.md#the-packages-check)
+(that check does not report a framework package's own copy in the same version). It also refuses when it cannot check the tree, for example because a `package.json` cannot be read. Install one copy, as
+[one copy of a framework package](package-publishing.md#one-copy-of-a-framework-package) explains, or leave out `--sandbox`.
 
 > [!WARNING]
 > On SQLite, a sandbox session that wrote holds the file's write lock until it ends. The dev server and the worker still read,

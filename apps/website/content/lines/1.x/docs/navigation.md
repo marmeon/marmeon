@@ -45,7 +45,7 @@ leaves, and how to animate page changes with view transitions.
 ```
 
 A route under [`Route.localized()`](routing.md#routes-under-a-locale) takes the locale of the page on screen, so on a German page
-`<Link route="about.index">` leads to `/de/about`, and `params={{ locale: 'en' }}` chooses another language
+`<Link route="about.index">` leads to `/de/about` (to `/about` when `de` is the [locale without a prefix](routing.md#the-default-locale-without-a-prefix)), and `params={{ locale: 'en' }}` chooses another language
 ([language switcher](localization.md#a-language-switcher)). The same goes for `route()`, `useRoute()`, `<Form route>`, `useForm(name)`, `useAction(name)` and `<Island route>`.
 
 A typo in the name, a missing parameter or a query field the route's query schema does not have is a compile error. A link to the

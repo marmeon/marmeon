@@ -45,6 +45,12 @@ built on pino. Without the package, a minimal console logger writes one line per
 
 Run with `--json`, a `marmeon` command sends every line of `@marmeon/log` and of the console logger to stderr, so stdout holds the document only. A logger of your own decides where it writes.
 
+A logger you write handles a failed write itself, for example with a `catch` inside the method. `debug()`, `info()`, `warn()`
+and `error()` return nothing. A method that throws breaks the code that wrote the line, the framework's included. A rejected
+promise that nobody waits for is an unhandled rejection, which by default ends the process.
+
+After a write error, `@marmeon/log` stops writing until the process restarts. When stdout fails, it prints one notice on stderr, unless stderr is a full pipe: then the notice is dropped. When stderr fails (in `--json` or `mcp` mode, where log lines go to stderr), it tells nobody, because stdout belongs to the document. A reader that left early gets no notice either. It never throws from `info()` or the other methods. By default (JSON on stdout) a pipe nobody reads is no error: calls return at once, and past 4 MiB of waiting lines the newest are dropped. If the process exits while the pipe is still full, it waits a few seconds for the reader, then drops the rest and prints the notice. `--json`, `marmeon mcp` and `format: 'pretty'` return once the line is written. While the pipe is full they retry every 100 ms until the reader takes the line, so a reader that stops reading blocks the process. After a few minutes of that the write fails, and the logger stops as after a write error. A destination you pass to `createPinoLogger` is not wrapped, so its errors stay yours.
+
 ## Configuration
 
 | Variable | Default | Effect |
@@ -102,6 +108,10 @@ Every entry gets the context of what is running when it is written, with nothing
 Your app can add fields to every entry with a log context source, and the OpenTelemetry package adds the active span's `trace_id`,
 `span_id` and `trace_flags` the same way. The [context](context.md#adding-fields-to-every-log-entry) page shows how. A key that a child logger
 is bound with already is written once, not twice.
+
+A queue line about a job that is dispatched and not the one running names it `dispatched`, so `job`, `jobId` and `attempt` always
+describe one job. The "Not queued" line adds `unique`, and the warning about a failing `JobQueued` listener adds `dispatchedId`. The
+warning that a `sync` connection ignores a delay carries only `dispatched`.
 
 ## The request log line
 

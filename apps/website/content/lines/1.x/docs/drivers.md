@@ -174,6 +174,26 @@ What the framework keeps for a disk of a provider's driver, whatever the driver 
 - **Keys are checked before the driver sees them.** Every key, and the directory of `list()`, goes through `normalizeKey()` and
   `normalizeDirectory()` first: `..`, absolute paths, backslashes, empty segments and control characters are refused with
   `InvalidKeyError`, as on the built-in disks. Both functions are exported for a driver that checks keys it builds itself.
+- **`open(key, options?)` gets a range only when your driver opts in and the app asks for one.** Without a range the framework
+  calls `open(key)` with the key alone. With one it calls `open(key, { range })` after it checked the key and the range. A `range`
+  is `{ start, end? }` or `{ last }`, as [opening a range](storage.md#opening-a-range) describes. Set `acceptsRanges: true` on the
+  driver to opt in. A driver that does not honour ranges does not set `acceptsRanges`: it is always called `open(key)` with the
+  key alone and serves the whole file. A driver that opts in does one of two things:
+  - **It answers one call with the whole file.** It returns the whole file and no `range`, and the framework treats that as the whole file.
+  - **It honours the range exactly.** It returns the requested bytes as `body`, the whole file's size as `size`,
+    and `range: { start, end }` with both bounds included and `end` cut to the file's last byte.
+    - A range that starts at or after the file's end, and `{ last: 0 }` on any file, gets `range: 'unsatisfiable'` and an empty `body`.
+    - A `{ last }` on an empty file gets the empty file and no `range`.
+
+  The framework refuses any other answer: it cancels the body and throws a `StorageError`. It sets `acceptsRanges` on the result
+  from your driver's opt-in, not from your driver's answer. A `range` on a result of a call that sent no range, or from a driver
+  that did not opt in, is dropped, and the body is taken as the whole file: `startServer()` holds it to `size`.
+
+  Take the size, the time and the bytes from one look at the file, such as one `GetObject` or one file handle. Never call `size()`
+  and then read, so that the body is one snapshot. The second parameter is typed `unknown`, so a driver written before ranges,
+  whatever its own second parameter, still compiles; it is never given one until it opts in. A driver that wraps another and
+  changes its bytes (decrypts, redacts) does not opt in, or drops `options` before it calls the inner driver: a slice of changed
+  bytes is not the slice the app asks for.
 - **`open()` reports the true size.** `serveFile()` announces it as `Content-Length`, and `startServer()` sends no byte past it, so a size that is too small cuts the file.
 - **The disk is held privately.** The app gets a wrapper that delegates to the driver's disk; its `name` and `visibility` are the
   configured ones.

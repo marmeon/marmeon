@@ -449,6 +449,100 @@ that hits the error shows code that would fail on SQLite. A new app's `.env.test
 error only comes up in a test that switches them to the database. The [database](database.md#infrastructure-connections) page
 explains infrastructure connections.
 
+## Testing a generated migration
+
+A generator that writes a migration, a package's `make:` command for one, can be tested the way the app runs it: write the file to a
+directory of its own inside the app, boot a test app with a module that owns that directory next to the app's own modules, and run
+`migrate` and `migrate:rollback` with [`app.command()`](testing.md#running-commands). Nothing but public API is involved.
+
+```ts title="modules/notes/addSlug.test.ts"
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { defineModule, nextMigrationStamp } from '@marmeon/core';
+import { Connections } from '@marmeon/database';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it, onTestFinished } from 'vitest';
+import application from '../../bootstrap/app.ts';
+
+// The text of the file the generator writes.
+const generatedSource = `import { defineMigration, sql } from '@marmeon/database';
+
+export default defineMigration({
+  up: (schema) => {
+    schema.alter('notes', (table) => table.string('slug').default(''));
+    schema.data(async (db) => {
+      await db.updateTable('notes').set({ slug: sql\`'note-' || id\` }).execute();
+    });
+  },
+  down: (schema) => schema.alter('notes', (table) => table.dropColumn('slug')),
+});
+`;
+
+it('fills the slug of the notes that exist, and takes the column away again', async () => {
+  const directory = join(application.root, 'storage/framework/testing/add-slug');
+  const migrations = join(directory, 'migrations');
+  const env = { DB_DRIVER: 'sqlite', DB_DATABASE: join(directory, 'database.sqlite') };
+  // The directory exists before the first app boots: the app refuses a SQLite file whose directory is missing.
+  mkdirSync(migrations, { recursive: true });
+  // What the test makes, the database included, goes away with it.
+  onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+  // The app as it is: migrated, with the rows the generated migration will meet.
+  {
+    await using app = await createTestApp(application, { env });
+    expect((await app.command('migrate')).code).toBe(0);
+    await app.make(Connections).get().insertInto('notes').values({ title: 'First' }).execute();
+  }
+
+  // What the generator writes, into the test's directory below the app.
+  writeFileSync(join(migrations, `${nextMigrationStamp(application.root)}_add_slug_to_notes_table.ts`), generatedSource);
+  const generated = defineModule({ name: 'add-slug', migrations: pathToFileURL(`${migrations}/`) });
+
+  await using app = await createTestApp({ ...application, modules: [...application.modules!, generated] }, { env });
+  // A failing `up` or `down` does not throw: look at `code`, and at `lines` for the error.
+  const up = await app.command('migrate');
+  expect(up.code, up.lines.join('\n')).toBe(0);
+  // Loosely typed: `bootstrap/database.d.ts` does not know the column the migration adds.
+  const rows = await app.make(Connections).get<any>().selectFrom('notes').select('slug').execute();
+  expect(rows).toEqual([{ slug: 'note-1' }]);
+
+  const down = await app.command('migrate:rollback', { options: { step: 1 } });
+  expect(down.code, down.lines.join('\n')).toBe(0);
+});
+```
+
+- **Its own database.** The test app has no `database` option, so it works on the database its environment names, and a `migrate`
+  commits. Point it at a file or database of its own, as above (`:memory:` lives as long as one app, so it cannot carry rows from
+  the first app to the second). The directory of a SQLite file has to exist before the first app boots, or it refuses with
+  `[marmeon:D11]`.
+- **Rows to rewrite.** To test a migration that rewrites data, migrate the app, seed or insert the rows, close that app, then boot
+  with the generated module and run `migrate`. The data step then meets what a deployed database holds.
+- **A failing `down`.** `app.command('migrate:rollback', …)` resolves with `code: 1` and the error among `lines`; it does not throw.
+  The same holds for a failing `up`.
+- **A directory of its own.** Keep what a test writes under `storage/framework/testing/<name>/`, and remove it when the test ends, as above. The
+  file imports `@marmeon/database` as any migration does, so the directory has to lie inside the app, where the app's
+  `node_modules` is found.
+- **The stamp.** `nextMigrationStamp(application.root)` gives a stamp behind the migrations in `modules/*/migrations`, as a generator should
+  write one; see [registering what a generator writes](package-commands.md#registering-what-a-generator-writes).
+
+### `database: 'refresh'` and a module that arrives later
+
+`database: 'refresh'` prepares the worker's database once: it migrates the modules of the first app that asks for it, and every
+later app of that worker reuses the result. A generated module that only a later app has is not migrated there, so the first query
+fails with `[marmeon:D2]` (the database lacks migrations the code has) until the test runs `migrate`:
+
+```ts
+await using app = await createTestApp({ ...application, modules: [...application.modules!, generated] }, { database: 'refresh' });
+await app.command('migrate'); // without it: D2
+```
+
+What `migrate` or `migrate:rollback` did lies inside the test's transaction, so it is rolled back when the test ends: the next
+app, with or without the generated module, finds the worker's database as it was before. A test that only needs the migration to run, and leaves nothing behind that the next test could meet, can use that. One that checks what a migration does to
+data that outlives one app uses a database of its own as above.
+
+The recipe and the behaviour of `database: 'refresh'` above hold on SQLite and on Postgres alike. On Postgres, make the test's own database with
+`create database` on the server and drop it when the test ends. MySQL is not covered here.
+
 ## Running the tests on Postgres
 
 With `DB_DRIVER=pgsql` and the server in the environment, refreshed test apps use Postgres instead of SQLite. Name the

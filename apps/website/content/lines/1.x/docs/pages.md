@@ -226,9 +226,11 @@ stays with the framework. Type a variable with `PageInfo` from `@marmeon/react`.
 
 ```tsx
 <Head title={note.title}>
-  <meta name="description" content={note.body.slice(0, 150)} />
+  <meta name="description" content={Array.from(note.body.slice(0, 300)).slice(0, 150).join('')} />
 </Head>
 ```
+
+`Array.from(…)` cuts by code points, and the `slice(0, 300)` in front keeps that cheap on a long text: `slice()` alone can split an emoji on the boundary, and the description then holds a broken character (`\uFFFD`). See [lone surrogates](validation.md#lone-surrogates).
 
 The server renders the head into the first document, and the browser keeps it current on every visit. A `<script>`, `<style>` or
 `<link>` inside `<Head>` that the server wrote is kept when the page hydrates, so a script does not run a second time; one the
@@ -331,7 +333,7 @@ language.
 A package that declares a `namespace` and `views` in its `package.json` brings pages of its own. A page's name is the namespace, `::`
 and the view's path below the package's `views` folder: `dist/views/entries/Edit.js` of the package with the namespace `status` is
 `status::entries/Edit`. The package declares what it ships, and
-[Pages of a package](package-development.md#pages-of-a-package) shows how.
+[Pages of a package](package-pages.md#pages-of-a-package) shows how.
 
 The package's own controllers render them, from the routes the package registers:
 

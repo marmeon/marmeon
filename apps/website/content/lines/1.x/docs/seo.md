@@ -119,7 +119,7 @@ instead of writing it, and development logs a warning. The first document, as th
 
 A page on a [localized route](localization.md#the-locale-in-the-url) names all its languages by itself, and you write nothing for
 it. Its head carries one `<link rel="alternate" hreflang>` per locale of the app, and `x-default`, the address without a locale
-that redirects to the visitor's:
+that redirects to the visitor's (with [the default locale without a prefix](routing.md#the-default-locale-without-a-prefix), see below):
 
 ```html
 <link rel="canonical" href="https://notes.example/de/about">
@@ -127,6 +127,18 @@ that redirects to the visitor's:
 <link rel="alternate" hreflang="de" href="https://notes.example/de/about">
 <link rel="alternate" hreflang="x-default" href="https://notes.example/about">
 ```
+
+With `APP_LOCALE_PREFIX=false` and `en` as the default locale, the default locale's page is the address without a locale and `x-default` names that
+same page, which no longer redirects:
+
+```html
+<link rel="canonical" href="https://notes.example/de/about">
+<link rel="alternate" hreflang="en" href="https://notes.example/about">
+<link rel="alternate" hreflang="de" href="https://notes.example/de/about">
+<link rel="alternate" hreflang="x-default" href="https://notes.example/about">
+```
+
+The head of the English page has `https://notes.example/about` as its `canonical`. The prefixed address, `/en/about`, answers with a `301` and carries no head.
 
 - `canonical` is the page's own address in its own language, unless a `<Head canonical>` says otherwise. The addresses in the head
   have no query string, because a query often only tracks (`?utm_source=…`). A page whose query selects its content (`?page=2`)
@@ -195,13 +207,13 @@ It has no `Disallow` for anything else. A `Disallow` keeps no one out and tells 
 with [authorization](authorization.md), and leave it out of the sitemap by not marking it. Both endpoints exist only when a route
 carries `.sitemap()`. A route of your own on `/sitemap.xml` or `/robots.txt` wins, so an app that needs other rules writes its own
 `robots.txt` as a route. So does a catch-all route that is not localized, such as `/:page{.+}`: it takes both paths and the
-endpoints never answer.
+endpoints never answer. A localized catch-all does not, also with [the default locale without a prefix](routing.md#the-default-locale-without-a-prefix): while a route carries `.sitemap()`, its address leaves both paths to the endpoints.
 A [fallback route](routing.md#the-fallback-route) does not: the server registers the two endpoints before it, so it never gets `/sitemap.xml` or `/robots.txt` while a route carries `.sitemap()`, and a fallback at the root answers `/robots.txt` itself when none does (one under a prefix such as `/help` never sees it). A fallback may carry `.sitemap()` too: its controller's `sitemap()` lists the pages it serves. An entry on a path another route or the framework answers (see [`claimedBy()`](routing.md#asking-whether-a-path-is-taken)) is left out, with one warning per route, since the server never gives the fallback that request. So is one that a fallback under a longer prefix answers (`/help/x` listed by the root fallback while `/help` has its own), and an `alternates` link on such a path drops the entry's links.
 
 A route under `Route.localized()` appears once per language. Its hook (or the path itself) names the page, not the language, so
 `sitemap()` returns entries without `locale` (unless a page has its own, below); the app writes one `<url>` for each locale the app supports (`APP_LOCALES`), in the spelling of its
 URL. Each `<url>` lists all versions as `<xhtml:link rel="alternate" hreflang="…">`, and `x-default` for the address without a
-language, which redirects to the visitor's. A page with two languages and three features is six `<url>` elements with three links
+language, which redirects to the visitor's. With `APP_LOCALE_PREFIX=false` the `<url>` of the default locale is the address without a prefix and `x-default` is that same address. Where another route or the framework answers that address, the version and its `x-default` are left out, with one warning for the route. A page with two languages and three features is six `<url>` elements with three links
 each; the file declares `xmlns:xhtml` when it holds any. See [Routes under a locale](routing.md#routes-under-a-locale).
 
 A page that exists in other languages under addresses of their own, such as a help page `/help/getting-started` and its German version `/help/erste-schritte`, names them in `alternates` of its entry, on a route that is not localized, or on a localized route with an entry that names its own `locale` (below). The key is the hreflang: a language, optionally with a script and a region (`de`, `en-GB`, `zh-Hant-TW`, `es-419`), or `x-default`; extensions, variants and private-use tags are refused. The value is the `params` of the same route:

@@ -525,7 +525,7 @@ pnpm marmeon route:list
 ```
 
 `marmeon check` reports no unprotected write for the route, because `verifyWebhook()` declares what it ensures, and finds no job
-that no module lists. `route:list` shows the middleware of the endpoint: `throttle:webhooks.payments` and
+that no module lists and no provider your app lists. `route:list` shows the middleware of the endpoint: `throttle:webhooks.payments` and
 `verifyWebhook:payments` at its end, in that order. A write route in this module without them would show without.
 
 To try it by hand, sign a body yourself with the secret from `.env` and send it with `curl`; the format is on the

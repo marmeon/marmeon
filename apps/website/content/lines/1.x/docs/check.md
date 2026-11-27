@@ -41,7 +41,7 @@ A new app has the script: `pnpm check` runs `marmeon check`.
 | `raw-sql` | Warns about [`sql.raw()` and `sql.lit()` with an argument that is not a literal](#raw-sql). | nothing |
 | `inner-html` | Warns about [HTML that code sets from a value that is not a literal](#html-from-code). | nothing |
 | `agents` | Warns when the marmeon block of `AGENTS.md` is [missing or out of date](#the-agents-block). | nothing |
-| `packages` | Fails when a `marmeon` or `@marmeon/*` package is [not in the app's version](#the-packages-check). | nothing |
+| `packages` | Fails when a `marmeon` or `@marmeon/*` package is [not in the app's version](#the-packages-check), and warns about a second copy of one. | nothing |
 
 The tools run side by side and are always listed in this order. `--only=types,lint` runs just those, `--skip=lint` runs all but
 that one. A check you leave out is not in the report at all; it is not reported as `skipped`. A name that no check has, or options that leave no check to run (`--only=lint --skip=lint`), is a wrong call: the command lists the valid names and exits with 2. The app is loaded only when a selected check needs it, so `--only=types,lint` runs without an app.
@@ -55,7 +55,7 @@ After the tools come the checks that need the app, in this order: `boot`, the ch
 | --- | --- | --- |
 | `boot` | Starts the app. When it cannot start, the finding holds the message, its [error code](errors.md#server-error-codes) and the fix the solutions of the core and of the packages know (`APP_KEY` missing: `marmeon key:generate`). | |
 | `route-types` | `bootstrap/routes.ts` matches the routes and views (a file of another Marmeon version is `H2`), and every route [says who may call it](authorization.md#every-route-decides) (`H3`), and no route has [two middleware that add the same key](middleware.md#listed-twice) (`H8`), and no route's middleware [names two guards that cannot share it](authentication.md#protecting-the-routes) (`A9`). A [guard slot](authentication.md#using-the-apps-users-instead) that nobody has bound yet, or that is bound to a guard nobody has registered yet, is left out of this check, because a provider may do either at boot: the start says `A8` for a route that uses one. The rest of the route's middleware is still judged. A warning (`H15`) names a route that never answers because an earlier one has the same method and [path](routing.md#route-order). A missing file is an error: commit it. | build |
-| `modules` | Job and notification classes under `modules/` that no module lists, as warnings. | build |
+| `modules` | Job classes under `modules/` that no module lists and no provider your app lists (its `providers` or a module's), and notification classes that no module lists, as warnings. | build |
 | `throttle` | Warns at [routes that anyone may call to change something and nothing limits](#routes-without-a-limit). Reads the routes, no database. | build |
 | `package-migrations` | Every package your app publishes from has all its migrations in the app, the answer of `marmeon publish --check`: one that is missing is `D6` with the fix `marmeon publish <package>`, one `publish` refuses is an error with the reason. A migration whose file in the package changed since `publish` recorded it is `D27`, a warning (it never stops the app: your copy is the one your database ran); `marmeon publish <package> --accept` records the file as it is. A copy that `publish` never recorded is not judged. As soon as a direct dependency declares migrations, a `marmeon-stubs.json` that cannot be read, or that is a link out of the project, is an error. A package whose version is not of the form `1.2.3` (a `workspace:` package often has none), or whose set `marmeon-stubs.json` cannot take, is copied but not recorded, so not compared. Packages you have not published from are left out. A package whose declaration cannot be read is listed by `marmeon publish`, but checked only when `publish` made a module for it. A `static migrations` that cannot be read (it is no object, or `from` is no `file:` URL) belongs to the package that exports its provider (found among the packages that list providers in `marmeon.providers`) and is treated like any refusal of it; one no direct dependency exports, and a declaration a package does not claim, are warnings. A package taken into an existing module with `--module` is checked here once `publish` has recorded a file of it that still lies in your app; before that, use `marmeon publish --check <package>`. Reads files and imports the main entry of the direct dependencies a declaration points into; no database. | build |
 | `hsts` | Warns when production on an `https` `APP_URL` sends [no `Strict-Transport-Security`](#hsts). Asks the booted app once. | run |
@@ -81,7 +81,7 @@ running, instead of ending the process.
 
 ## Checks from packages
 
-A package or a module adds its own checks to this list. See [package development](package-development.md#checks).
+A package or a module adds its own checks to this list. See [package development](package-commands.md#checks).
 
 ## Status
 
@@ -442,14 +442,19 @@ packages (no app is loaded, no file is searched) and compares each `marmeon` and
 | A package is installed in another version than `@marmeon/core`. The message names the package, both versions and the command in your package manager, chosen by the lockfile (`pnpm add -E @marmeon/storage@<the app's version>`, or `npm install -E …` with a `package-lock.json` and no `pnpm-lock.yaml`). | error |
 | A package that is in the app's version, or a package of someone else the app lists, pulls an `@marmeon/*` in a different version, so a second copy is installed. | error |
 | A package is listed with a range (`^1.0.0`) or a tag instead of an exact version. | warning |
+| A package of someone else that the app lists resolves its own copy of an `@marmeon/*` package that it declares as a dependency or a peer. The message is "`ui` resolves another copy of `@marmeon/storage` (the same version, other peers)". The copy is in the app's version but in another directory. The range does not matter, `workspace:` included, and `marmeon` is left out. A copy in another version that no error above reports (a package only in `peerDependencies`, or a `workspace:` range) gets a warning with both versions. "Other peers" is how pnpm tells it apart: it installs a package once per set of peers. Align the versions of the peers, then run `pnpm dedupe`. [One copy of a framework package](package-publishing.md#one-copy-of-a-framework-package) explains the cause. A copy is certain, a fault is not: a package that only imports types works. | warning |
 | A package that is not looked up by version (`workspace:*`, `file:`, `link:`). | not reported |
 | No `@marmeon/core` installed. | `skipped` |
 | `package.json` cannot be read. | `error`, "could not run" |
 
 Fix a finding with the command it shows; `-E` saves the version exactly, and `-D` is added for a package listed under
 `devDependencies`. `marmeon dev` runs the same comparison at each start of the server, so after every restart, and warns without
-stopping, and a `K3` error of any command ends with it too, since a package that is read in another version is a usual reason for it. `marmeon start` does not look: the
-production server starts what CI has checked. Leave the check out with `--skip=packages`.
+stopping. An app with a second copy gets that warning at each start too. The advice also prints in two other places:
+
+- A `K3` error of any command ends with all findings, since a package that is read in another version is a usual reason for it. The second copies come under a heading of their own.
+- Any other error that stops the app from starting ends with the second copies only, under the same heading. A copy may explain the failure. A version that differs is not shown to. A command that fails after the app has started prints no advice, unless the error is a `K3`.
+
+`marmeon start` does not look: the production server starts what CI has checked. Leave the check out with `--skip=packages`.
 
 ## The environment: marmeon doctor
 

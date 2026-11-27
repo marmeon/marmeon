@@ -1364,7 +1364,7 @@ password is set even if a listener of `PasswordChanged` throws.
 
 ### The tables
 
-The package ships the migrations for its tables like any package table (see [package development](package-development.md#tables)),
+The package ships the migrations for its tables like any package table (see [package development](package-tables.md#tables)),
 and the app takes them over with `marmeon publish`. A guard needs two tables. Their names are the prefix and the name below,
 and `/up/ready` is red until each has every column, naming the migration that is missing.
 

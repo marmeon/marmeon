@@ -68,6 +68,11 @@ Before you change `server` in `vite.config.ts`, know what the app relies on:
   Content-Security-Policy with `styleSrc: ["'self'", NONCE]` therefore holds in development too. The
   [styling](styling.md#a-strict-policy-for-styles) page explains the policy.
 
+Vite resolves the packages your app uses under the condition `@marmeon/source`, in development and in tests. A package of your
+workspace that offers it is served from its `src/`. Node does not follow Vite here: it needs `NODE_OPTIONS=--conditions=@marmeon/source`
+too, as [a package in your app's workspace](package-workspace.md#a-package-in-your-apps-workspace) shows. An installed `marmeon build` and
+`marmeon start` never add the condition.
+
 ## Building
 
 `marmeon build` runs the type check and both Vite builds, among other steps that the
@@ -181,6 +186,7 @@ The plugin serves these modules for your entries to import:
 | `virtual:marmeon/pages/<namespace>` | The pages of one [package with pages](#packages-with-pages-or-components), keyed `<namespace>::<view>`, each loaded on its own | `resolveModulePages(pages)` |
 | `virtual:marmeon/routes` | `routes`: the named routes the browser knows | `createMarmeonApp({ routes })`, `createSsrRenderer(…, { routes })` |
 | `virtual:marmeon/fonts.css` | The stylesheet of the fallback fonts, once `fonts` has an entry | the client entry, `import 'virtual:marmeon/fonts.css'` ([fonts](#fonts)) |
+| `virtual:marmeon/test-packages` | Nothing: importing it makes the packages of your workspace load once in your tests, and only with `test: true` ([packages of your workspace](#packages-of-your-workspace)) | the setup file of a test project |
 
 ```ts title="bootstrap/pages.ts"
 import { resolveModulePages } from '@marmeon/react';
@@ -343,6 +349,88 @@ export default defineConfig({
 
 In this mode the plugin sets up module resolution, the container's injection, the virtual modules and the server-import check,
 and nothing for the browser: no entries, no HTML, no nonce and no build settings.
+
+Resolution includes the condition `@marmeon/source`, so a test loads the sources of a package in your workspace with no variable. A
+process a test starts does not.
+
+To share one instance of a package of your workspace between a test and the app it boots, see [packages of your workspace](#packages-of-your-workspace).
+
+### Packages of your workspace
+
+A package of your own workspace is one that your app links, with `workspace:` or `link:`, and that lies outside `node_modules`.
+In a test such a package is loaded twice: the app boots it through Node's `import()`, and your test imports it through Vitest.
+
+The two copies show as a provider that your test imports and the booted app does not list, a token that resolves to nothing
+([K1](errors.md#server-error-codes)), a class without its injection list ([K3](errors.md#server-error-codes)), a second singleton,
+or a `vi.mock` that the booted app never sees.
+
+Import `virtual:marmeon/test-packages` in a setup file to load these packages once, through Vitest, for the tests and for the app they boot.
+The import needs `marmeon({ test: true })` and Vitest 5.1.1 or newer.
+
+```ts title="vitest.setup.ts"
+import 'virtual:marmeon/test-packages';
+```
+
+```ts title="vitest.config.ts"
+import { marmeon } from '@marmeon/vite';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  plugins: [marmeon({ test: true })],
+  test: { include: ['modules/**/*.test.ts'], setupFiles: ['./vitest.setup.ts'] },
+});
+```
+
+With `test.projects`, give the plugin and the setup file to each project that boots an app.
+A project without the import, and everything outside tests, loads these packages through Node.
+
+What changes with the import:
+
+- The provider class your test imports is the one the app boots, and so are its tokens and singletons.
+- A `vi.mock` of a module of the package reaches the boot, except where [one variant per test file](#packages-of-your-workspace) says otherwise.
+- A mock of an entry must export what discovery needs: the providers, the classes with constructor dependencies and what they inject.
+  A mock that leaves one out fails the boot with Vitest's error, which names the export. An export that is `undefined` and a class to inject that is `null` or a primitive fail it with [K7](errors.md#server-error-codes).
+- To change a mock between two boots, use `vi.resetModules()` with `vi.doMock()`, and then import the app's definition and the classes again
+  with `await import()`: what the file imported before the reset keeps the first variant. [One variant per test file](#packages-of-your-workspace) names the classes
+  that this does not change.
+- Remove `server.deps.external` entries of these packages if their mocks and resets shall reach the boot.
+
+**One variant per test file.** Some classes are not evaluated again with what they inject: a class of an installed package that injects
+a class of your workspace, a class of a package in `server.deps.external`, and, without a reset, a class of a built package that has no
+embedded injection lists. With the import, the first boot that discovers such a class decides what is injected into it, for the whole test
+file and for apps that already run. That boot can be one in a setup file, and a boot that failed counts too. A mock that comes later does not
+reach the class, and a mock of the first boot stays, also in a boot that stubs production and in an app with `discover: false`.
+Put each variant in a test file of its own, with `isolate` on (the default), and boot in that file rather than in a setup file.
+
+Where the import does not apply, discovery loads the package through Node:
+
+- DOM environments (`happy-dom`, `jsdom`) and browser mode: the import registers nothing and removes a registered importer.
+- Installed packages, below `node_modules`: a mock of one does not reach discovery's own import of it, and their imports of a workspace package
+  are Node's.
+- A package in `server.deps.external`: it is one instance, through Node. A mock of its entry reaches the boot. A mock of a module inside it
+  and `vi.resetModules()` do not, and its imports of a workspace package are Node's.
+- Files that are loaded by URL: migrations, language files and `tinker`.
+- A boot while the process's `NODE_ENV` is neither `development` nor `test`, for example after `vi.stubEnv()`: discovery loads the real
+  providers. What your app imports itself stays mocked, and so can an injected class. The `env` option of `createTestApp()` reaches the
+  app's configuration and not the process. For a protection that is asked per request,
+  boot first and stub afterwards ([which environment a test runs in](testing.md#which-environment-a-test-runs-in)).
+
+The import refuses:
+
+- When it loads: a Vitest older than 5.1.1, a prerelease or a version it cannot read (the message has the install command), and
+  `resolve.preserveSymlinks: true`.
+- At the boot, naming the file: a name with `?` or `#`, a file that Vite resolves to another file or cannot resolve, and one that a plugin
+  resolves as external.
+- With Vitest's native runner (`experimental.viteModuleRunner: false`) the import cannot load at all: leave it out.
+
+What it does not cover:
+
+- A package that boots an app while it loads and waits for it: the boot waits for the package, and neither ends.
+- A mock factory that boots an app: that inner boot runs the real module.
+- `@marmeon/core` run by Vitest itself (`server.deps.inline`, or linked from a checkout): discovery's own import is then the runner's,
+  so a mock reaches every boot, also one under a production stub.
+- `isolate: false` and the pools `vmThreads` and `vmForks` are not tested.
+- With `sequence.setupFiles: 'parallel'`, import it in the test file that boots the app.
 
 ## When the plugin is missing
 
