@@ -1,11 +1,15 @@
-import { Application, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers, withCode } from '@marmeon/core/internal';
-import { Connections, type ProviderMigrations } from '@marmeon/database';
+import { Connections, SchemaRequirements, type ProviderMigrations } from '@marmeon/database';
+import type { CommandClass } from 'marmeon';
+import { SearchFlushCommand } from './commands/flush.ts';
+import { SearchRebuildCommand } from './commands/rebuild.ts';
 import { BUILT_IN_SEARCH_DRIVERS, SearchConfig } from './config.ts';
 import { SearchDriver, type SearchDriverFactory } from './driver.ts';
 import { databaseDriver, declareSearchSchema } from './drivers/database/index.ts';
 import { meilisearchDriver } from './drivers/meilisearch/index.ts';
 import { SearchSetupError } from './errors.ts';
+import { Rebuilder, rebuildTarget } from './rebuild.ts';
 import { SearchIndexes } from './registry.ts';
 import { IndexReader, Search, type SyncPayload } from './search.ts';
 import type { SearchIndexClass } from './search-index.ts';
@@ -39,9 +43,11 @@ function setup(message: string, options?: { cause?: unknown }): SearchSetupError
 }
 
 const BUILT_IN_FACTORIES: Readonly<Record<(typeof BUILT_IN_SEARCH_DRIVERS)[number], SearchDriverFactory>> = { database: databaseDriver, meilisearch: meilisearchDriver };
+/** Every column of `search_rebuilds` that a rebuild and the job read or write. */
+const REBUILD_COLUMNS = ['index_name', 'run', 'phase', 'after', 'target', 'holder', 'held_until', 'started_at', 'fingerprint'] as const;
 const WRITE_MODES: readonly unknown[] = ['transaction', 'queue', 'after-commit'];
 const REQUIRED_MEMBERS = ['upsert', 'delete', 'query', 'flush'] as const;
-const OPTIONAL_MEMBERS = ['boot', 'prepare', 'swap', 'inspect', 'close'] as const;
+const OPTIONAL_MEMBERS = ['boot', 'prepare', 'swap', 'discard', 'inspect', 'close'] as const;
 
 /** Checks what a factory returned against the driver contract; a broken driver stops the start (Q9). */
 function checkDriver(driver: unknown, name: string): SearchDriver {
@@ -54,6 +60,9 @@ function checkDriver(driver: unknown, name: string): SearchDriver {
   for (const member of OPTIONAL_MEMBERS) {
     if (record[member] !== undefined && typeof record[member] !== 'function') throw setup(`The search driver "${name}" has a ${member} that is no method: define ${member}() as a method, or leave it out.`);
   }
+  // Only the queued job copies changes into a rebuild target: a driver that writes another way would lose every change made while a
+  // rebuild runs, at the swap.
+  if (record['swap'] !== undefined && record['writes'] !== 'queue') throw setup(`The search driver "${name}" has swap() but writes '${String(record['writes'])}': a driver with swap() writes through the queue (writes: 'queue').`);
   return driver as SearchDriver;
 }
 
@@ -92,6 +101,7 @@ export class SearchServiceProvider implements ServiceProvider {
   static config = [SearchConfig];
   /** The tables of `SEARCH_DRIVER=database`, copied into an app by `marmeon publish @marmeon/search`. */
   static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
+  static commands: readonly CommandClass[] = [SearchRebuildCommand, SearchFlushCommand];
 
   /** The driver, once built — closed at shutdown. */
   #driver: SearchDriver | undefined;
@@ -130,7 +140,11 @@ export class SearchServiceProvider implements ServiceProvider {
       return container.make(module.Queue).dispatch(SyncSearchDocuments, payload);
     };
     container.singleton(Search, (c) => new Search({ indexes: c.make(SearchIndexes), reader: c.make(IndexReader), driver: () => c.make(SearchDriver), connections: () => c.make(Connections), dispatch }));
-    container.bind(SyncSearchDocuments, (c) => new SyncSearchDocuments(c.make(SearchIndexes), c.make(IndexReader), c.make(SearchDriver)));
+    container.bind(SyncSearchDocuments, (c) => new SyncSearchDocuments(c.make(SearchIndexes), c.make(IndexReader), c.make(SearchDriver), c.make(Clock), (index) => rebuildTarget(c.make(Connections), index)));
+    container.bind(
+      Rebuilder,
+      (c) => new Rebuilder({ indexes: c.make(SearchIndexes), reader: c.make(IndexReader), driver: () => c.make(SearchDriver), connections: () => c.make(Connections), container: c, clock: c.make(Clock) }),
+    );
   }
 
   async boot(app: Application): Promise<void> {
@@ -149,6 +163,9 @@ export class SearchServiceProvider implements ServiceProvider {
     } else if (driver.writes === 'queue') {
       throw setup(`The search driver "${config.driver}" writes through the queue, which needs @marmeon/queue (marmeon add queue; if it is installed already: marmeon discover; if the app does not boot yet: pnpm add -E @marmeon/queue@<version of your app>).`);
     }
+    // A driver with swap() writes through the queued job, which looks up a rebuild target in search_rebuilds for every change:
+    // without the table no change reaches the index, so /up/ready stays red until it is migrated.
+    if (driver.swap !== undefined && app.container.has(SchemaRequirements)) app.container.make(SchemaRequirements).require({ connection: 'default', table: 'search_rebuilds', columns: REBUILD_COLUMNS });
     await driver.boot?.(app);
   }
 

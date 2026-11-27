@@ -10,7 +10,8 @@ export interface IndexInfo {
   readonly filters: readonly string[];
 }
 
-const INDEX_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
+/** @internal What an index name is: lowercase letters, digits, `_` and `-`, starting with a letter, at most 64 characters. */
+export const INDEX_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 // `constructor` matches the pattern too and is refused on its own, like every name Object.prototype has.
 const ATTRIBUTE_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const WEIGHTS: readonly string[] = ['A', 'B', 'C', 'D'];

@@ -189,6 +189,17 @@ export class MeilisearchDriver implements SearchDriver {
     await this.#write(other, () => this.#client.request('DELETE', ['indexes', other]));
   }
 
+  async discard(_index: IndexInfo, target: string): Promise<void> {
+    const name = uid(target);
+    try {
+      await this.#client.waitForTask(await this.#client.request('DELETE', ['indexes', name]));
+    } catch (error) {
+      // A target that is gone already is what a discard leaves behind.
+      const gone = (error instanceof MeilisearchError && error.kind === 'missing-index') || (error instanceof SearchSyncError && error.code === 'index_not_found');
+      if (!gone) throw this.#writeError(name, error);
+    }
+  }
+
   async query(request: DriverQuery): Promise<Result<DriverPage, SearchFailure>> {
     const body = multiSearchBody(request);
     let answer: unknown;

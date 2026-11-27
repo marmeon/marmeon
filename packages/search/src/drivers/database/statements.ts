@@ -82,3 +82,31 @@ export async function deleteDocuments(db: Connection<any>, index: IndexInfo, key
 export async function flushDocuments(db: Connection<any>, index: IndexInfo): Promise<void> {
   await sql`delete from search_documents where index_name = ${index.name}`.execute(db);
 }
+
+/** A stored document as the sweep of a rebuild sees it: its row id, its key and the revision it had when it was read. */
+export interface StoredRevision {
+  readonly id: number;
+  readonly key: SearchKey;
+  readonly revision: string;
+}
+
+/** The next documents of an index after the row id `after`, in the order of their ids, at most `limit`: one batch of the sweep. */
+export async function documentsAfter(db: Connection<any>, index: IndexInfo, after: number, limit: number): Promise<StoredRevision[]> {
+  // The revision as text: a bigint column reads as a string on Postgres, and the comparison below binds it back unchanged.
+  const { rows } = await sql<{ id: number | string; key: string; revision: string | number }>`select id, key, cast(revision as text) as revision from search_documents
+    where index_name = ${index.name} and id > ${after} order by id limit ${limit}`.execute(db);
+  return rows.map((row) => ({ id: Number(row.id), key: JSON.parse(row.key) as SearchKey, revision: String(row.revision) }));
+}
+
+/**
+ * Removes these documents, each only while it still has the revision it was read with: a document the app wrote again since then
+ * has a new revision and stays. Returns how many it removed.
+ */
+export async function deleteUnchanged(db: Connection<any>, index: IndexInfo, documents: readonly StoredRevision[]): Promise<number> {
+  let removed = 0;
+  for (const document of documents) {
+    const result = await sql`delete from search_documents where index_name = ${index.name} and id = ${document.id} and cast(revision as text) = ${document.revision}`.execute(db);
+    removed += Number(result.numAffectedRows ?? 0n);
+  }
+  return removed;
+}

@@ -1,8 +1,9 @@
-import { SystemClock, type Clock, type StandardSchemaV1 } from '@marmeon/core';
+import type { Clock, StandardSchemaV1 } from '@marmeon/core';
 import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import type { SearchDriver } from './driver.ts';
-import type { SearchIndexes } from './registry.ts';
+import { SearchSyncError } from './drivers/meilisearch/client.ts';
+import type { IndexInfo, SearchIndexes } from './registry.ts';
 import { BATCH_SIZE, keyId, MAX_KEY_LENGTH, write, type IndexReader, type ReadResult, type SyncPayload } from './search.ts';
 
 const key = v.union([
@@ -19,8 +20,8 @@ export const syncPayloadSchema = v.strictObject({
 /** The most times one attempt writes its rows while they keep changing. */
 export const MAX_WRITES = 3;
 
-/** Whether two reads of the same keys found the same documents and the same removals. */
-function sameRead(first: ReadResult, second: ReadResult): boolean {
+/** @internal Whether two reads of the same keys found the same documents and the same removals. */
+export function sameRead(first: ReadResult, second: ReadResult): boolean {
   // Filters keep the order toDocument() gave them, so they are compared sorted; fields are already in declared order.
   const shape = (found: ReadResult): string =>
     JSON.stringify([
@@ -35,7 +36,9 @@ function sameRead(first: ReadResult, second: ReadResult): boolean {
 /**
  * The framework job behind `search.index()` and `search.remove()` on a driver that writes through the queue: reads the rows of its
  * keys through the index's `source()` when it runs and writes their documents or removes them, then reads them again and writes
- * again while they changed (at most three writes), so the index ends with the rows' state, also when two jobs overlap. Carries only keys, never text. A driver error retries the job. See `docs/full-text-search.md#keeping-the-index-current`.
+ * again while they changed (at most three writes), so the index ends with the rows' state, also when two jobs overlap. While a
+ * rebuild fills a target of its own (a driver with `swap()`), every write goes to that target first, so the swap loses no change.
+ * Carries only keys, never text. A driver error retries the job. See `docs/full-text-search.md#keeping-the-index-current`.
  */
 export class SyncSearchDocuments {
   static readonly job = 'marmeon.search.sync';
@@ -48,12 +51,33 @@ export class SyncSearchDocuments {
   readonly #reader: IndexReader;
   readonly #driver: SearchDriver;
   readonly #clock: Clock;
+  readonly #target: (index: string) => Promise<string | undefined>;
 
-  constructor(indexes: SearchIndexes, reader: IndexReader, driver: SearchDriver, clock: Clock = new SystemClock()) {
+  /**
+   * @internal Built by `SearchServiceProvider`. `target` names the target a running rebuild of an index fills, read from
+   * `search_rebuilds`; it is asked only when the driver has `swap()`.
+   */
+  constructor(indexes: SearchIndexes, reader: IndexReader, driver: SearchDriver, clock: Clock, target: (index: string) => Promise<string | undefined>) {
     this.#indexes = indexes;
     this.#reader = reader;
     this.#driver = driver;
     this.#clock = clock;
+    this.#target = target;
+  }
+
+  /**
+   * Writes to a rebuild target and returns what failed, if anything: the write to the index itself must happen either way. A target
+   * that the Meilisearch driver reports gone was swapped in or discarded meanwhile, so the index written next is the live one: that is
+   * no failure. Any other error is returned, and the attempt fails once its rounds wrote the index, so it tries again and reads the target anew.
+   */
+  async #writeTarget(target: IndexInfo, found: ReadResult): Promise<unknown> {
+    try {
+      await write(this.#driver, target, found);
+      return undefined;
+    } catch (error) {
+      if (error instanceof SearchSyncError && error.code === 'index_not_found') return undefined;
+      return error ?? new Error('The write to the rebuild target failed.');
+    }
   }
 
   async handle(payload: SyncPayload, job: JobContext): Promise<void> {
@@ -63,11 +87,20 @@ export class SyncSearchDocuments {
       return job.fail(`No search index is named "${payload.index}" any more (it was renamed or removed), so the documents of this job were not synced.`);
     }
     const info = this.#indexes.info(Index);
+    // Read once per attempt. Only a driver with swap() fills a target of its own.
+    const target = this.#driver.swap === undefined ? undefined : await this.#target(payload.index);
+    const targetInfo: IndexInfo | undefined = target === undefined ? undefined : { ...info, name: target };
     const ranOut = () => new Error(`The job for "${payload.index}" ran out of time after writing its rows; it tries again.`);
     const started = this.#clock.now();
     let roundStarted = started;
     let found = await this.#reader.read(Index, payload.keys, { tolerant: true });
+    // The first failed write to the target: kept until the rounds are done, so the index still ends with the newest state.
+    let targetFailure: unknown;
     for (let round = 1; ; round++) {
+      // The target first, then the index itself: a swap that lands before, between or after the two writes leaves the change in
+      // the index that is live afterwards.
+      const failed = targetInfo === undefined ? undefined : await this.#writeTarget(targetInfo, found);
+      targetFailure ??= failed;
       await write(this.#driver, info, found);
       // A job past its timeout stops here rather than read and write again; the worker would end it soon after.
       if (job.signal.aborted) throw ranOut();
@@ -85,6 +118,8 @@ export class SyncSearchDocuments {
       if (now - started + lasted > SyncSearchDocuments.timeout * 1000) throw ranOut();
       found = again;
     }
+    // The index holds the newest state; the attempt still fails, so it tries again and reads the target anew.
+    if (targetFailure !== undefined) throw targetFailure;
     // The rest of the batch is written, the broken rows are out of the index; the attempt still fails, so it shows in the failed jobs.
     if (found.failed.length > 0) {
       const [first] = found.failed;

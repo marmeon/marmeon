@@ -34,6 +34,8 @@ export default defineMigration({
       table.string('holder', 64).nullable();
       table.bigInteger('held_until').nullable();
       table.timestamp('started_at');
+      // A hash of the index definition and the language map the run started with: a resume under another one starts over.
+      table.string('fingerprint', 64).nullable();
     });
     schema.raw({
       sqlite: sql`create virtual table search_documents_fts using fts5(a, b, c, d, content='search_documents', content_rowid='id', tokenize='unicode61 remove_diacritics 2', prefix='2 3 4')`,

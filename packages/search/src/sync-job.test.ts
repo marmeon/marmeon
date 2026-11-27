@@ -1,4 +1,4 @@
-import { createApplication, defineModule, type Application } from '@marmeon/core';
+import { Clock, createApplication, defineModule, type Application } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, sql, type Connection, type Database } from '@marmeon/database';
 import type { JobContext } from '@marmeon/queue';
@@ -7,8 +7,7 @@ import { QueueFake } from '@marmeon/queue/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SearchDriver } from './driver.ts';
 import { SearchServiceProvider } from './provider.ts';
-import { SearchIndexes } from './registry.ts';
-import { IndexReader, Search } from './search.ts';
+import { Search } from './search.ts';
 import { SearchIndex, type SearchDocument } from './search-index.ts';
 import { SyncSearchDocuments } from './sync-job.ts';
 import { MemoryDriver } from './test-helpers/memory-driver.ts';
@@ -176,7 +175,9 @@ describe('the job marmeon.search.sync', () => {
       clock.travel(35);
       await sql`update pages set title = 'Title 1' where id = 1`.execute(connections.get());
     };
-    const job = new SyncSearchDocuments(app.container.make(SearchIndexes), app.container.make(IndexReader), driver, clock);
+    // The provider builds the job with the app's Clock.
+    app.container.instance(Clock, clock);
+    const job = app.container.make(SyncSearchDocuments);
     await expect(job.handle({ index: 'pages', keys: [1] }, context())).rejects.toThrow('The job for "pages" ran out of time after writing its rows; it tries again.');
     expect(driver.calls.map((call) => call.method)).toEqual(['upsert']);
   });

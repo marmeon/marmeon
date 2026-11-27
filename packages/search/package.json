@@ -78,11 +78,15 @@
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
+    "marmeon": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/fetch": "workspace:*",
     "@marmeon/queue": "workspace:*"
   },
   "peerDependenciesMeta": {
+    "marmeon": {
+      "optional": true
+    },
     "@marmeon/fetch": {
       "optional": true
     },
@@ -91,6 +95,7 @@
     }
   },
   "devDependencies": {
+    "marmeon": "workspace:*",
     "@marmeon/database": "workspace:*",
     "@marmeon/fetch": "workspace:*",
     "@marmeon/queue": "workspace:*"

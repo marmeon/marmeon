@@ -9,7 +9,7 @@ import { searchOptions } from '../../config.ts';
 import { configFor } from '../../languages.ts';
 import { checkConfigurations, queryPgsql } from './pgsql.ts';
 import { querySqlite } from './sqlite.ts';
-import { deleteDocuments, DOCUMENTS_COLUMNS, DOCUMENTS_TABLE, flushDocuments, TEXT_COLUMNS, upsertDocuments } from './statements.ts';
+import { deleteDocuments, deleteUnchanged, documentsAfter, DOCUMENTS_COLUMNS, DOCUMENTS_TABLE, flushDocuments, TEXT_COLUMNS, upsertDocuments, type StoredRevision } from './statements.ts';
 
 /**
  * What the stub migration makes with raw SQL: the FTS5 table on SQLite (its shadow tables with it) and the `vector` column on
@@ -23,9 +23,11 @@ function setup(message: string): SearchSetupError {
 
 /**
  * The `database` driver: every index in the table `search_documents` of the default connection, written in the caller's transaction.
- * SQLite searches with FTS5; Postgres with `tsvector`s written by the configuration of each document's locale.
+ * SQLite searches with FTS5; Postgres with `tsvector`s written by the configuration of each document's locale. A rebuild knows it by
+ * its class and sweeps it: it removes the documents whose rows are gone.
+ * @internal
  */
-class DatabaseSearchDriver implements SearchDriver {
+export class DatabaseSearchDriver implements SearchDriver {
   readonly writes = 'transaction';
   readonly #connections: Connections;
   readonly #container: Resolver;
@@ -76,6 +78,16 @@ class DatabaseSearchDriver implements SearchDriver {
 
   async flush(index: IndexInfo): Promise<void> {
     await flushDocuments(this.#db, index);
+  }
+
+  /** @internal The next documents of an index after the row id `after`, for the sweep of a rebuild. */
+  documentsAfter(index: IndexInfo, after: number, limit: number): Promise<StoredRevision[]> {
+    return documentsAfter(this.#db, index, after, limit);
+  }
+
+  /** @internal Removes these documents unless the app wrote them again since the sweep read them; returns how many it removed. */
+  deleteUnchanged(index: IndexInfo, documents: readonly StoredRevision[]): Promise<number> {
+    return deleteUnchanged(this.#db, index, documents);
   }
 
   /**

@@ -331,7 +331,7 @@ it does for [every package that ships migrations](migrations.md#publishing-the-m
 The migration makes two tables on the default connection. `search_documents` holds one row per document: the name of its index,
 its key, its locale, on Postgres the text search configuration that read it, its filters and the text of its fields in the columns
 `a` to `d`, one column per weight. `search_rebuilds` holds the
-state of a running rebuild. The text columns are [secret](migrations.md#secret-columns), so `selectAll()`, `marmeon db:query` and the
+state of a running rebuild, on every driver: publish and run the migration for Meilisearch too. The text columns are [secret](migrations.md#secret-columns), so `selectAll()`, `marmeon db:query` and the
 database MCP never show indexed text. What the schema builder cannot write is part of the migration as raw SQL, and `migrate` does
 not name those objects as unknown.
 
@@ -452,7 +452,9 @@ SEARCH_MEILISEARCH_API_KEY=your-key
 ```
 
 The driver needs Meilisearch 1.34 or later, `@marmeon/fetch` with its `HttpClient` registered, and `@marmeon/queue`. Without them,
-without the address or without the key, the start stops with [Q9](errors.md#server-error-codes). The address is `http` or `https` with a host and an
+without the address or without the key, the start stops with [Q9](errors.md#server-error-codes). It also needs the table
+`search_rebuilds` from the [migration of the package](#the-database-driver), which the job reads, and `/up/ready` stays red until it
+exists. The address is `http` or `https` with a host and an
 optional port. A user name, a password, a query, a fragment or a path in it stops the start too. The key is printable ASCII without
 line breaks, and no message names its value.
 
@@ -491,6 +493,63 @@ out included. Tenants that must learn nothing about each other need separate ind
 ## Rebuilding and flushing
 
 A rebuild fills an index again from all of its rows, and a flush empties it.
+
+```sh
+pnpm marmeon search:rebuild pages
+pnpm marmeon search:rebuild
+pnpm marmeon search:flush old_pages
+```
+
+Run `search:rebuild` after you deploy a new index, after you change the fields, the filters or the language map of an index, and
+whenever a change may have bypassed `search.index()`, such as an update in a migration or by hand. Without a name, it rebuilds every
+registered index, one after another. A name that no index has stops it with the list of the known names.
+
+The rebuild reads the rows through `source()`, in the order of the key, 500 at a time. `--batch` sets another size, from 1 to 500.
+Each row goes through `includes()` and `toDocument()` as with `search.index()`, so a row that does not belong loses its document. The
+rebuild prints one line per batch with the documents written and removed so far, and at the end the totals and the time it took.
+It prints no text of a document. A row that `toDocument()` cannot turn into a document stops the rebuild with exit code 1 and the
+error, and the next run goes on from there.
+
+A rebuild keeps its state in the table `search_rebuilds`, so it needs the [migration of the package](#the-database-driver) on every
+driver, Meilisearch included. After each batch, it saves the last key as a checkpoint. A run that stops, because it failed or because
+you ended it, leaves the checkpoint behind. The next run of that index goes on after the checkpoint and says so. `--fresh` discards
+the checkpoint and starts from the first row.
+
+A run that goes on keeps the batches it wrote. When the fields, the filters, the key or the language map changed since the run
+started, the next run starts over by itself and says why. A change to the code of the index class, such as `includes()` or
+`toDocument()`, and a change to rows behind the back of search are invisible to that check: run `search:rebuild --fresh` after
+them.
+
+One run at a time rebuilds an index. A run holds a lock on it, renews it after each batch and releases it at the end. A second run
+of the same index exits with code 1 and says until when the lock holds. A run that stops without releasing its lock frees the index
+60 seconds after its last batch. When another run took the lock over in the meantime, the first run stops with exit code 1 at its
+next batch, and the other one goes on from the last saved batch. Without a name, a held index does not stop the rebuild of the
+others, but the command still exits with code 1.
+
+On the `database` driver, a batch and its checkpoint are written in one transaction. After the rows, the rebuild sweeps the stored
+documents of the index and removes each one whose row is gone or no longer belongs. A document that your app writes again while
+the sweep runs stays. Only the `database` driver is swept: on a driver that a provider brings without `swap()`, a rebuild leaves the
+documents of deleted rows in place, so flush such an index before you rebuild it.
+
+On Meilisearch, the rebuild fills a new index of its own, such as `pages__rebuild_0a1b2c3d` (the index name and the first 8
+characters of the run's id), and swaps it in at the end. Until then, searches read the old index. First, the rebuild creates both
+indexes when they do not exist yet and applies the settings of the class to both. While the rebuild runs, the job
+`marmeon.search.sync` writes each change to both indexes, so the swap loses no change. After each batch, the rebuild reads its rows
+again and writes them again while they changed, as the job does. A batch whose rows change at each of three writes stops the rebuild
+with exit code 1, and the next run goes on from that batch. The swap also removes the documents of rows that were gone before the
+rebuild read their batch. A run that goes on keeps its index. A run that starts over, with `--fresh`, under another definition or
+after a run that stopped during its swap, deletes the index of the earlier run first.
+
+The rebuild is the only command that creates an index on Meilisearch and applies its settings. A write of your app checks first that
+its index exists. A job that writes to the new index of a rebuild in the moment the swap deletes it can still create it again, with
+the default settings of Meilisearch; delete such a leftover `__rebuild_` index by hand. A driver that a provider brings
+[decides](drivers.md#search-drivers) whether it fills an index of its own.
+
+`search:flush <index>` removes every document of an index. It also takes a name that no class declares any more, such as the old
+name of a renamed index, whose documents stay until you flush them. It discards an unfinished rebuild of the index first, so that no
+later run brings the flushed documents back. It holds the lock of the index while it empties it, so no rebuild starts meanwhile, and it
+exits with code 1 while a rebuild of the index holds the lock. Where your app is
+protected, as in production, it asks for `--force`, as the [database commands](migrations.md#where-the-app-is-protected) do.
 
 ## Checking
 

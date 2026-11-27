@@ -85,8 +85,13 @@ export interface SearchDriver {
   boot?(app: Application): Promise<void>;
   /** Creates an index, or the rebuild target `target`, and applies its settings; runs again without harm. Without it, a rebuild prepares nothing. */
   prepare?(index: IndexInfo, target?: string): Promise<void>;
-  /** Replaces an index with the rebuild target `target`. Without it, a rebuild writes into the index itself. */
+  /**
+   * Replaces an index with the rebuild target `target`. Only with `writes: 'queue'`: with another mode the start stops (Q9). While a
+   * rebuild runs, the job writes to the target too. Without it, a rebuild writes into the index itself.
+   */
   swap?(index: IndexInfo, target: string): Promise<void>;
+  /** Deletes the rebuild target `target` of a run that cannot go on; a target that is gone is no error. Without it, a rebuild flushes that target. */
+  discard?(index: IndexInfo, target: string): Promise<void>;
   /** What `marmeon check` reports for these indexes. Without it, the check passes. */
   inspect?(indexes: readonly IndexInfo[]): Promise<readonly SearchProblem[]>;
   /** Releases what the driver holds when the app shuts down. */

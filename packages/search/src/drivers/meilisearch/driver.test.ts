@@ -1,5 +1,6 @@
-import { createApplication, defineModule, type Application, type Logger } from '@marmeon/core';
-import { Connections, DatabaseServiceProvider, sql, type Connection, type Database } from '@marmeon/database';
+import { createApplication, defineModule, type Application, type Logger, type ModuleDefinition } from '@marmeon/core';
+import { Connections, DatabaseServiceProvider, Migrator, SchemaRequirements, sql, type Connection, type Database } from '@marmeon/database';
+import { workspaceTempDir } from '../../../../../scripts/test/temp-dir.js';
 import * as fetchModule from '@marmeon/fetch';
 import { FetchServiceProvider, HttpClient } from '@marmeon/fetch';
 import { HttpClientFake } from '@marmeon/fetch/testing';
@@ -138,6 +139,19 @@ describe('MeilisearchDriver: writes', () => {
     expect(await bodyOf(http.requests[0]!)).toEqual([{ indexes: ['pages', 'pages_rebuild'] }]);
     expect(`${http.requests[2]!.method} ${http.requests[2]!.url}`).toBe(`DELETE ${BASE}/indexes/pages_rebuild`);
   });
+
+  it('discards a rebuild target: deletes it and waits for the task, and a target that is gone counts as discarded', async () => {
+    const http = meili();
+    await driver(http).discard(PAGES, 'pages__rebuild_0a1b2c3d');
+    expect(http.requests.map((request) => `${request.method} ${request.url}`)).toEqual([`DELETE ${BASE}/indexes/pages__rebuild_0a1b2c3d`, `GET ${BASE}/tasks/1`]);
+
+    await expect(driver(meili({ task: { status: 'failed', error: { code: 'index_not_found' } } })).discard(PAGES, 'gone')).resolves.toBeUndefined();
+    const answered404 = meili().respond(`${BASE}/indexes/gone`, Response.json({ code: 'index_not_found' }, { status: 404 }));
+    await expect(driver(answered404).discard(PAGES, 'gone')).resolves.toBeUndefined();
+    // Any other failure is no discard.
+    const error = await rejection(driver(meili({ task: { status: 'failed', error: { code: 'internal' } } })).discard(PAGES, 'pages__rebuild_0a1b2c3d'));
+    expect(error.message).toBe('The Meilisearch task 1 failed (internal).');
+  });
 });
 
 describe('MeilisearchDriver: searching', () => {
@@ -266,9 +280,9 @@ describe('the meilisearch driver in an app', () => {
   const ENV = { LOG_LEVEL: 'silent', NODE_ENV: 'test', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null', SEARCH_DRIVER: 'meilisearch' };
   const FULL = { ...ENV, SEARCH_MEILISEARCH_URL: 'http://10.0.0.5:7700', SEARCH_MEILISEARCH_API_KEY: KEY };
 
-  async function start(env: Record<string, string>, http = new HttpClientFake(), providers = [DatabaseServiceProvider, QueueServiceProvider, FetchServiceProvider, SearchServiceProvider]) {
+  async function start(env: Record<string, string>, http = new HttpClientFake(), providers = [DatabaseServiceProvider, QueueServiceProvider, FetchServiceProvider, SearchServiceProvider], modules: ModuleDefinition[] = []) {
     const app = await createApplication(
-      { root: import.meta.dirname, discover: false, providers, modules: [defineModule({ name: 'pages', searchIndexes: [PageIndex] })] },
+      { root: workspaceTempDir('marmeon-search-meili-'), discover: false, providers, modules: [defineModule({ name: 'pages', searchIndexes: [PageIndex] }), ...modules] },
       { env, override: (container) => container.instance(HttpClient, http) },
     );
     running.push(app);
@@ -282,8 +296,11 @@ describe('the meilisearch driver in an app', () => {
       .respond(`${base}/indexes/pages`, Response.json({ uid: 'pages' }))
       .respond(`${base}/tasks/9`, Response.json({ uid: 9, status: 'succeeded' }))
       .respond(`${base}/multi-search`, Response.json({ hits: [{ key: 1, _federation: { indexUid: 'pages' }, _rankingScore: 1 }], totalHits: 1 }));
-    const app = await start(FULL, http);
+    const app = await start({ ...FULL, DB_MANAGED: 'true' }, http, undefined, [defineModule({ name: 'system', migrations: SearchServiceProvider.migrations.from })]);
     expect(app.container.make(SearchDriver).writes).toBe('queue');
+    // The job looks for a running rebuild in search_rebuilds, so a Meilisearch app runs the stub migration too.
+    expect(app.container.make(SchemaRequirements).all().map((requirement) => requirement.table)).toContain('search_rebuilds');
+    await app.container.make(Migrator).migrate();
     const connections = app.container.make(Connections);
     await sql`create table pages (id integer primary key, title text not null)`.execute(connections.get());
     await sql`insert into pages (id, title) values (1, 'Hello')`.execute(connections.get());

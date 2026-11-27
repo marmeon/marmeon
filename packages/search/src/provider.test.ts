@@ -1,5 +1,5 @@
 import { createApplication, type Application, type ServiceProviderClass } from '@marmeon/core';
-import { DatabaseServiceProvider } from '@marmeon/database';
+import { DatabaseServiceProvider, SchemaRequirements } from '@marmeon/database';
 import { JobRegistry, QueueServiceProvider } from '@marmeon/queue';
 import { describe, expect, it } from 'vitest';
 import { SearchDriver, type SearchDriverContext, type SearchDriverFactory } from './driver.ts';
@@ -107,7 +107,7 @@ describe('SearchServiceProvider: the driver contract', () => {
         { ...complete, [member]: undefined },
         `The search driver "custom" has no ${member}() method: a SearchDriver has upsert(), delete(), query() and flush().`,
       ]),
-      ...['boot', 'prepare', 'swap', 'inspect', 'close'].map((member): [unknown, string] => [
+      ...['boot', 'prepare', 'swap', 'discard', 'inspect', 'close'].map((member): [unknown, string] => [
         { ...complete, [member]: true },
         `The search driver "custom" has a ${member} that is no method: define ${member}() as a method, or leave it out.`,
       ]),
@@ -174,5 +174,35 @@ describe('importQueue', () => {
     await expect(
       importQueue(() => Promise.reject(error("Cannot find package 'missing-dependency' imported from /app/node_modules/@marmeon/queue/dist/index.js", 'ERR_MODULE_NOT_FOUND'))),
     ).rejects.toThrow('missing-dependency');
+  });
+});
+
+describe('SearchServiceProvider: the rebuild table', () => {
+  const tables = (app: Application) => app.container.make(SchemaRequirements).all().filter((requirement) => requirement.table === 'search_rebuilds');
+
+  it('requires search_rebuilds for a driver with swap(), whose job reads it on every run, so /up/ready waits for the migration', async () => {
+    const swapping: SearchDriverFactory = () => Object.assign(new MemoryDriver('queue'), { async swap() {} });
+    const app = await boot({ SEARCH_DRIVER: 'swapping', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' }, [
+      DatabaseServiceProvider,
+      QueueServiceProvider,
+      plugin('SwappingProvider', { swapping }),
+    ]);
+    expect(tables(app)).toEqual([{ connection: 'default', table: 'search_rebuilds', columns: ['index_name', 'run', 'phase', 'after', 'target', 'holder', 'held_until', 'started_at', 'fingerprint'] }]);
+    await app.shutdown();
+  });
+
+  it('stops for a driver with swap() that does not write through the queue, whose changes during a rebuild the swap would lose', async () => {
+    for (const writes of ['after-commit', 'transaction'] as const) {
+      const complete = { writes, upsert() {}, delete() {}, query() {}, flush() {}, swap() {} };
+      const error = await rejection(boot({ SEARCH_DRIVER: 'swapping' }, [plugin('SwappingProvider', { swapping: () => complete as unknown as SearchDriver })]));
+      expect(error).toBeInstanceOf(SearchSetupError);
+      expect(error.message).toBe(`[marmeon:Q9] The search driver "swapping" has swap() but writes '${writes}': a driver with swap() writes through the queue (writes: 'queue').`);
+    }
+  });
+
+  it('does not require it for a driver without swap()', async () => {
+    const app = await boot({ SEARCH_DRIVER: 'typesense', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider, plugin('TypesenseProvider', { typesense })]);
+    expect(tables(app)).toEqual([]);
+    await app.shutdown();
   });
 });

@@ -1228,6 +1228,9 @@ importers:
       '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
 
   packages/server:
     dependencies:
