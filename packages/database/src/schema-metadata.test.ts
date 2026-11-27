@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { ModuleDefinition } from '@marmeon/core';
 import { CompiledQuery, Kysely, sql, SqliteDialect, type DatabaseConnection, type QueryResult } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { appOf, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { appOf, driversWithMysql, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { testEncrypter } from './__fixtures__/encrypter.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -15,6 +15,7 @@ import { changesSchema, isRawSchemaChange, SchemaMetadata } from './metadata.ts'
 import { softDelete, softDeleteFilter } from './schema-resolver.ts';
 import { Connections, cursorPaginate, Migrator, Repository } from './index.ts';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
+
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -30,7 +31,7 @@ class CommentRepository extends Repository<'comments', FixtureTables> {
 }
 
 /** Two `Connections` on one database — the second one a process that has not loaded anything yet. */
-async function sharedDatabase(driver: 'sqlite' | 'pgsql', { managed = true }: { managed?: boolean } = {}) {
+async function sharedDatabase(driver: 'sqlite' | 'pgsql' | 'mysql', { managed = true }: { managed?: boolean } = {}) {
   const fresh = driver === 'sqlite' ? { options: { driver: 'sqlite' as const, database: join(mkdtempSync(join(tempDir('marmeon-metadata-'), 'db-')), 'app.sqlite') }, drop: async () => {} } : await freshDatabase(driver);
   const options = managed ? fresh.options : { ...fresh.options, managed: false };
   const open = () => new Connections({ connections: { default: options }, root, logger: silent, ...(managed ? { app } : {}) });
@@ -38,7 +39,8 @@ async function sharedDatabase(driver: 'sqlite' | 'pgsql', { managed = true }: { 
   return { first, open, drop: fresh.drop };
 }
 
-describe.each(drivers)('schema metadata on %s', (driver) => {
+// Also runs on MySQL: the variable MARMEON_TEST_MYSQL_URL of `pnpm test:mysql`; this mention selects the file for it.
+describe.each(driversWithMysql)('schema metadata on %s', (driver) => {
   let connections: Connections;
   let open: () => Connections;
   let drop: () => Promise<void>;
@@ -64,10 +66,19 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     await connections.get<FixtureTables>().deleteFrom('users').execute();
   });
 
+  // MySQL has no `returning`: the key of an insert is the `insertId` of its result.
   const seed = async (db: Kysely<FixtureTables>) => {
-    const ada = await db.insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).returning('id').executeTakeFirstOrThrow();
-    const post = await db.insertInto('posts').values({ author_id: ada.id, title: 'Notes' }).returning('id').executeTakeFirstOrThrow();
-    await db.insertInto('comments').values([{ post_id: post.id, user_id: ada.id, body: 'kept' }, { post_id: post.id, user_id: ada.id, body: 'deleted', deleted_at: new Date() }]).execute();
+    const insertedId = async (query: { executeTakeFirstOrThrow(): Promise<unknown> }): Promise<number> => {
+      const result = (await query.executeTakeFirstOrThrow()) as { id?: number; insertId?: bigint };
+      return Number(driver === 'mysql' ? result.insertId : result.id);
+    };
+    const insert = <T extends 'users' | 'posts'>(table: T, values: never) => {
+      const query = db.insertInto(table).values(values);
+      return insertedId(driver === 'mysql' ? query : query.returning('id' as never));
+    };
+    const ada = await insert('users', { name: 'Ada', email: 'ada@example.com' } as never);
+    const post = await insert('posts', { author_id: ada, title: 'Notes' } as never);
+    await db.insertInto('comments').values([{ post_id: post, user_id: ada, body: 'kept' }, { post_id: post, user_id: ada, body: 'deleted', deleted_at: new Date() }]).execute();
   };
 
   it('loads relations, markers and the columns a relation may load — derived like db:types does', async () => {
@@ -91,7 +102,7 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     expect(bodies).toEqual(['kept']);
     // One query in the log, the SQL that ran — the catalog queries that loaded the metadata are not in it.
     expect(log).toHaveLength(1);
-    expect(log[0]).toMatch(/"comments"\."deleted_at" is null/);
+    expect(log[0]).toMatch(driver === 'mysql' ? /`comments`\.`deleted_at` is null/ : /"comments"\."deleted_at" is null/);
     expect(log[0]).not.toMatch(/__marmeon/);
   });
 
@@ -106,10 +117,15 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
     const repository = comments();
     expect((await repository.paginate(repository.query().select('body').orderBy('id'), { page: 1, perPage: 10 })).meta.total).toBe(1);
     expect((await cursorPaginate(comments().query().select(['id', 'body']), { column: 'id', encrypter: testEncrypter() })).data).toEqual([kept]);
-    expect(await comments().update(deleted!.id, { body: 'changed' })).toBeUndefined(); // a soft-deleted row is left alone
-    const old = '2020-01-01T00:00:00.000Z';
-    await connections.get<FixtureTables>().updateTable('comments').set({ updated_at: old }).execute();
-    expect((await comments().update(kept!.id, { body: 'changed' }))!.updated_at > old).toBe(true);
+    if (driver === 'mysql') {
+      // A pinned gap: update() of a repository ends in `returningAll()`, the server has no RETURNING (syntax error 1064), and the repository has no MySQL form for it yet.
+      await expect(comments().update(deleted!.id, { body: 'changed' })).rejects.toMatchObject({ code: 'ER_PARSE_ERROR', errno: 1064, message: expect.stringContaining('returning') });
+    } else {
+      expect(await comments().update(deleted!.id, { body: 'changed' })).toBeUndefined(); // a soft-deleted row is left alone
+      const old = '2020-01-01T00:00:00.000Z';
+      await connections.get<FixtureTables>().updateTable('comments').set({ updated_at: old }).execute();
+      expect((await comments().update(kept!.id, { body: 'changed' }))!.updated_at > old).toBe(true);
+    }
     expect(await comments().delete(kept!.id)).toBe(true);
     expect(await comments().delete(kept!.id)).toBe(false);
     expect(await connections.get<FixtureTables>().selectFrom('comments').select('id').execute()).toHaveLength(2); // both still there, deleted softly
@@ -146,7 +162,8 @@ describe.each(drivers)('schema metadata on %s', (driver) => {
 });
 
 // A database another tool manages (`managed: false`): the schema is read from the catalog, and a change to it makes what was loaded stale.
-describe.each(drivers)('schema metadata of a connection another tool manages, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('schema metadata of a connection another tool manages, on %s', (driver) => {
   let connections: Connections;
   let open: () => Connections;
   let drop: () => Promise<void>;
@@ -187,6 +204,14 @@ describe.each(drivers)('schema metadata of a connection another tool manages, on
     await loading;
     expect(metadata.fresh).toBe(true);
 
+    if (driver === 'mysql') {
+      // MySQL commits at a schema change, so the driver refuses it inside transaction(): no transaction holds a changed schema.
+      await expect(fresh.transaction(async (transaction) => void (await (transaction as unknown as Kysely<any>).schema.createTable('scratch').addColumn('id', 'integer').execute()))).rejects.toThrow('[marmeon:D30]');
+      expect(metadata.fresh).toBe(false); // refused, but not known to have changed nothing
+      await fresh.get<any>().selectFrom('users').select('id').execute();
+      expect(metadata.fresh).toBe(true);
+      return;
+    }
     await fresh.transaction(async (transaction) => {
       const trx = transaction as unknown as Kysely<any>;
       await trx.schema.createTable('scratch').addColumn('id', 'integer').execute();
@@ -225,17 +250,25 @@ describe.each(drivers)('schema metadata of a connection another tool manages, on
         }),
       ).rejects.toThrow('undo');
       expect(metadata.fresh).toBe(true);
-      await expect(
-        fresh.transaction(async (transaction) => {
-          await (transaction as unknown as Kysely<any>).schema.createTable('scratch').addColumn('id', 'integer').execute();
-          await read(); // the transaction's own view, with the table
-          expect(metadata.kinds.has('scratch')).toBe(true);
-          throw new Error('undo');
-        }),
-      ).rejects.toThrow('undo');
-      expect(metadata.fresh).toBe(false);
-      await read();
-      expect(metadata.kinds.has('scratch')).toBe(false);
+      if (driver === 'mysql') {
+        // A schema change inside the savepoint is refused (D30), so there is no change to load again.
+        await expect(fresh.transaction(async (transaction) => void (await (transaction as unknown as Kysely<any>).schema.createTable('scratch').addColumn('id', 'integer').execute()))).rejects.toThrow('[marmeon:D30]');
+        expect(metadata.fresh).toBe(false); // refused, but not known to have changed nothing
+        await read();
+        expect(metadata.fresh).toBe(false); // a transaction that may have changed the schema is still open: the next read after it makes it fresh
+      } else {
+        await expect(
+          fresh.transaction(async (transaction) => {
+            await (transaction as unknown as Kysely<any>).schema.createTable('scratch').addColumn('id', 'integer').execute();
+            await read(); // the transaction's own view, with the table
+            expect(metadata.kinds.has('scratch')).toBe(true);
+            throw new Error('undo');
+          }),
+        ).rejects.toThrow('undo');
+        expect(metadata.fresh).toBe(false);
+        await read();
+        expect(metadata.kinds.has('scratch')).toBe(false);
+      }
     });
     await read();
     expect(metadata.fresh).toBe(true);
@@ -252,12 +285,19 @@ describe.each(drivers)('schema metadata of a connection another tool manages, on
       await plain.rollbackToSavepoint('plain').execute();
       expect(metadata.fresh).toBe(true);
       const ddl = await trx.savepoint('ddl').execute();
-      await ddl.schema.createTable('scratch').addColumn('id', 'integer').execute();
-      await ddl.selectFrom('users').select('id').execute();
-      expect(metadata.kinds.has('scratch')).toBe(true);
-      await ddl.rollbackToSavepoint('ddl').execute();
-      await trx.selectFrom('users').select('id').execute();
-      expect(metadata.kinds.has('scratch')).toBe(false);
+      if (driver === 'mysql') {
+        await expect(ddl.schema.createTable('scratch').addColumn('id', 'integer').execute()).rejects.toThrow('[marmeon:D30]');
+        expect(metadata.fresh).toBe(false); // refused, but not known to have changed nothing
+        await ddl.selectFrom('users').select('id').execute();
+        expect(metadata.fresh).toBe(false); // the transaction is still open: the read after it makes it fresh
+      } else {
+        await ddl.schema.createTable('scratch').addColumn('id', 'integer').execute();
+        await ddl.selectFrom('users').select('id').execute();
+        expect(metadata.kinds.has('scratch')).toBe(true);
+        await ddl.rollbackToSavepoint('ddl').execute();
+        await trx.selectFrom('users').select('id').execute();
+        expect(metadata.kinds.has('scratch')).toBe(false);
+      }
     } finally {
       await trx.rollback().execute();
     }
@@ -274,7 +314,8 @@ describe.each(drivers)('schema metadata of a connection another tool manages, on
     expect(metadata.fresh).toBe(false);
     await fresh.get<any>().selectFrom('users').select('id').execute();
     expect(metadata.fresh).toBe(true);
-    await fresh.get<any>().schema.dropIndex('users_name_index').execute();
+    const dropIndex = fresh.get<any>().schema.dropIndex('users_name_index');
+    await (driver === 'mysql' ? dropIndex.on('users') : dropIndex).execute(); // MySQL names the table of an index it drops
     expect(metadata.fresh).toBe(false);
   });
 
@@ -295,6 +336,21 @@ describe.each(drivers)('schema metadata of a connection another tool manages, on
     await sql`create unique index raw_probe_pinned on raw_probe (pinned)`.execute(db);
     expect(metadata.fresh).toBe(false);
     await read();
+    if (driver === 'mysql') {
+      // A raw schema change inside transaction() is not recognised before it is sent: MySQL commits, and the driver ends the transaction (D24).
+      await expect(
+        fresh.transaction(async (transaction) => {
+          await read();
+          await sql`drop table raw_probe`.execute(transaction as unknown as Kysely<any>);
+          await read();
+        }),
+      ).rejects.toThrow('[marmeon:D24]');
+      expect(metadata.fresh).toBe(false);
+      await read();
+      expect(metadata.fresh).toBe(true);
+      expect(metadata.kinds.has('raw_probe')).toBe(false);
+      return;
+    }
     await fresh.transaction(async (transaction) => {
       await read();
       await sql`drop table raw_probe`.execute(transaction as unknown as Kysely<any>);

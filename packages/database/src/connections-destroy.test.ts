@@ -1,14 +1,15 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { sql } from 'kysely';
+import { Kysely, sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
-import { freshDatabase, PGSQL_URL, silent } from './__fixtures__/databases.ts';
+import { freshDatabase, MYSQL_URL, PGSQL_URL, silent } from './__fixtures__/databases.ts';
 import { Connections } from './connections.ts';
 import type { ConnectionOptions } from './config.ts';
 import { inspectionConnection, migratorConnection } from './migrator-connection.ts';
+import { createMysqlDialect } from './mysql.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
-// The Postgres case runs in `pnpm test:pgsql` (MARMEON_TEST_PGSQL_URL).
+// The Postgres case runs in `pnpm test:pgsql` (MARMEON_TEST_PGSQL_URL), the MySQL case in `pnpm test:mysql` (MARMEON_TEST_MYSQL_URL).
 // `Connections.destroy()` closes every pool, also when only the migrator's, the inspection's or the infrastructure's connection ever sent a query
 // (`migrate`, `db:show`, the cache), and a handle that is used for the first time after it refuses instead of opening a pool nothing closes.
 
@@ -38,8 +39,26 @@ describe.each(Object.keys(ways) as Array<keyof typeof ways>)('destroy() after a 
       const connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
       await sql`select 1`.execute(ways[way](connections));
       const name = new URL((fresh.options as { url: string }).url).pathname.slice(1);
-      await connections.destroy();
       const count = async () => Number((await sql<{ n: string }>`select count(*) as n from pg_stat_activity where datname = ${name}`.execute(admin.get())).rows[0]!.n);
+      expect(await count()).toBeGreaterThan(0); // the control: the count sees a session while the connection is open
+      await connections.destroy();
+      expect(await sessions(count)).toBe(0);
+    } finally {
+      await admin.destroy();
+      await fresh.drop();
+    }
+  });
+
+  it.runIf(MYSQL_URL !== undefined)('leaves no MySQL session', { timeout: 30_000 }, async () => {
+    const fresh = await freshDatabase('mysql');
+    const admin = new Kysely<any>({ dialect: createMysqlDialect({ url: MYSQL_URL!, poolMax: 1 }) });
+    try {
+      const connections = new Connections({ connections: { default: fresh.options }, root: '/', logger: silent });
+      await sql`select 1`.execute(ways[way](connections));
+      const name = new URL((fresh.options as { url: string }).url).pathname.slice(1);
+      const count = async () => Number((await sql<{ n: string }>`select count(*) as n from information_schema.processlist where db = ${name}`.execute(admin)).rows[0]!.n);
+      expect(await count()).toBeGreaterThan(0); // the control: the count sees a session while the connection is open
+      await connections.destroy();
       expect(await sessions(count)).toBe(0);
     } finally {
       await admin.destroy();
@@ -88,6 +107,13 @@ it('closes a Postgres connection whose first query failed, without throwing', { 
   await expect(connections.destroy()).resolves.toBeUndefined();
 });
 
+// No server needed: nothing listens on port 1, so the first query fails at once.
+it('closes a MySQL connection whose first query failed, without throwing', { timeout: 30_000 }, async () => {
+  const connections = new Connections({ connections: { default: { driver: 'mysql', url: 'mysql://nobody:nothing@127.0.0.1:1/none' } }, root: '/', logger: silent });
+  await sql`select 1`.execute(connections.get()).catch(() => undefined);
+  await expect(connections.destroy()).resolves.toBeUndefined();
+});
+
 describe.each(['migrator', 'inspection'] as const)('a query of the %s connection after it ran one and destroy() closed it', (way) => {
   const closed = 'The database connections are closed (the application shut down); cannot use "default".';
 
@@ -103,6 +129,15 @@ describe.each(['migrator', 'inspection'] as const)('a query of the %s connection
   // No server needed: the refusal comes before the client library is asked for a connection.
   it('names the shutdown on Postgres', async () => {
     const connections = new Connections({ connections: { default: { driver: 'pgsql', url: 'postgres://nobody:nothing@127.0.0.1:1/none' } }, root: '/', logger: silent });
+    const handle = ways[way](connections);
+    await sql`select 1`.execute(handle).catch(() => undefined);
+    await connections.destroy();
+    await expect(sql`select 1`.execute(handle)).rejects.toThrow(closed);
+  });
+
+  // No server needed: the refusal comes before the client library is asked for a connection.
+  it('names the shutdown on MySQL', async () => {
+    const connections = new Connections({ connections: { default: { driver: 'mysql', url: 'mysql://nobody:nothing@127.0.0.1:1/none' } }, root: '/', logger: silent });
     const handle = ways[way](connections);
     await sql`select 1`.execute(handle).catch(() => undefined);
     await connections.destroy();

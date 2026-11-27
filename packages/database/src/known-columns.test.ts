@@ -2,12 +2,13 @@ import { join } from 'node:path';
 import type { ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { appOf as fakeApp, drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { appOf as fakeApp, driversWithMysql, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { inspectionConnection } from './migrator-connection.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections, Migrator, Repository } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
+
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const older: ModuleDefinition[] = [{ name: 'lockers', migrations: fixtures('known-columns-old') }];
@@ -20,7 +21,8 @@ class Lockers extends Repository<'lockers', any> {
 
 // The release that added `recovery_secret` (a secret column) runs `migrate`; a process of the release before it keeps serving until
 // it is replaced. It has never heard of the column, so it must not hand it out.
-describe.each(drivers)('selectAll() and returningAll() spell out the columns the migrations know, on %s', (driver) => {
+// Also runs on MySQL: the variable MARMEON_TEST_MYSQL_URL of `pnpm test:mysql`; this mention selects the file for it.
+describe.each(driversWithMysql)('selectAll() and returningAll() spell out the columns the migrations know, on %s', (driver) => {
   let options: ConnectionOptions;
   let drop: () => Promise<void>;
   const opened: Connections[] = [];
@@ -60,12 +62,14 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
   afterAll(() => drop());
 
   const keys = (rows: readonly object[]) => Object.keys(rows[0]!).sort();
+  /** An identifier as the driver quotes it. */
+  const quoted = (...names: string[]) => names.map((name) => (driver === 'mysql' ? `\`${name}\`` : `"${name}"`)).join('.');
 
   it('writes the columns of a table without secrets into the statement — the up-to-date process as well', async () => {
     for (const kysely of [db, ahead]) {
       await kysely.selectFrom('items').selectAll().execute(); // the schema is loaded with the first query
       const { sql: text } = kysely.selectFrom('items').selectAll().compile();
-      expect(text).toBe('select "items"."id", "items"."locker_id", "items"."label" from "items"');
+      expect(text).toBe(`select ${quoted('items', 'id')}, ${quoted('items', 'locker_id')}, ${quoted('items', 'label')} from ${quoted('items')}`);
     }
   });
 
@@ -85,6 +89,22 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
   });
 
   it('leaves it out of returning-all on insert, update, delete and upsert', async () => {
+    if (driver === 'mysql') {
+      // A pinned gap: MySQL has no RETURNING, no form of it exists yet, and the statement is sent as it is: every one is a syntax error (1064).
+      const refused = { code: 'ER_PARSE_ERROR', errno: 1064 };
+      await expect(ahead.insertInto('lockers').values({ name: 'grace' }).returningAll().execute()).rejects.toMatchObject(refused);
+      await expect(ahead.updateTable('lockers').set({ name: 'turing' }).returningAll().execute()).rejects.toMatchObject(refused);
+      await expect(ahead.deleteFrom('lockers').returningAll().execute()).rejects.toMatchObject(refused);
+      await expect(
+        ahead
+          .insertInto('lockers')
+          .values({ id: 1, name: 'hopper' })
+          .onConflict((oc: any) => oc.column('id').doUpdateSet({ name: 'hopper' }))
+          .returningAll()
+          .execute(),
+      ).rejects.toMatchObject(refused);
+      return;
+    }
     const inserted = await ahead.insertInto('lockers').values({ name: 'grace' }).returningAll().execute();
     expect(keys(inserted)).toEqual(['id', 'name']);
     const upserted = await ahead
@@ -104,6 +124,11 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
     const locker = (await lockers.query().selectAll().execute())[0]!;
     expect(locker).toEqual({ id: expect.anything(), name: 'ada' });
     expect(await lockers.find(locker.id as never)).toEqual(locker);
+    if (driver === 'mysql') {
+      // A relation inside a query does not run on MySQL yet.
+      await expect(async () => (ahead.selectFrom('lockers').select('name') as any).with('items').execute()).rejects.toThrow('[marmeon:D29]');
+      return;
+    }
     const withEntries = await (ahead.selectFrom('lockers').select('name') as any).with('items').execute();
     expect(withEntries).toEqual([{ name: 'ada', items: [{ id: expect.anything(), locker_id: locker.id, label: 'main' }] }]);
     const entry = await (ahead.selectFrom('items').select('label') as any).with('locker').execute();
@@ -131,7 +156,7 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
     await ahead.selectFrom('lockers').selectAll().execute(); // loads the schema, so the guard sees the query when it is compiled
     const counted = ahead.selectFrom('lockers').innerJoin('items', 'items.locker_id', 'lockers.id').select((eb: any) => eb.fn.countAll('items').as('n'));
     if (driver === 'pgsql') expect(await counted.execute()).toEqual([{ n: 1 }]);
-    else expect(counted.compile().sql).toContain('count("items".*)');
+    else expect(counted.compile().sql).toContain(`count(${quoted('items')}.*)`);
     await expect(ahead.selectFrom('status').select((eb: any) => eb.fn('json_object', [eb.table('status')]).as('j')).execute()).rejects.toThrow(/\[marmeon:D9\]/);
     expect(await ahead.selectFrom('status').select('status').execute()).toEqual([]);
   });
@@ -145,7 +170,9 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
       // A catalog's table is not the migrations' table of the same name.
       expect(ahead.selectFrom('information_schema.lockers').selectAll().compile().sql).toBe('select * from "information_schema"."lockers"');
     } else {
-      expect(keys(await ahead.selectFrom('main.lockers').selectAll().execute())).toEqual(['id', 'name']);
+      // SQLite names its own database `main`; on MySQL the schema is the database of the connection.
+      const schema = driver === 'mysql' ? new URL((options as { url: string }).url).pathname.slice(1) : 'main';
+      expect(keys(await ahead.selectFrom(`${schema}.lockers`).selectAll().execute())).toEqual(['id', 'name']);
     }
   });
 
@@ -155,7 +182,7 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
       const kysely = connections.get<any>();
       await sql`create table lockers (id integer primary key, name text)`.execute(kysely);
       await kysely.selectFrom('lockers').selectAll().execute();
-      expect(kysely.selectFrom('lockers').selectAll().compile().sql).toBe('select * from "lockers"');
+      expect(kysely.selectFrom('lockers').selectAll().compile().sql).toBe(`select * from ${quoted('lockers')}`);
     } finally {
       await close();
     }
@@ -170,13 +197,14 @@ describe.each(drivers)('selectAll() and returningAll() spell out the columns the
     await sql`create table legacy (id integer primary key, note text)`.execute(ahead);
     await sql`insert into legacy (id, note) values (1, 'kept')`.execute(ahead);
     expect(await ahead.selectFrom('legacy').selectAll().execute()).toEqual([{ id: 1, note: 'kept' }]);
-    expect(await ahead.insertInto('legacy').values({ id: 2, note: 'also' }).returningAll().execute()).toEqual([{ id: 2, note: 'also' }]);
+    if (driver === 'mysql') await ahead.insertInto('legacy').values({ id: 2, note: 'also' }).execute(); // no `returning` on MySQL
+    else expect(await ahead.insertInto('legacy').values({ id: 2, note: 'also' }).returningAll().execute()).toEqual([{ id: 2, note: 'also' }]);
     expect((await sql`select 1`.execute(ahead)).rows).toHaveLength(1);
-    expect(ahead.selectFrom('legacy').selectAll().compile().sql).toBe('select * from "legacy"');
+    expect(ahead.selectFrom('legacy').selectAll().compile().sql).toBe(`select * from ${quoted('legacy')}`);
   });
 
   it('leaves the catalogs alone', async () => {
-    const catalog = driver === 'sqlite' ? 'sqlite_master' : 'pg_catalog.pg_tables';
+    const catalog = { sqlite: 'sqlite_master', pgsql: 'pg_catalog.pg_tables', mysql: 'information_schema.tables' }[driver];
     const rows = await ahead.selectFrom(catalog).selectAll().execute();
     expect(rows.length).toBeGreaterThan(0);
   });

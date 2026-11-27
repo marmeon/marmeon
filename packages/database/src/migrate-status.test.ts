@@ -4,9 +4,10 @@ import { Output, type CommandInput } from 'marmeon';
 import { sql } from 'kysely';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { migratorConnection } from './migrator-connection.ts';
-import { drivers, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections, freshDatabase, silent } from './__fixtures__/databases.ts';
 import { MigrateStatusCommand } from './commands/migrate.ts';
 import { Connections, MigrationStateError, Migrator } from './index.ts';
+
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const fixture = JSON.parse(readFileSync(new URL('./__fixtures__/formats/cli-migrate-status/v1.json', import.meta.url), 'utf8')) as Record<string, unknown>;
@@ -30,7 +31,8 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe.each(drivers)('migrate:status --json (%s)', (driver) => {
+// Also runs on MySQL: the variable MARMEON_TEST_MYSQL_URL of `pnpm test:mysql`; this mention selects the file for it.
+describe.each(driversWithMysql)('migrate:status --json (%s)', (driver) => {
   const setup = async (modules: ModuleDefinition[]) => {
     const { connections, close } = await freshConnections(driver, { record: false });
     return { connections, close, command: new MigrateStatusCommand(migrator(connections, modules)) };
@@ -165,7 +167,8 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
   });
 });
 
-describe.each(drivers)('migrate:status --json on another connection (%s)', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('migrate:status --json on another connection (%s)', (driver) => {
   const auth: ModuleDefinition = { name: 'auth', migrations: fixtures('auth') };
   const system: ModuleDefinition = { name: 'system', migrations: fixtures('system') };
   const other: ModuleDefinition = { name: 'other', migrations: fixtures('other') };

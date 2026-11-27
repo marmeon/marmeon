@@ -1,15 +1,13 @@
-import { readFileSync } from 'node:fs';
 import type { Application } from '@marmeon/core';
-import { Output, type CommandInput } from 'marmeon';
+import { Output } from 'marmeon';
 import { Kysely, sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { freshConnections, freshDatabase, MYSQL_URL, silent, withMysql } from './__fixtures__/databases.ts';
 import { DbShowCommand } from './commands/db-show.ts';
-import { MigrateStatusCommand } from './commands/migrate.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections } from './connections.ts';
+import { SchemaError } from './index.ts';
 import { deriveRelations, introspect, tableColumns } from './introspection.ts';
-import { migrationChecksum } from './migrations/checksum.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
 import { Migrator } from './migrations/migrator.ts';
@@ -217,36 +215,6 @@ withMysql('the catalog of MySQL', () => {
         expect(metadata.primaryKeys.get('users')).toEqual(['id']);
         expect(metadata.relations.get('pets')?.get('user')).toMatchObject({ kind: 'belongsTo', table: 'users', foreignKey: 'user_id', targetKey: 'id' });
         expect(metadata.relations.get('users')?.get('pets')).toMatchObject({ kind: 'hasMany', table: 'pets', foreignKey: 'user_id' });
-      } finally {
-        await close();
-      }
-    });
-  });
-
-  describe('migrate:status', () => {
-    // The record is made as `migrate` makes it, and filled by hand.
-    it('lists the migrations that ran with their batch and those that are pending', async () => {
-      const { connections, close } = await freshConnections('mysql', { record: false });
-      try {
-        const start = migrator(connections, 'auth', 'accounts');
-        await createMigrationsTable(migratorConnection(connections), 'mysql');
-        const file = start.files().find((f) => f.module === 'auth')!;
-        await sql`insert into migrations (name, module, batch, checksum) values (${file.name}, 'auth', 1, ${migrationChecksum(readFileSync(file.path))})`.execute(migratorConnection(connections));
-        const stdout: string[] = [];
-        vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));
-        try {
-          const code = await new MigrateStatusCommand(start).handle({ args: [], options: { json: true }, output: new Output(), root: '/' } as unknown as CommandInput);
-          expect(code).toBe(0);
-        } finally {
-          vi.restoreAllMocks();
-        }
-        const document = JSON.parse(stdout.join('')) as { migrations: { module: string; batch: number | null; status: string }[]; warnings: string[] };
-        expect(document.migrations.map((m) => [m.module, m.batch, m.status])).toEqual([
-          ['auth', 1, 'ran'],
-          ['accounts', null, 'pending'],
-          ['accounts', null, 'pending'],
-        ]);
-        expect(document.warnings).toEqual([]);
       } finally {
         await close();
       }
@@ -464,6 +432,25 @@ withMysql('the catalog of MySQL', () => {
       const error = await limited.get<any>().selectFrom('things').select('id').execute().then(() => undefined, (e: unknown) => e);
       expect(error).toMatchObject({ name: 'MigrationStateError', reason: 'newer' });
       expect((error as Error).message).toMatch(/^\[marmeon:D1\] The table of interrupted migrations \(migration_interruption\) of the database connection "default" has the columns name, not/);
+    });
+
+    // The catalog hands a role only the tables it has a privilege on, so a table it cannot see looks as if it were dropped. `migrate` has
+    // to read that as a refusal (D3) before any marker or statement, never as a database where the table was never made.
+    it('makes `migrate` fail closed for a role that does not see a table the record says is there, with D3, and writes nothing', async () => {
+      const { owner, name, grant } = await withRole(
+        (database, user) => ['migrations', 'migration_interruption'].map((table) => `grant select, insert, delete on ${'`' + database + '`'}.${table} to '${user}'@'%'`),
+        { managed: true },
+      );
+      await migrator(owner, 'auth').migrate();
+      const limited = await grant();
+      const error = await migrator(limited, 'auth', 'blog').migrate().then(() => undefined, (e: unknown) => e);
+      expect(error).toBeInstanceOf(SchemaError);
+      expect((error as Error).message).toMatch(/^\[marmeon:D3\] The database connection "default" already lacks the table users/);
+      const tables = (await sql<{ n: string }>`select table_name as n from information_schema.tables where table_schema = ${name}`.execute(admin)).rows.map((row) => row.n).sort();
+      expect(tables).toEqual(['migration_interruption', 'migrations', 'users']); // neither posts nor articles
+      // The precheck refused before the marker was written, so nothing is marked halfway and the record is as the owner left it.
+      expect(await migratorConnection(owner).selectFrom('migration_interruption').selectAll().execute()).toEqual([]);
+      expect(await migratorConnection(owner).selectFrom('migrations').select('module').execute()).toEqual([{ module: 'auth' }]);
     });
 
     it('a table the role cannot see is missing from the reads of the catalog, with its keys', async () => {
