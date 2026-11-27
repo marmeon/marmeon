@@ -154,9 +154,11 @@ export class PagePublishing {
 
 A list that mixes rows and keys throws a `TypeError`, and so does a key that is neither a safe integer nor a string of 1 to 253
 characters, well-formed Unicode without the NUL character. An index class that no module or provider registers throws a
-`TypeError` too. `42` and `"42"` are two keys. Pass a key with the type of its column: a key that the database finds only as the
-other type throws a `TypeError`, because indexing it would leave the document of the row as it was. On a driver that writes
-through the queue, the job finds the mismatch when it runs and fails the attempt instead.
+`TypeError` too. `42` and `"42"` are two keys. Pass each key exactly as its column holds it. A key that the database matches only
+in another spelling throws a `TypeError`, because indexing it would leave the document of the row as it was: `"42"` or `"042"` for
+the integer `42`, and `"About"` for the row `about` in a column that compares without case, such as one with `collate nocase` on
+SQLite or of the type `citext` on Postgres. On a driver that writes through the queue, the job finds the mismatch when it runs and
+fails the attempt instead.
 
 `index()` reads every row again through `source()`, in batches of 500 keys, and indexes the row as `source()` returns it. A row
 you pass counts only for its key, so a column that `source()` leaves out never reaches the index. A key whose row is gone, or whose
@@ -182,7 +184,7 @@ The driver decides how a change reaches its index:
 | --- | --- | --- |
 | In the transaction | `database` | The documents are written inside your [transaction](transactions.md). Outside one, each batch is written in a transaction of its own. |
 | Through the queue | `meilisearch` | Search queues the job `marmeon.search.sync` with the name of the index and the keys, never the text. Inside a transaction the job is held for the commit, like [any dispatch](queues.md#inside-a-transaction). |
-| After the commit | the fake in tests | Search reads the documents at the call and hands them to the driver once the transaction has committed. |
+| After the commit | the fake in tests | Search reads the documents at the call and hands them to the driver once the transaction has committed. Then it reads the rows again and writes once more while they changed, up to three writes, so a slower write of an older state never stays in the index. A row that changes again after each of the three writes makes the call throw, after the commit. |
 
 In every mode, a rollback leaves nothing in the index. A driver that writes through the queue needs `@marmeon/queue`, and without it
 the start stops with [Q9](errors.md#server-error-codes). The job reads its rows when it runs and writes the state they have then, so of
@@ -198,9 +200,11 @@ the job, the other rows of its batch are written, and the attempt fails with the
 type whose row still exists fails the attempt the same way, and that row's document is removed too. A job whose index no class declares any more fails for good, and stays in the failed jobs.
 
 With a driver that writes through the queue, `remove()` queues the same job. That job reads the row when it runs, so a row that
-still exists and that `includes()` keeps comes back. Call `remove()` after you delete a row. After the row is deleted, a key of the other type, `"42"` for the key `42`, removes nothing,
-and the document of the row stays in the index. To take a row out that stays, let
-`includes()` refuse it and call `index()`.
+still exists and that `includes()` keeps comes back. Call `remove()` after you delete a row. `remove()` takes out the documents of
+exactly the keys you pass. On a driver that writes in the transaction or after the commit, and on any driver once the row is
+deleted, a key in another spelling, such as `"42"` for the key `42` or `"About"` for the key `about`, removes nothing, and the
+document of the row stays in the index.
+To take a row out that stays, let `includes()` refuse it and call `index()`.
 
 ## Searching
 
@@ -408,6 +412,32 @@ document, it reads the text of each weight with the text search configuration of
   `1`, and `"1"` does not match `1`.
 - **No typo tolerance.** Postgres finds a word only as it is written, or one of its forms. `hosue` does not find "house". If your
   users need search that forgives typos, Meilisearch does that better.
+- **Size.** Postgres keeps at most 1 048 575 bytes in one `tsvector`. A document of 200 000 characters stays below that in
+  ordinary text, but many distinct long words can pass it, such as hyphenated compounds in Chinese. `search.index()` then writes
+  the other documents of the call, every batch of them, removes the old document of that key and throws an `Error` that names the index, the key and
+  the limit. Outside a transaction, the call commits those writes before it throws. Inside yours, they are part of your
+  transaction: they stay if you catch the error and commit. A [rebuild](#rebuilding-and-flushing) reports such a key and goes on.
+- **Concurrent writes.** Two writes of one document never interleave. Before `index()`, `remove()` or a rebuild batch writes,
+  search takes an advisory lock for each document until the transaction ends, so the write that reads last also writes last.
+  The locks use the two-key form of `pg_advisory_xact_lock` with the first key 1397900104 (`SRCH` in ASCII), so they never meet a
+  lock with one 64-bit key, such as the one of `marmeon migrate`. Each index has 128 locks that its documents share, so one
+  transaction holds at most 128 of them per index, however many keys it writes. Two documents that share a lock wait for each
+  other too: a large import that indexes its rows inside one long transaction holds most of the locks of that index until it
+  commits, and the other writes of that index wait for it.
+- **Deadlocks.** Search locks the keys of one batch, up to 500, in a fixed order, so one call of up to 500 keys never deadlocks
+  with another call. Several `index()` or `remove()` calls on one index in one transaction, or a call of more than 500 keys in
+  yours, can deadlock with another transaction that holds a lock they need, even one that writes none of the same documents, since
+  documents share locks. Postgres then aborts one of the two with a deadlock error. Index the rows of one index in one call per
+  transaction where you can.
+- **Rebuilds give way.** A rebuild batch waits for each lock at most 200 milliseconds, and for all of its locks at most half of
+  the `deadlock_timeout` of the database, 500 milliseconds by default. Then it rolls back and tries again after a short pause. Your
+  transaction can only wait for a lock the batch already holds, so it has waited less than `deadlock_timeout` when the batch lets
+  go, and Postgres never aborts your transaction for a deadlock with a rebuild, as long as `deadlock_timeout` is well above the
+  time a statement takes to reach the database, as the default is. A batch that cannot get its locks for about half a
+  minute stops the rebuild with exit code 1, and the next run goes on from that batch. When a rebuild keeps backing off under heavy
+  writes, run it with a smaller `--batch`.
+
+On SQLite one transaction writes at a time, so it needs none of these locks.
 
 Like the text columns, `vector` is a column the migration makes with raw SQL, and `marmeon db:query` and the database MCP treat it as
 secret.
@@ -527,7 +557,10 @@ The rebuild reads the rows through `source()`, in the order of the key, 500 at a
 Each row goes through `includes()` and `toDocument()` as with `search.index()`, so a row that does not belong loses its document. The
 rebuild prints one line per batch with the documents written and removed so far, and at the end the totals and the time it took.
 It prints no text of a document. A row that `toDocument()` cannot turn into a document stops the rebuild with exit code 1 and the
-error, and the next run goes on from there.
+error, and the next run goes on from there. On Postgres, a document whose text is [too long](#postgres) for the database is
+reported instead: the rebuild prints the error, writes the other documents of the batch, removes the old document of that key and
+goes on. At the end it exits with code 1 and names the keys. A run that stops and goes on later names only the keys of its own
+batches, so run `search:rebuild --fresh` to see them all again.
 
 A rebuild keeps its state in the table `search_rebuilds`, so it needs the [migration of the package](#the-database-driver) on every
 driver, Meilisearch included. After each batch, it saves the last key as a checkpoint. A run that stops, because it failed or because

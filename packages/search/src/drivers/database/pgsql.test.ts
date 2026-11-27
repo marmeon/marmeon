@@ -673,3 +673,39 @@ describe.skipIf(!PGSQL_URL)('the database driver on Postgres at the start and th
     expect(unknown).toEqual([]);
   });
 });
+
+/** Rows of a table whose key column is `citext`: Postgres compares it without case. */
+class TagIndex extends SearchIndex<{ slug: string; title: string }> {
+  static readonly index = 'tags';
+  static readonly key = 'slug';
+  static readonly fields = { title: 'A' } as const;
+
+  source(db: Database) {
+    return (db as unknown as Connection<{ tags: { slug: string; title: string } }>).selectFrom('tags').select(['slug', 'title']);
+  }
+
+  toDocument(row: { slug: string; title: string }): SearchDocument<typeof TagIndex> {
+    return { fields: { title: row.title } };
+  }
+}
+
+describe.skipIf(!PGSQL_URL)('the database driver on Postgres: keys in another spelling', () => {
+  it('refuses "About" for the row "about" of a citext key column, and an integer key given as "042"', async () => {
+    const { app, close } = await migratedApp('pgsql', [TagIndex, PageIndex]);
+    running.push(close);
+    const db = app.container.make(Connections).get();
+    await sql`create extension if not exists citext`.execute(db);
+    await sql`create table tags (slug citext primary key, title text not null)`.execute(db);
+    await sql`insert into tags (slug, title) values ('about', 'About us')`.execute(db);
+    const search = app.container.make(Search);
+    await search.index(TagIndex, 'about');
+    await expect(search.index(TagIndex, 'About')).rejects.toThrow(
+      new TypeError('TagIndex.source() returned the row with the key "about" for none of the keys asked for: the database matched a key of another type or spelling. Pass keys exactly as the column "slug" holds them.'),
+    );
+    await insertPage(db, { id: 42 });
+    await expect(search.index(PageIndex, '042' as never)).rejects.toThrow(
+      new TypeError('PageIndex.source() returned the row with the key 42 for none of the keys asked for: the database matched a key of another type or spelling. Pass keys exactly as the column "id" holds them.'),
+    );
+    expect((await sql<{ key: string }>`select key from search_documents order by key`.execute(db)).rows.map((row) => row.key)).toEqual(['"about"']);
+  });
+});

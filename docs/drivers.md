@@ -453,9 +453,9 @@ A driver declares in `writes` how search brings changes to it:
 
 | `writes` | What search does |
 | --- | --- |
-| `'transaction'` | Calls `upsert()` and `delete()` inside the caller's database transaction, or inside a transaction of its own per batch. The driver writes through the app's database, so a rollback takes its writes back. |
+| `'transaction'` | Calls `upsert()` and `delete()` inside the caller's database transaction, or inside a transaction of its own per batch. The driver writes through the app's database, so a rollback takes its writes back. On Postgres, search first takes transaction-scoped advisory locks on the slots of its documents (see [Postgres](full-text-search.md#postgres)), so two writes of one document never interleave. |
 | `'queue'` | Queues the job `marmeon.search.sync` with the index name and the keys. The job reads the rows when it runs and calls `upsert()` and `delete()`. The app needs `@marmeon/queue`, or the start stops with [Q9](errors.md#server-error-codes). |
-| `'after-commit'` | Reads the documents at the call and calls `upsert()` and `delete()` once the transaction has committed, never after a rollback. The writes of two calls that run at the same time are not ordered: a driver whose writes can overtake each other keeps the order itself. |
+| `'after-commit'` | Reads the documents at the call and calls `upsert()` and `delete()` once the transaction has committed, never after a rollback. After a write of `index()` it reads the rows again and writes once more while they changed, up to three writes; a row that changes after each of them makes the call throw. The read follows the write, so `upsert()` and `delete()` resolve only once the write is applied, and a driver whose writes can still overtake each other keeps the order itself. `remove()` is not read again. |
 
 Search checks what it hands to the driver, and what the driver hands back:
 

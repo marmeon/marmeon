@@ -2,7 +2,9 @@ import { createApplication, defineModule, type Application, type ServiceProvider
 import { Connections, DatabaseServiceProvider, sql, type Connection, type Database } from '@marmeon/database';
 import { AssertionError } from 'node:assert';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { DriverQuery } from './driver.ts';
 import { SearchFake } from './fake.ts';
+import type { IndexInfo } from './registry.ts';
 import { SearchServiceProvider } from './provider.ts';
 import { Search, type SearchRequest } from './search.ts';
 import { SearchIndex, type SearchDocument, type SearchIndexClass } from './search-index.ts';
@@ -239,6 +241,35 @@ describe('SearchFake searches', () => {
     // Fail closed, as with the real drivers: Search refuses before the fake is asked.
     await expect(search.query({ in: PageIndex, term: 'plan', filters: { tenant: undefined as never } })).rejects.toThrow(TypeError);
     await expect(search.query({ in: PageIndex, term: 'plan', filters: { tenant: [] as never } })).rejects.toThrow(TypeError);
+  });
+
+  it('refuses filters a test hands the fake itself in a shape that Search.query() refuses', async () => {
+    const fake = new SearchFake();
+    const info: IndexInfo = { name: 'pages', key: 'id', fields: [{ name: 'title', weight: 'A' }], filters: ['audience'] };
+    await fake.upsert(info, [{ key: 1, locale: null, fields: { title: 'Plan' }, filters: { audience: 'members' } }]);
+    const query = (filters: unknown): DriverQuery => ({ indexes: [info], tokens: ['plan'], term: 'plan', filters: filters as DriverQuery['filters'], prefix: false, excerpts: false, offset: 0, limit: 20 });
+    const hidden = {};
+    Object.defineProperty(hidden, 'audience', { value: 'public', enumerable: false });
+    const shapes: [string, unknown][] = [
+      ['a Map', new Map([['audience', 'public']])],
+      ['an inherited key', Object.create({ audience: 'public' })],
+      ['a non-enumerable key', hidden],
+      ['a symbol key', { audience: 'members', [Symbol('audience')]: 'public' }],
+    ];
+    for (const [shape, filters] of shapes) {
+      await expect(fake.query(query(filters)), shape).rejects.toThrow(new TypeError('The search filters must be a plain object with enumerable string keys.'));
+    }
+    await expect(fake.query(query({ audience: [] }))).rejects.toThrow(new TypeError('The search filter "audience" got an empty list, which would match nothing.'));
+    // A hole in a list is a value too, and no scalar: `.map()` would skip it.
+    const values: [string, unknown][] = [['undefined', undefined], ['null', null], ['an object', {}], ['NaN', Number.NaN], ['a list with undefined', [undefined]], ['a list with a hole', Object.assign([], { length: 1 })]];
+    for (const [shape, value] of values) {
+      await expect(fake.query(query({ audience: value })), shape).rejects.toThrow(new TypeError('The search filter "audience" must be a string, a finite number or a boolean, or a non-empty list of them.'));
+    }
+    // The filter still decides what a plain object finds.
+    const members = await fake.query(query({ audience: 'members' }));
+    expect(members.ok && members.value.hits.map((hit) => hit.key)).toEqual([1]);
+    const visitors = await fake.query(query({ audience: 'public' }));
+    expect(visitors.ok && visitors.value.hits).toEqual([]);
   });
 
   it('keeps documents of the asked locale and documents without one', async () => {

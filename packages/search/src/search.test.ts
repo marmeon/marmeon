@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SearchDriver, type SearchDriverFactory } from './driver.ts';
 import { SearchSetupError } from './errors.ts';
 import { SearchServiceProvider } from './provider.ts';
-import { canonicalLocale, MAX_DOCUMENT_LENGTH, Search } from './search.ts';
+import { canonicalLocale, IndexReader, MAX_DOCUMENT_LENGTH, Search } from './search.ts';
 import { SearchIndex, type SearchDocument, type SearchIndexClass } from './search-index.ts';
 import { SyncSearchDocuments } from './sync-job.ts';
 import { MemoryDriver } from './test-helpers/memory-driver.ts';
@@ -29,7 +29,7 @@ interface PostRow {
   audience: string;
 }
 
-type Tables = { pages: PageRow; posts: PostRow };
+type Tables = { pages: PageRow; posts: PostRow; notes: PostRow };
 
 /** How often `source()` was called — Search reads every row through it. */
 const reads = { pages: 0 };
@@ -70,6 +70,22 @@ class PostIndex extends SearchIndex<PostRow> {
   }
 
   toDocument(row: PostRow): SearchDocument<typeof PostIndex> {
+    return { fields: { title: row.title }, filters: { audience: row.audience } };
+  }
+}
+
+/** Rows of a table whose key column compares without case (`collate nocase`). */
+class NoteIndex extends SearchIndex<PostRow> {
+  static readonly index = 'notes';
+  static readonly key = 'slug';
+  static readonly fields = { title: 'A' } as const;
+  static readonly filters = ['audience'] as const;
+
+  source(db: Database) {
+    return (db as unknown as Connection<Tables>).selectFrom('notes').select(['slug', 'title', 'audience']);
+  }
+
+  toDocument(row: PostRow): SearchDocument<typeof NoteIndex> {
     return { fields: { title: row.title }, filters: { audience: row.audience } };
   }
 }
@@ -130,7 +146,7 @@ async function start(writes: SearchDriver['writes']): Promise<Started> {
         SearchServiceProvider,
         plugin(({ container }) => (holder.driver = new MemoryDriver(writes, writes === 'transaction' ? () => container.make(Connections) : undefined))),
       ],
-      modules: [defineModule({ name: 'pages', searchIndexes: [PageIndex, PostIndex, ShapedIndex] })],
+      modules: [defineModule({ name: 'pages', searchIndexes: [PageIndex, PostIndex, ShapedIndex, NoteIndex] })],
     },
     {
       env: { LOG_LEVEL: 'silent', NODE_ENV: 'test', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', SEARCH_DRIVER: 'memory', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' },
@@ -149,6 +165,7 @@ async function start(writes: SearchDriver['writes']): Promise<Started> {
   const db = connections.get();
   await sql`create table pages (id integer primary key, title text not null, body text, audience text not null, tenant integer, locale text, published integer not null)`.execute(db);
   await sql`create table posts (slug text primary key, title text not null, audience text not null)`.execute(db);
+  await sql`create table notes (slug text collate nocase primary key, title text not null, audience text not null)`.execute(db);
   if (writes === 'transaction') await MemoryDriver.createTable(connections);
   return { app, driver: holder.driver!, search: app.container.make(Search), connections, queue: holder.queue };
 }
@@ -216,7 +233,8 @@ describe('Search reads every row through source()', () => {
     await insertPage(connections, { id: 1, title: 'Stored title' });
     const before = reads.pages;
     await search.index(PageIndex, { id: 1, title: 'Passed title', body: null, audience: 'secret', tenant: null, locale: null, published: 1 });
-    expect(reads.pages).toBe(before + 1);
+    // Read at the call, and once more after the write after the commit, to see whether the row changed meanwhile.
+    expect(reads.pages).toBe(before + 2);
     expect(await driver.documents('pages')).toEqual([{ key: 1, locale: null, fields: { title: 'Stored title', body: 'about whales' }, filters: { audience: 'public' } }]);
   });
 
@@ -277,10 +295,31 @@ describe('Search reads every row through source()', () => {
     const { search, driver, connections } = await start('after-commit');
     await insertPage(connections, { id: 42 });
     await search.index(PageIndex, 42);
-    await expect(search.index(PageIndex, '42' as never)).rejects.toThrow(
-      new TypeError('The key "42" is a string, but the column "id" of PageIndex holds the number 42. Pass keys with the type of the column.'),
+    const refusal = new TypeError(
+      'PageIndex.source() returned the row with the key 42 for none of the keys asked for: the database matched a key of another type or spelling. Pass keys exactly as the column "id" holds them.',
     );
+    await expect(search.index(PageIndex, '42' as never)).rejects.toThrow(refusal);
+    // SQLite reads "042" as the integer 42 too.
+    await expect(search.index(PageIndex, '042' as never)).rejects.toThrow(refusal);
     expect(driver.calls.map((call) => call.keys)).toEqual([[42]]);
+  });
+
+  it('refuses a key in another case that a case-insensitive key column matches, and the job removes that row\'s document', async () => {
+    const { app, search, driver, connections } = await start('after-commit');
+    await sql`insert into notes (slug, title, audience) values ('about', 'About us', 'public')`.execute(connections.get());
+    await search.index(NoteIndex, 'about');
+    expect(await keys(driver, 'notes')).toEqual(['about']);
+    await expect(search.index(NoteIndex, 'About')).rejects.toThrow(
+      new TypeError('NoteIndex.source() returned the row with the key "about" for none of the keys asked for: the database matched a key of another type or spelling. Pass keys exactly as the column "slug" holds them.'),
+    );
+    // Tolerant, as the job reads: the row the database matched loses its document, and the key is reported.
+    const found = await app.container.make(IndexReader).read(NoteIndex, ['About'], { tolerant: true });
+    expect(found.documents).toEqual([]);
+    expect(found.removed.sort()).toEqual(['About', 'about']);
+    expect(found.failed.map((entry) => entry.key)).toEqual(['about']);
+    // remove() deletes the keys it is given: "About" is not the key of the document "about".
+    await search.remove(NoteIndex, 'About');
+    expect(await keys(driver, 'notes')).toEqual(['about']);
   });
 
   it('reads in batches of 500 keys', async () => {
@@ -351,12 +390,58 @@ describe('Search on a driver that writes after the commit', () => {
 
     await connections.transaction(async () => {
       await search.index(PageIndex, 1);
-      // A change after the call does not reach the document: it was computed at the call.
       await updateTitle(connections, 1, 'Later');
       expect(driver.calls).toEqual([]);
     });
-    expect(driver.calls).toMatchObject([{ method: 'upsert', inTransaction: false }]);
-    expect((await driver.documents('pages'))[0]?.fields).toEqual({ title: 'First', body: 'about whales' });
+    // The document read at the call is written after the commit; the read after it finds the change, so it is written again.
+    expect(driver.calls).toMatchObject([
+      { method: 'upsert', inTransaction: false },
+      { method: 'upsert', inTransaction: false },
+    ]);
+    expect((await driver.documents('pages'))[0]?.fields).toEqual({ title: 'Later', body: 'about whales' });
+  });
+
+  it('ends with the newest state when an older write lands after a newer one', async () => {
+    const { search, driver, connections } = await start('after-commit');
+    await insertPage(connections, { id: 1, audience: 'public' });
+    // The first write waits until the test lets it go; every later one runs at once.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let waiting!: () => void;
+    const reached = new Promise<void>((resolve) => (waiting = resolve));
+    const upsert = driver.upsert.bind(driver);
+    let first = true;
+    driver.upsert = async (index, documents) => {
+      if (first) {
+        first = false;
+        waiting();
+        await held;
+      }
+      await upsert(index, documents);
+    };
+    const older = connections.transaction(() => search.index(PageIndex, 1));
+    await reached;
+    await sql`update pages set audience = 'members' where id = 1`.execute(connections.get());
+    await connections.transaction(() => search.index(PageIndex, 1));
+    expect((await driver.documents('pages'))[0]?.filters).toEqual({ audience: 'members' });
+    release();
+    await older;
+    expect((await driver.documents('pages'))[0]?.filters).toEqual({ audience: 'members' });
+    expect(driver.calls.filter((call) => call.method === 'upsert')).toHaveLength(3);
+  });
+
+  it('fails the call when the rows change at each of three writes after the commit', async () => {
+    const { search, driver, connections } = await start('after-commit');
+    await insertPage(connections, { id: 1 });
+    const upsert = driver.upsert.bind(driver);
+    let count = 0;
+    driver.upsert = async (index, documents) => {
+      await upsert(index, documents);
+      count++;
+      await updateTitle(connections, 1, `Title ${count}`);
+    };
+    await expect(connections.transaction(() => search.index(PageIndex, 1))).rejects.toThrow('The rows of "pages" changed each of the 3 times search.index() wrote them after the commit; call it again.');
+    expect(count).toBe(3);
   });
 
   it('removes after the commit only', async () => {

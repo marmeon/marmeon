@@ -40,11 +40,34 @@ const shownKey = (key: SearchKey): string => {
   return text.length <= 80 ? text : `${text.slice(0, 80)}…`;
 };
 
+/** A filter value of a search as the fake compares it: a string, a finite number or a boolean, else a `TypeError`. */
+function filterScalar(value: unknown, name: string): FilterScalar {
+  if (typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) return value;
+  throw new TypeError(`The search filter "${name}" must be a string, a finite number or a boolean, or a non-empty list of them.`);
+}
+
+/**
+ * The filters of a search, checked for the shapes `Search.query()` refuses: an object that is not plain, a key that is not its own,
+ * enumerable string key, an empty list and a value that is no filter value. Reached only by a test that calls the fake itself.
+ */
+function checkedFilters(filters: unknown): [string, readonly FilterScalar[]][] {
+  // Only own enumerable string keys are read: a filter held anywhere else would drop out of the search, so anything else is refused.
+  const prototype: unknown = typeof filters === 'object' && filters !== null ? Object.getPrototypeOf(filters) : undefined;
+  if ((prototype !== Object.prototype && prototype !== null) || Reflect.ownKeys(filters as object).length !== Object.keys(filters as object).length) {
+    throw new TypeError('The search filters must be a plain object with enumerable string keys.');
+  }
+  return Object.entries(filters as Record<string, unknown>).map(([name, value]) => {
+    if (!Array.isArray(value)) return [name, [filterScalar(value, name)]];
+    if (value.length === 0) throw new TypeError(`The search filter "${name}" got an empty list, which would match nothing.`);
+    // Array.from hands a hole to the check as undefined.
+    return [name, Array.from(value as readonly unknown[], (one) => filterScalar(one, name))];
+  });
+}
+
 /** Whether a document carries, for every filter of the search, its value or one of its values — compared with type, `1` is not `true`. */
-function matchesFilters(carried: Readonly<Record<string, FilterScalar>>, wanted: DriverQuery['filters']): boolean {
-  for (const [name, value] of Object.entries(wanted)) {
+function matchesFilters(carried: Readonly<Record<string, FilterScalar>>, wanted: readonly (readonly [string, readonly FilterScalar[]])[]): boolean {
+  for (const [name, values] of wanted) {
     if (!Object.hasOwn(carried, name)) return false;
-    const values: readonly FilterScalar[] = Array.isArray(value) ? value : [value as FilterScalar];
     if (!values.some((entry) => entry === carried[name])) return false;
   }
   return true;
@@ -125,6 +148,7 @@ export class SearchFake implements SearchDriver {
   async query(request: DriverQuery): Promise<Result<DriverPage, SearchFailure>> {
     const failure = this.#failures.shift();
     if (failure !== undefined) return err(failure);
+    const filters = checkedFilters(request.filters);
     const tokens = request.tokens.map(fold);
     const found: DriverHit[] = [];
     for (const index of request.indexes) {
@@ -132,7 +156,7 @@ export class SearchFake implements SearchDriver {
       for (const document of this.#indexes.get(index.name)?.values() ?? []) {
         // With a locale, documents of that locale and documents without one; without, every document.
         if (request.locale !== undefined && document.locale !== null && document.locale !== request.locale) continue;
-        if (!matchesFilters(document.filters, request.filters)) continue;
+        if (!matchesFilters(document.filters, filters)) continue;
         const fields = Object.entries(document.fields).filter(([name]) => weights.has(name)).map(([name, text]) => ({ name, text, words: wordsOf(text) }));
         const asPrefix = (position: number) => request.prefix && position === tokens.length - 1;
         const matched = (word: Word) => tokens.some((token, position) => hits(word, token, asPrefix(position)));

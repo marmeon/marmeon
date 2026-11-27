@@ -11,7 +11,7 @@ import { MeilisearchClient } from './drivers/meilisearch/client.ts';
 import { documentId, MeilisearchDriver } from './drivers/meilisearch/driver.ts';
 import { Rebuilder, rebuildTarget, type RebuildHooks, type RebuildOptions } from './rebuild.ts';
 import { SearchIndexes, type IndexInfo } from './registry.ts';
-import { IndexReader, Search } from './search.ts';
+import { IndexReader, lockDocuments, Search } from './search.ts';
 import { SearchIndex, type SearchDocument } from './search-index.ts';
 import { SyncSearchDocuments } from './sync-job.ts';
 
@@ -238,6 +238,489 @@ describe.each(drivers)('Rebuilder on the database driver (%s)', (name) => {
     await sql`update pages set published = ${false} where id = 2`.execute(db);
     expect(await rebuilder(app).rebuild(PageIndex, run(500))).toEqual({ status: 'done', indexed: 2, removed: 1 });
     expect(await keysOfDocuments(db)).toEqual([1, 3]);
+  });
+
+  it('sweeps a stale document "42" in the batch of the document 42, and keeps 42', async () => {
+    const { app, db } = await start(name);
+    await insertPages(db, 42, 42);
+    const info = app.container.make(SearchIndexes).info(PageIndex);
+    // A document under the key "42", written before the key had the type of its column; then the document of the row 42 itself.
+    await app.container.make(SearchDriver).upsert(info, [{ key: '42', locale: null, fields: { title: 'Old' }, filters: { audience: 'public' } }]);
+    await app.container.make(Search).index(PageIndex, 42);
+    const outcome = await rebuilder(app).rebuild(PageIndex, run(500));
+    expect(outcome).toEqual({ status: 'done', indexed: 1, removed: 1 });
+    const stored = (await sql<{ key: string }>`select key from search_documents where index_name = 'pages'`.execute(db)).rows.map((row) => row.key);
+    expect(stored).toEqual(['42']);
+  });
+
+  it('never sweeps a document the read also built, even when the read lists its key as removed too', async () => {
+    const { app, db } = await start(name);
+    await insertPages(db, 1, 2);
+    await app.container.make(Search).index(PageIndex, [1, 2]);
+    const real = app.container.make(IndexReader);
+    // A read that reports each key it built a document for as removed as well: the sweep must keep those documents.
+    const reader = {
+      read: async (...args: Parameters<IndexReader['read']>) => {
+        const found = await real.read(...args);
+        return { ...found, removed: [...found.removed, ...found.documents.map((document) => document.key)] };
+      },
+    } as unknown as IndexReader;
+    const c = app.container;
+    const runner = new Rebuilder({ indexes: c.make(SearchIndexes), reader, driver: () => c.make(SearchDriver), connections: () => c.make(Connections), container: c, clock: c.make(Clock) });
+    await runner.rebuild(PageIndex, run(500));
+    expect(await keysOfDocuments(db)).toEqual([1, 2]);
+  });
+});
+
+/**
+ * Resolves once a session of the test database waits for an advisory lock, or once `settled` says the race is decided; fails after
+ * 500 looks.
+ */
+async function advisoryWaiter(db: Connection<any>, settled: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 500 && !settled(); attempt++) {
+    const { rows } = await sql<{ n: number }>`select count(*)::int as n from pg_stat_activity
+      where datname = current_database() and wait_event_type = 'Lock' and wait_event = 'advisory'`.execute(db);
+    if (rows[0]!.n > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  if (!settled()) throw new Error('No session waited for an advisory lock.');
+}
+
+/** Holds the first upsert of a driver until `release()`; `reached` resolves once it waits. Later upserts run at once. */
+function holdFirstUpsert(driver: SearchDriver): { readonly reached: Promise<void>; release(): void } {
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let arrive!: () => void;
+  const reached = new Promise<void>((resolve) => (arrive = resolve));
+  const upsert = driver.upsert.bind(driver);
+  let first = true;
+  driver.upsert = async (index, documents) => {
+    if (first) {
+      first = false;
+      arrive();
+      await held;
+    }
+    await upsert(index, documents);
+  };
+  return { reached, release };
+}
+
+const filtersOf = async (db: Connection<any>, key: SearchKey): Promise<unknown> =>
+  (await sql<{ filters: unknown }>`select filters from search_documents where index_name = 'pages' and key = ${JSON.stringify(key)}`.execute(db)).rows[0]?.filters;
+
+describe.skipIf(!PGSQL_URL)('Rebuilder and Search on Postgres: a write of an older read never lands after a newer one', () => {
+  /**
+   * Holds the older write after its read, then commits a change of the row with search.index() in another transaction and lets the
+   * older write go. Without the lock the change commits first and the older write overwrites it; with it, the change waits.
+   */
+  async function race(older: (app: Application) => Promise<unknown>, newer: 'index' | 'remove' = 'index'): Promise<unknown> {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 1);
+    const connections = app.container.make(Connections);
+    const hold = holdFirstUpsert(app.container.make(SearchDriver));
+    const first = older(app);
+    await hold.reached;
+    let done = false;
+    const change = connections
+      .transaction(async () => {
+        const search = app.container.make(Search);
+        if (newer === 'remove') {
+          await sql`delete from pages where id = 1`.execute(connections.get());
+          await search.remove(PageIndex, 1);
+        } else {
+          await sql`update pages set audience = 'members' where id = 1`.execute(connections.get());
+          await search.index(PageIndex, 1);
+        }
+      })
+      .finally(() => (done = true));
+    // Either the change committed (no lock) or it waits for the lock of the older write.
+    await Promise.race([change, advisoryWaiter(db, () => done)]);
+    hold.release();
+    await first;
+    await change;
+    return filtersOf(db, 1);
+  }
+
+  it('a rebuild batch: the change of the app ends in the index', async () => {
+    expect(await race((app) => rebuilder(app).rebuild(PageIndex, run(500)))).toEqual({ audience: 'members' });
+  });
+
+  it('search.remove() after the row is deleted: the document stays removed', async () => {
+    expect(await race((app) => app.container.make(Connections).transaction(() => app.container.make(Search).index(PageIndex, 1)), 'remove')).toBeUndefined();
+  });
+
+  it('search.index() of the same row in another transaction: the change ends in the index', async () => {
+    expect(await race((app) => app.container.make(Connections).transaction(() => app.container.make(Search).index(PageIndex, 1)))).toEqual({ audience: 'members' });
+  });
+});
+
+/** The same rows under the index name `pages`, by slug. */
+class SlugPageIndex extends SearchIndex<PageRow> {
+  static readonly index = 'pages';
+  static readonly key = 'slug';
+  static readonly fields = { title: 'A' } as const;
+
+  source(db: Database) {
+    return (db as unknown as Connection<{ pages: PageRow }>).selectFrom('pages').select(['id', 'slug', 'title', 'audience', 'published']);
+  }
+
+  toDocument(row: PageRow): SearchDocument<typeof SlugPageIndex> {
+    return { fields: { title: row.title } };
+  }
+}
+
+describe.skipIf(!PGSQL_URL)('Rebuilder and Search on Postgres: the lock slots', () => {
+  it('indexes 15 000 keys in one transaction with at most 128 advisory locks', { timeout: 30_000 }, async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 15_000);
+    const connections = app.container.make(Connections);
+    const held = await connections.transaction(async () => {
+      await app.container.make(Search).index(PageIndex, Array.from({ length: 15_000 }, (_, i) => i + 1));
+      const { rows } = await sql<{ n: number }>`select count(*)::int as n from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()`.execute(connections.get());
+      return rows[0]!.n;
+    });
+    expect(held).toBeGreaterThan(0);
+    expect(held).toBeLessThanOrEqual(128);
+    expect(await keysOfDocuments(db)).toHaveLength(15_000);
+  });
+
+  /** Takes the slots of these keys in a transaction of its own with brief waits: whether it got them all. */
+  async function tryLock(connections: Connections, index: string, keys: readonly SearchKey[]): Promise<boolean> {
+    class Busy extends Error {}
+    return connections
+      .transaction(async () => {
+        if (!(await lockDocuments(connections, index, keys, { brief: true }))) throw new Busy();
+        return true;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Busy) return false;
+        throw error;
+      });
+  }
+
+  it('gives each index slots of its own: a transaction holding every slot of one index leaves another index free', async () => {
+    const { app } = await start('pgsql');
+    const connections = app.container.make(Connections);
+    const keys = Array.from({ length: 3000 }, (_, i) => i + 1);
+    let holding!: () => void;
+    const holds = new Promise<void>((resolve) => (holding = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const bulk = connections.transaction(async () => {
+      await lockDocuments(connections, 'pages', keys);
+      holding();
+      await gate;
+    });
+    await holds;
+    try {
+      expect([await tryLock(connections, 'posts', keys), await tryLock(connections, 'pages', [1])]).toEqual([true, false]);
+    } finally {
+      release();
+      await bulk;
+    }
+  });
+
+  it('restores the lock_timeout and statement_timeout of the transaction after the brief wait for the slots', async () => {
+    const { app } = await start('pgsql');
+    const connections = app.container.make(Connections);
+    const after = await connections.transaction(async () => {
+      await sql`set local lock_timeout = '5s'`.execute(connections.get());
+      await sql`set local statement_timeout = '7s'`.execute(connections.get());
+      expect(await lockDocuments(connections, 'pages', [1, 2, 3], { brief: true })).toBe(true);
+      return (await sql<{ lock: string; statement: string }>`select current_setting('lock_timeout') as lock, current_setting('statement_timeout') as statement`.execute(connections.get())).rows[0];
+    });
+    expect(after).toEqual({ lock: '5s', statement: '7s' });
+  });
+
+  it('keeps a shorter lock_timeout the transaction already has for the brief wait', async () => {
+    const { app } = await start('pgsql');
+    const connections = app.container.make(Connections);
+    let holding!: () => void;
+    const holds = new Promise<void>((resolve) => (holding = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const holder = connections.transaction(async () => {
+      await lockDocuments(connections, 'pages', [1]);
+      holding();
+      await gate;
+    });
+    await holds;
+    try {
+      // With 20 ms the wait runs out long before the 200 ms of the brief wait; the holder lets go only after 300 ms.
+      setTimeout(release, 300);
+      class Busy extends Error {}
+      const taken = await connections
+        .transaction(async () => {
+          await sql`set local lock_timeout = '20ms'`.execute(connections.get());
+          if (!(await lockDocuments(connections, 'pages', [1], { brief: true }))) throw new Busy();
+          return true;
+        })
+        .catch((error: unknown) => (error instanceof Busy ? false : Promise.reject(error)));
+      expect(taken).toBe(false);
+    } finally {
+      release();
+      await holder;
+    }
+  });
+
+  it('gives up the whole slot statement after half the deadlock_timeout, even when no single wait runs out', async () => {
+    const { app, db } = await start('pgsql');
+    const connections = app.container.make(Connections);
+    // Four keys of distinct slots, in the order the statement locks them.
+    const { rows } = await sql<{ k: number }>`select distinct on (slot) k from (select k, (hashtext('pages') & ${~127}) | (hashtext('pages' || chr(1) || k::text) & 127) as slot
+      from generate_series(1, 100) as k) as s order by slot limit 4`.execute(db);
+    const keys = rows.map((row) => row.k);
+    expect(keys).toHaveLength(4);
+    // Each holder lets its slot go 150 ms after the one before: every single wait stays below the 200 ms lock_timeout, the four
+    // together pass the 500 ms the statement may take with the default deadlock_timeout of one second.
+    let holding = 0;
+    let allHeld!: () => void;
+    const held = new Promise<void>((resolve) => (allHeld = resolve));
+    let letGo!: () => void;
+    const go = new Promise<void>((resolve) => (letGo = resolve));
+    const holders = keys.map((key, position) =>
+      connections.transaction(async () => {
+        await lockDocuments(connections, 'pages', [key]);
+        if (++holding === keys.length) allHeld();
+        await go;
+        await new Promise((resolve) => setTimeout(resolve, 150 * (position + 1)));
+      }),
+    );
+    await held;
+    letGo();
+    try {
+      expect(await tryLock(connections, 'pages', keys)).toBe(false);
+    } finally {
+      await Promise.all(holders);
+    }
+  });
+
+  it('gives way in a cycle with an app transaction: the app never gets a deadlock error, and the rebuild retries and finishes', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 50);
+    // A key whose slot the rebuild takes before the slot of 1: it holds that slot while it waits for 1.
+    const { rows } = await sql<{ k: number }>`select k from generate_series(2, 50) as k
+      order by (hashtext('pages') & ${~127}) | (hashtext('pages' || chr(1) || k::text) & 127) limit 1`.execute(db);
+    const first = rows[0]!.k;
+    const slotOf = async (key: number) =>
+      (await sql<{ slot: number }>`select (hashtext('pages') & ${~127}) | (hashtext('pages' || chr(1) || ${String(key)}) & 127) as slot`.execute(db)).rows[0]!.slot;
+    expect(await slotOf(first)).toBeLessThan(await slotOf(1));
+    const connections = app.container.make(Connections);
+    const search = app.container.make(Search);
+    let holding!: () => void;
+    const holds = new Promise<void>((resolve) => (holding = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const appWrites = connections.transaction(async () => {
+      await sql`update pages set audience = 'members' where id in (1, ${first})`.execute(connections.get());
+      await search.index(PageIndex, 1);
+      holding();
+      await gate;
+      // The rebuild holds the slot of this key and waits for the slot of 1, which this transaction holds: a cycle.
+      await search.index(PageIndex, first);
+    });
+    await holds;
+    const retries: number[] = [];
+    const rebuild = rebuilder(app, { hooks: { beforeRetry: (attempt) => void retries.push(attempt) } }).rebuild(PageIndex, run(500));
+    let done = false;
+    await advisoryWaiter(db, () => done);
+    release();
+    await appWrites;
+    const outcome = await rebuild.finally(() => (done = true));
+    expect(retries.length).toBeGreaterThan(0);
+    expect(outcome).toEqual({ status: 'done', indexed: 50, removed: 0 });
+    expect(await filtersOf(db, 1)).toEqual({ audience: 'members' });
+    expect(await filtersOf(db, first)).toEqual({ audience: 'members' });
+  });
+
+  it('finishes while app transactions keep writing documents of the index', { timeout: 60_000 }, async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 1000);
+    const connections = app.container.make(Connections);
+    const search = app.container.make(Search);
+    let stop = false;
+    let writes = 0;
+    const client = async (offset: number) => {
+      for (let n = 0; !stop; n++) {
+        await connections.transaction(async () => {
+          await search.index(PageIndex, ((n * 37 + offset * 101) % 1000) + 1);
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        });
+        writes++;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+    // Eight writers, each holding a slot of the index most of the time: a batch never finds all its slots free at one moment.
+    const clients = [0, 1, 2, 3, 4, 5, 6, 7].map((offset) => client(offset));
+    try {
+      const outcome = await rebuilder(app).rebuild(PageIndex, run(500));
+      expect(outcome).toEqual({ status: 'done', indexed: 1000, removed: 0 });
+    } finally {
+      stop = true;
+      await Promise.all(clients);
+    }
+    expect(writes).toBeGreaterThan(0);
+  });
+
+  it('stops after the last try while the slots stay held, keeps the checkpoint before that batch and releases the lock', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 4);
+    const connections = app.container.make(Connections);
+    let holding!: () => void;
+    const holds = new Promise<void>((resolve) => (holding = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    // Holds the slot of 3 for the whole run: the first batch (1, 2) is written, the second (3, 4) never gets its slots.
+    const appWrites = connections.transaction(async () => {
+      await app.container.make(Search).index(PageIndex, 3);
+      holding();
+      await gate;
+    });
+    await holds;
+    const retries: number[] = [];
+    try {
+      const error = await rejection(rebuilder(app, { hooks: { lockAttempts: 3, beforeRetry: (attempt) => void retries.push(attempt) } }).rebuild(PageIndex, run(2)));
+      expect(error.message).toBe('Other writes of search held documents of a batch of "pages" at each of 3 tries; run marmeon search:rebuild pages again to resume.');
+    } finally {
+      release();
+      await appWrites;
+    }
+    expect(retries).toEqual([1, 2]);
+    expect(await rebuildRows(db)).toEqual([{ phase: 'copy', after: '2', target: null, holder: null }]);
+  });
+
+  it('never waits for the migration lock, even for a key whose 64-bit hash is its key', async () => {
+    const { app, close } = await migratedApp('pgsql', [SlugPageIndex]);
+    closing.push(close);
+    const connections = app.container.make(Connections);
+    const db = connections.get();
+    const slug = 'probe?<.[G-+Jyz1';
+    // ADVISORY_KEY of packages/database/src/migrations/lock.ts, the one bigint lock of `marmeon migrate`.
+    const migrationKey = '5570194408043267922';
+    const { rows } = await sql<{ hash: string }>`select hashtextextended('pages' || chr(1) || ${JSON.stringify(slug)}, 0)::text as hash`.execute(db);
+    expect(rows[0]!.hash).toBe(migrationKey);
+    await sql`insert into pages (id, slug, title, audience, published) values (1, ${slug}, 'Probe', 'public', ${true})`.execute(db);
+    let holding!: () => void;
+    const holds = new Promise<void>((resolve) => (holding = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const migration = connections.transaction(async () => {
+      await sql`select pg_advisory_xact_lock(${migrationKey}::bigint)`.execute(connections.get());
+      holding();
+      await gate;
+    });
+    await holds;
+    try {
+      // A wait for the migration lock fails the statement after a second instead of hanging the test.
+      await connections.transaction(async () => {
+        await sql`set local lock_timeout = '1s'`.execute(connections.get());
+        await app.container.make(Search).index(SlugPageIndex, slug);
+      });
+    } finally {
+      release();
+      await migration;
+    }
+    expect((await sql<{ key: string }>`select key from search_documents`.execute(db)).rows.map((row) => row.key)).toEqual([JSON.stringify(slug)]);
+  });
+});
+
+/** Text of fewer than 200 000 characters whose words make a tsvector over the limit of Postgres: unique hyphenated CJK compounds. */
+function tooLongText(): string {
+  let next = 0;
+  const word = (): string => {
+    let value = next++;
+    let text = '';
+    for (let i = 0; i < 4; i++) {
+      text += String.fromCodePoint(0x4e00 + (value % 20000));
+      value = Math.floor(value / 20000);
+    }
+    return text;
+  };
+  const parts: string[] = [];
+  for (let i = 0; i < 19_900; i++) parts.push(`${word()}-${word()}`);
+  return parts.join(' ');
+}
+
+describe.skipIf(!PGSQL_URL)('Rebuilder and Search on Postgres: a document too long for a tsvector', () => {
+  const message =
+    'The document of the key 2 in the search index "pages" is too long for Postgres: the words of the text make a tsvector over its limit of 1048575 bytes, so the index holds no document for it. Return less text from toDocument() for that row.';
+
+  it('fails search.index() naming the index, the key and the limit; the other documents of the batch are written', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 3);
+    const search = app.container.make(Search);
+    await search.index(PageIndex, [1, 2, 3]);
+    const text = tooLongText();
+    expect([...text].length).toBeLessThan(200_000);
+    await sql`update pages set title = ${text} where id = 2`.execute(db);
+    await sql`update pages set title = 'Changed' where id = 3`.execute(db);
+    const titleOf3 = async () => (await sql<{ a: string }>`select a from search_documents where key = '3'`.execute(db)).rows.map((row) => row.a);
+    // In the caller's transaction: the rest is written and the old document of 2 removed before the error reaches the caller.
+    await expect(
+      app.container.make(Connections).transaction(async () => {
+        await expect(search.index(PageIndex, [1, 2, 3])).rejects.toThrow(message);
+        expect(await keysOfDocuments(db)).toEqual([1, 3]);
+        expect(await titleOf3()).toEqual(['Changed']);
+        throw new Error('the caller rolls back');
+      }),
+    ).rejects.toThrow('the caller rolls back');
+    expect(await keysOfDocuments(db)).toEqual([1, 2, 3]);
+    // In a transaction of its own: that transaction commits the rest and the removal, then the error is thrown.
+    await expect(search.index(PageIndex, [1, 2, 3])).rejects.toThrow(message);
+    expect(await keysOfDocuments(db)).toEqual([1, 3]);
+    expect(await titleOf3()).toEqual(['Changed']);
+  });
+
+  it('isolates the documents too long in a later statement of the batch, and names them all', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 205);
+    const text = tooLongText();
+    // 1 is in the first statement of 100 documents, 150 and 205 in the second and the third.
+    await sql`update pages set title = ${text} where id in (1, 150, 205)`.execute(db);
+    await expect(app.container.make(Search).index(PageIndex, Array.from({ length: 205 }, (_, i) => i + 1))).rejects.toThrow(
+      'The documents of the keys 1, 150, 205 in the search index "pages" are too long for Postgres: the words of the text make a tsvector over its limit of 1048575 bytes, so the index holds no document for them. Return less text from toDocument() for those rows.',
+    );
+    const stored = await keysOfDocuments(db);
+    expect(stored).toHaveLength(202);
+    expect(stored).not.toContain(150);
+  });
+
+  it('writes every batch of a call in the caller\'s transaction before it throws, when an early batch holds a document too long', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 600);
+    await sql`update pages set title = ${tooLongText()} where id = 1`.execute(db);
+    const connections = app.container.make(Connections);
+    await connections.transaction(async () => {
+      // 1 is in the first batch of 500, 600 in the second.
+      await expect(app.container.make(Search).index(PageIndex, Array.from({ length: 600 }, (_, i) => i + 1))).rejects.toThrow('The document of the key 1 in the search index "pages"');
+    });
+    const stored = await keysOfDocuments(db);
+    expect(stored).toHaveLength(599);
+    expect(stored).toContain(600);
+  });
+
+  it('throws an error of the database other than the limit as it is, and writes nothing', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 2);
+    // A check the table refuses: an error the driver must not take for a document too long.
+    await sql`alter table search_documents add constraint no_second check (key <> '2')`.execute(db);
+    const error = await rejection(app.container.make(Search).index(PageIndex, [1, 2]));
+    expect(error.message).toContain('no_second');
+    expect(await keysOfDocuments(db)).toEqual([]);
+  });
+
+  it('a rebuild writes the rest, removes the old document of the key, reports it and goes on', async () => {
+    const { app, db } = await start('pgsql');
+    await insertPages(db, 1, 5);
+    await app.container.make(Search).index(PageIndex, [1, 2, 3, 4, 5]);
+    await sql`update pages set title = ${tooLongText()} where id = 2`.execute(db);
+    const options = run(3);
+    const outcome = await rebuilder(app).rebuild(PageIndex, options);
+    expect(outcome).toEqual({ status: 'done', indexed: 4, removed: 0, failed: [2] });
+    expect(options.lines).toContain(`pages: ${message}`);
+    expect(options.lines.at(-1)).toMatch(/^pages: done in .+, 4 indexed, 0 removed, 1 failed\.$/);
+    expect(await keysOfDocuments(db)).toEqual([1, 3, 4, 5]);
+    expect(await rebuildRows(db)).toEqual([]);
   });
 });
 

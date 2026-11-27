@@ -183,6 +183,27 @@ describe('search:rebuild', () => {
     expect(lines.some((line) => line.startsWith('posts: done in'))).toBe(true);
   });
 
+  it.each([
+    [[2, 'x'], '2 keys 2, "x"'],
+    [[2], 'the key 2'],
+    [Array.from({ length: 21 }, (_, i) => i + 1), `21 keys ${Array.from({ length: 20 }, (_, i) => i + 1).join(', ')} and 1 more`],
+  ])('exits with 1 naming the keys a rebuild wrote no document for (%j), after it rebuilt the other indexes', async (failed, named) => {
+    const { app } = await start();
+    const calls: string[] = [];
+    const rebuilder = {
+      rebuild: async (Index: SearchIndexClass): Promise<RebuildOutcome> => {
+        calls.push(Index.index);
+        return Index.index === 'pages' ? { status: 'done', indexed: 1, removed: 0, failed } : { status: 'done', indexed: 3, removed: 0 };
+      },
+    } as unknown as Rebuilder;
+    const lines: string[] = [];
+    const output = { line: (line = '') => lines.push(line), error: (line: string) => lines.push(`✗ ${line}`) };
+    const code = await new SearchRebuildCommand(app.container.make(SearchIndexes), rebuilder).handle({ args: [], options: {}, output } as unknown as CommandInput);
+    expect(code).toBe(1);
+    expect(calls).toEqual(['pages', 'posts']);
+    expect(lines).toEqual([`✗ The rebuild of "pages" wrote no document for ${named}: the text is too long for the database (see the lines above).`]);
+  });
+
   it('hands --batch and --fresh to the rebuild, and stops with 1 when a run loses its lock, before the next index', async () => {
     const { app } = await start();
     const calls: { index: string; batch: number; fresh: boolean }[] = [];

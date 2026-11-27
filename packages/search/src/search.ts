@@ -1,8 +1,8 @@
 import { afterCommit, err, ok, type Resolver, type Result } from '@marmeon/core';
 import { withCode } from '@marmeon/core/internal';
-import { Connections, Database, type PageMeta, type Paginated } from '@marmeon/database';
+import { Connections, Database, sql, type PageMeta, type Paginated } from '@marmeon/database';
 import type { DriverQuery, SearchDriver, SearchFailure, SearchKey, StoredDocument } from './driver.ts';
-import { SearchSetupError } from './errors.ts';
+import { DocumentsTooLongError, SearchSetupError } from './errors.ts';
 import type { IndexInfo, SearchIndexes } from './registry.ts';
 import type { FiltersOf, IndexRowOf, KeyOf, SearchIndex, SearchIndexClass } from './search-index.ts';
 import { cleanText, searchText, tokens, type ExcerptSegment, type FilterScalar } from './terms.ts';
@@ -218,25 +218,30 @@ export class IndexReader {
     if (typeof query?.where !== 'function') throw new TypeError(`${label}.source() returned ${shown(query)}, but source() returns a select of the query chain.`);
     const rows = (await (query as { where(column: string, operator: 'in', values: readonly SearchKey[]): { execute(): Promise<unknown[]> } }).where(info.key, 'in', keys).execute()) as unknown[];
 
+    const asked = new Set(keys.map(keyId));
+    const mismatched = new Set<string>();
     const byKey = new Map<string, Record<string, unknown>>();
-    const asText = new Map<string, SearchKey>();
-    for (const row of rows) {
-      if (!isRecord(row)) throw new TypeError(`${label}.source() returned a row that is ${shown(row)}, not an object.`);
-      const key = checkKey(row[info.key], `The column "${info.key}" of a row of ${label}.source()`);
-      if (!byKey.has(keyId(key))) byKey.set(keyId(key), row);
-      asText.set(String(key), key);
-    }
     const documents: StoredDocument[] = [];
     const removed: SearchKey[] = [];
     const failed: { readonly key: SearchKey; readonly error: unknown }[] = [];
-    for (const key of keys) {
-      const stored = asText.get(String(key));
-      // The database matched "42" to 42: indexing or removing "42" would leave the document of 42 as it was.
-      if (!byKey.has(keyId(key)) && stored !== undefined) {
-        const error = new TypeError(`The key ${keyId(key)} is a ${typeof key}, but the column "${info.key}" of ${label} holds the ${typeof stored} ${keyId(stored)}. Pass keys with the type of the column.`);
-        if (!options.tolerant) throw error;
-        // Fail closed: the row the database matched loses its document too, rather than keep an old one.
-        removed.push(stored);
+    for (const row of rows) {
+      if (!isRecord(row)) throw new TypeError(`${label}.source() returned a row that is ${shown(row)}, not an object.`);
+      const key = checkKey(row[info.key], `The column "${info.key}" of a row of ${label}.source()`);
+      const id = keyId(key);
+      if (asked.has(id)) {
+        if (!byKey.has(id)) byKey.set(id, row);
+        continue;
+      }
+      // The database matched a key in another spelling ("42" or "042" to 42, "About" to "about" under a case-insensitive collation):
+      // indexing or removing that key would leave the document of this row as it was.
+      const error = new TypeError(
+        `${label}.source() returned the row with the key ${id} for none of the keys asked for: the database matched a key of another type or spelling. Pass keys exactly as the column "${info.key}" holds them.`,
+      );
+      if (!options.tolerant) throw error;
+      // Fail closed: the row the database matched loses its document too, rather than keep an old one.
+      if (!mismatched.has(id)) {
+        mismatched.add(id);
+        removed.push(key);
         failed.push({ key, error });
       }
     }
@@ -261,6 +266,92 @@ export class IndexReader {
 export async function write(driver: SearchDriver, info: IndexInfo, found: { readonly documents: readonly StoredDocument[]; readonly removed: readonly SearchKey[] }): Promise<void> {
   if (found.removed.length > 0) await driver.delete(info, found.removed);
   if (found.documents.length > 0) await driver.upsert(info, found.documents);
+}
+
+/** The most times one call writes its rows while they keep changing: the job, a rebuild batch and an after-commit write. */
+export const MAX_WRITES = 3;
+
+/** @internal Whether two reads of the same keys found the same documents and the same removals. */
+export function sameRead(first: ReadResult, second: ReadResult): boolean {
+  // Filters keep the order toDocument() gave them, so they are compared sorted; fields are already in declared order.
+  const shape = (found: ReadResult): string =>
+    JSON.stringify([
+      found.documents
+        .map((document) => [keyId(document.key), { ...document, filters: Object.fromEntries(Object.entries(document.filters).sort(([a], [b]) => (a < b ? -1 : 1))) }] as const)
+        .sort(([a], [b]) => (a < b ? -1 : 1)),
+      found.removed.map(keyId).sort(),
+    ]);
+  return shape(first) === shape(second);
+}
+
+/** @internal The class of search's advisory locks on Postgres ("SRCH" in ASCII), the first `int4` of the two-key form. */
+export const LOCK_CLASS = 0x53524348;
+/** @internal How many lock slots the documents of one index share: the most advisory locks one transaction of search holds per index. */
+export const LOCK_SLOTS = 128;
+
+/** @internal Whether an error, or one it was caused by, has this SQLSTATE. */
+export function hasCode(error: unknown, code: string): boolean {
+  for (let current = error, depth = 0; typeof current === 'object' && current !== null && depth < 5; current = (current as { cause?: unknown }).cause, depth++) {
+    if ((current as { code?: unknown }).code === code) return true;
+  }
+  return false;
+}
+
+/**
+ * @internal Locks the documents of these keys until the current transaction ends, on Postgres; call it in a transaction, before the rows
+ * are read. Under READ COMMITTED an `on conflict do update` waits for a newer committed write of the same document and then
+ * overwrites it with the state its own older read found: a rebuild batch would put the filters of a row live again after the app
+ * changed them and indexed the row. With the lock, the read and the write of one document never interleave with another's.
+ *
+ * A document locks one of the 128 slots of its index, by a hash of the index name and the key, so a transaction holds at most 128
+ * advisory locks per index however many keys it writes: one lock per key would fill the shared lock table of Postgres in a large
+ * import. Two documents in one slot wait for each other. The locks use the two-`int4` form with the class `LOCK_CLASS`, a key space
+ * of its own (`objsubid` 2 in `pg_locks`, 1 for a `bigint` key), so no key can meet a `bigint` lock such as the one of the migrations.
+ * One batch of up to 500 keys takes its slots in sorted order, so two calls of up to 500 keys never deadlock. Several calls in one
+ * transaction can deadlock with another transaction that holds a slot they need, even one that writes none of their documents.
+ *
+ * With `brief`, each wait for a slot ends after `min(200 ms, deadlock_timeout / 2)` and the whole statement after
+ * `deadlock_timeout / 2` (each at least 1 ms, and no longer than a limit the transaction already has); then it returns `false` (the transaction is aborted: the caller rolls back). Both stay below
+ * `deadlock_timeout` on purpose: an app transaction can only start to wait for a slot of this statement after the statement took
+ * it, so it has waited less than `deadlock_timeout` when the statement gives its slots up. Postgres checks a wait for a deadlock only
+ * after `deadlock_timeout`, so in a cycle with a rebuild an app transaction is never the 40P01 victim, while `deadlock_timeout` stays
+ * well above the round trip to the database. The `lock_timeout` and
+ * `statement_timeout` the transaction had are restored after the statement. SQLite needs no lock: its transactions begin
+ * immediate, so one writer runs at a time.
+ */
+export async function lockDocuments(connections: Connections, index: string, keys: readonly SearchKey[], options: { readonly brief?: boolean } = {}): Promise<boolean> {
+  if ((connections.options('default').driver as string) !== 'pgsql' || keys.length === 0) return true;
+  const ids = keys.map(keyId);
+  // The high bits come from the index name, the low 7 from the key: each index has 128 slots of its own, and two indexes meet only
+  // when the high bits of their names' hashes are equal.
+  const slots = sql`select distinct (hashtext(${index}) & ${~(LOCK_SLOTS - 1)}) | (hashtext(${index} || chr(1) || k) & ${LOCK_SLOTS - 1}) as slot from unnest(${ids}::text[]) as k`;
+  // A volatile function of the select list runs after the sort, so the slots are locked in their order.
+  const lock = sql`select pg_advisory_xact_lock(${LOCK_CLASS}, slot) from (${slots}) as slots order by slot`;
+  const db = connections.get('default');
+  if (!options.brief) {
+    await lock.execute(db);
+    return true;
+  }
+  const { rows } = await sql<{ lock: string; statement: string; deadlock: number | string; lockMs: number | string; statementMs: number | string }>`select
+    current_setting('lock_timeout') as lock, current_setting('statement_timeout') as statement,
+    extract(epoch from current_setting('deadlock_timeout')::interval) * 1000 as deadlock,
+    extract(epoch from current_setting('lock_timeout')::interval) * 1000 as "lockMs",
+    extract(epoch from current_setting('statement_timeout')::interval) * 1000 as "statementMs"`.execute(db);
+  const previous = rows[0]!;
+  const half = Math.max(1, Math.floor(Number(previous.deadlock) / 2));
+  // A shorter limit the database or the role sets stays in force; 0 means none.
+  const shorter = (configured: number | string, limit: number) => (Number(configured) > 0 ? Math.max(1, Math.min(limit, Math.floor(Number(configured)))) : limit);
+  await sql`select set_config('lock_timeout', ${`${shorter(previous.lockMs, Math.min(200, half))}ms`}, true),
+    set_config('statement_timeout', ${`${shorter(previous.statementMs, half)}ms`}, true)`.execute(db);
+  try {
+    await lock.execute(db);
+  } catch (error) {
+    // 55P03: a wait ran out; 57014: the statement ran out. It failed, so the transaction is aborted and nothing else may run in it.
+    if (hasCode(error, '55P03') || hasCode(error, '57014')) return false;
+    throw error;
+  }
+  await sql`select set_config('lock_timeout', ${previous.lock}, true), set_config('statement_timeout', ${previous.statement}, true)`.execute(db);
+  return true;
 }
 
 /** `list` in slices of at most `size`. */
@@ -315,28 +406,57 @@ export class Search {
 
   /**
    * Brings rows into the index: one row or key, or a list of only rows or only keys. Each row is read again through `source()`;
-   * a row that is gone, or that `includes()` refuses, is removed. An unregistered index, rows and keys in one list, an invalid key or
-   * a document `toDocument()` returns broken is a `TypeError`. See `docs/full-text-search.md#keeping-the-index-current`.
+   * a row that is gone, or that `includes()` refuses, is removed. An unregistered index, rows and keys in one list, an invalid key, a
+   * key the database matched in another spelling or a document `toDocument()` returns broken is a `TypeError`. A document too long for
+   * Postgres (`docs/full-text-search.md#postgres`) and rows that change at each of three writes after the commit throw an `Error`. See
+   * `docs/full-text-search.md#keeping-the-index-current`.
    */
   async index<I extends SearchIndexClass>(Index: I, rowsOrKeys: IndexInput<I>): Promise<void> {
     const info = this.#parts.indexes.info(Index);
     const keys = this.#keys(Index, info, rowsOrKeys, true);
     const driver = this.#parts.driver();
+    // Documents too long for the database fail only themselves: every batch is written, the error comes after the last one. In a
+    // transaction of its own, each batch commits the rest and the removal of their old documents first; a rollback would leave the
+    // old documents searchable.
+    const tooLong: { keys: SearchKey[]; cause?: DocumentsTooLongError } = { keys: [] };
     for (const batch of batches(keys)) {
       if (driver.writes === 'queue') await this.#queue(info, batch);
       else if (driver.writes === 'after-commit') {
-        const found = await this.#parts.reader.read(Index, batch);
-        await afterCommit(() => write(driver, info, found));
+        const first = await this.#parts.reader.read(Index, batch);
+        // Read again after the write, and written again while the rows changed, as the job does: a slower write of an older read
+        // that lands after this one would otherwise leave the older state in the index.
+        await afterCommit(async () => {
+          let found = first;
+          for (let round = 1; ; round++) {
+            await write(driver, info, found);
+            const again = await this.#parts.reader.read(Index, batch);
+            if (sameRead(found, again)) return;
+            if (round === MAX_WRITES) throw new Error(`The rows of "${info.name}" changed each of the ${MAX_WRITES} times search.index() wrote them after the commit; call it again.`);
+            found = again;
+          }
+        });
       } else {
-        await this.#inTransaction(async () => write(driver, info, await this.#parts.reader.read(Index, batch)));
+        await this.#inTransaction(async () => {
+          await lockDocuments(this.#parts.connections(), info.name, batch);
+          const found = await this.#parts.reader.read(Index, batch);
+          try {
+            await write(driver, info, found);
+          } catch (error) {
+            if (!(error instanceof DocumentsTooLongError)) throw error;
+            tooLong.keys.push(...error.keys);
+            tooLong.cause ??= error;
+          }
+        });
       }
     }
+    if (tooLong.cause !== undefined) throw tooLong.keys.length === tooLong.cause.keys.length ? tooLong.cause : new DocumentsTooLongError(info.name, tooLong.keys, tooLong.cause.cause);
   }
 
   /**
    * Takes the documents of these keys out of the index. With a driver that writes through the queue, the job reads the rows when it
-   * runs, so a row that still exists and belongs comes back. `42` and `"42"` are two keys: on a driver that writes in the transaction or after the commit, and once the row is deleted on any
-   * driver, a key of the other type removes nothing. An unregistered index or an invalid key is a `TypeError`. See
+   * runs, so a row that still exists and belongs comes back. Pass each key exactly as the key column holds it: on a driver that
+   * writes in the transaction or after the commit, and once the row is deleted on any driver, `"42"` for `42` or `"About"` for
+   * `"about"` removes nothing. An unregistered index or an invalid key is a `TypeError`. See
    * `docs/full-text-search.md#keeping-the-index-current`.
    */
   async remove<I extends SearchIndexClass>(Index: I, keys: KeyOf<I> | readonly KeyOf<I>[]): Promise<void> {
@@ -346,7 +466,13 @@ export class Search {
     for (const batch of batches(list)) {
       if (driver.writes === 'queue') await this.#queue(info, batch);
       else if (driver.writes === 'after-commit') await afterCommit(() => driver.delete(info, batch));
-      else await this.#inTransaction(() => driver.delete(info, batch));
+      else {
+        await this.#inTransaction(async () => {
+          // Locked like index(): a write of an older read that waits for this delete would otherwise put the document back.
+          await lockDocuments(this.#parts.connections(), info.name, batch);
+          await driver.delete(info, batch);
+        });
+      }
     }
   }
 

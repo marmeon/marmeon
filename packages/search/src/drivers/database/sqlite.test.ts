@@ -9,7 +9,7 @@ import { MAX_LOCALE_LENGTH, Search, type SearchRequest } from '../../search.ts';
 import { SearchIndex, type SearchDocument, type SearchIndexClass } from '../../search-index.ts';
 import { HOSTILE } from '../../test-helpers/hostile-terms.ts';
 import { tokens } from '../../terms.ts';
-import { databaseDriver } from './index.ts';
+import { databaseDriver, overLimit } from './index.ts';
 import { querySqlite } from './sqlite.ts';
 import { SearchIndexes } from '../../registry.ts';
 
@@ -665,5 +665,17 @@ describe('the database driver at the start', () => {
     // An external-content table has no _content shadow table: its content is search_documents.
     expect(shadows).toEqual(['search_documents_fts', 'search_documents_fts_config', 'search_documents_fts_data', 'search_documents_fts_docsize', 'search_documents_fts_idx']);
     expect(unknown).toEqual([]);
+  });
+});
+
+describe('the database driver: what counts as a document too long for Postgres', () => {
+  it('takes SQLSTATE 54000 of the error or of an error it was caused by, and nothing else', () => {
+    const limit = Object.assign(new Error('string is too long for tsvector'), { code: '54000' });
+    expect(overLimit(limit)).toBe(true);
+    expect(overLimit(new Error('wrapped', { cause: limit }))).toBe(true);
+    expect(overLimit(new Error('wrapped twice', { cause: new Error('wrapped', { cause: limit }) }))).toBe(true);
+    expect(overLimit(Object.assign(new Error('check violation'), { code: '23514' }))).toBe(false);
+    expect(overLimit(new Error('no code'))).toBe(false);
+    expect(overLimit(undefined)).toBe(false);
   });
 });

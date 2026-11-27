@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { Clock, Resolver } from '@marmeon/core';
 import { Database, sql, type Connections } from '@marmeon/database';
 import { searchOptions } from './config.ts';
 import type { SearchDriver, SearchKey } from './driver.ts';
 import { DatabaseSearchDriver } from './drivers/database/index.ts';
+import { DocumentsTooLongError } from './errors.ts';
 import type { IndexInfo, SearchIndexes } from './registry.ts';
-import { BATCH_SIZE, checkKey, keyId, write, type IndexReader, type ReadResult } from './search.ts';
+import { BATCH_SIZE, checkKey, keyId, lockDocuments, MAX_WRITES, sameRead, write, type IndexReader, type ReadResult } from './search.ts';
 import type { SearchIndex, SearchIndexClass } from './search-index.ts';
-import { MAX_WRITES, sameRead } from './sync-job.ts';
 
 /** How long a lock holds without a heartbeat: a run that stopped without releasing it frees the index after this. */
 export const LOCK_MILLISECONDS = 60_000;
@@ -25,9 +26,12 @@ interface RebuildRow {
   readonly fingerprint: string | null;
 }
 
-/** What one rebuild did: it finished, another run holds the lock, or this run lost it to another one. */
+/**
+ * What one rebuild did: it finished, another run holds the lock, or this run lost it to another one. `failed` names the keys whose
+ * documents the driver could not write (too long for Postgres); the run went on without them.
+ */
 export type RebuildOutcome =
-  | { readonly status: 'done'; readonly indexed: number; readonly removed: number }
+  | { readonly status: 'done'; readonly indexed: number; readonly removed: number; readonly failed?: readonly SearchKey[] }
   | { readonly status: 'held'; readonly until: string }
   | { readonly status: 'lost' };
 
@@ -44,7 +48,14 @@ export interface RebuildHooks {
   readonly afterBatch?: (phase: 'copy' | 'sweep') => void | Promise<void>;
   /** In a batch of the sweep, after it read the documents and their rows, before it removes any. */
   readonly beforeSweepDelete?: () => void | Promise<void>;
+  /** After a batch waited too long for a lock slot of its documents and rolled back, before it pauses and tries again. */
+  readonly beforeRetry?: (attempt: number) => void | Promise<void>;
+  /** How often a batch tries to take its lock slots; `LOCK_ATTEMPTS` without it. */
+  readonly lockAttempts?: number;
 }
+
+/** How often a batch tries to take the lock slots of its documents, waiting longer each time, before the run stops (about half a minute in all). */
+export const LOCK_ATTEMPTS = 30;
 
 /** @internal What a `Rebuilder` is built from; the provider hands these over. */
 export interface RebuilderParts {
@@ -55,6 +66,11 @@ export interface RebuilderParts {
   readonly container: Resolver;
   readonly clock: Clock;
   readonly hooks?: RebuildHooks | undefined;
+}
+
+/** Thrown inside a batch that waited too long for a lock slot: the batch rolls back and tries again. */
+class SlotsBusy extends Error {
+  override name = 'SlotsBusy';
 }
 
 /** Thrown inside a run when its heartbeat finds another holder: the batch's transaction rolls back, and the run stops. */
@@ -174,7 +190,7 @@ export class Rebuilder {
         await driver.prepare?.(info);
       }
       const into: IndexInfo = target === undefined ? info : { ...info, name: target };
-      const counts = { indexed: 0, removed: 0 };
+      const counts = { indexed: 0, removed: 0, failed: [] as SearchKey[] };
 
       if (row.phase === 'copy') await this.#copy(Index, info, into, driver, me, row, options, counts);
       if (target !== undefined) {
@@ -186,8 +202,9 @@ export class Rebuilder {
         await this.#sweep(Index, info, driver, me, after, options, counts);
       }
       await sql`delete from search_rebuilds where index_name = ${name} and holder = ${me}`.execute(this.#db);
-      options.report(`${name}: done in ${duration(this.#parts.clock.now() - started)}, ${counts.indexed} indexed, ${counts.removed} removed.`);
-      return { status: 'done', ...counts };
+      const failed = counts.failed.length === 0 ? '' : `, ${counts.failed.length} failed`;
+      options.report(`${name}: done in ${duration(this.#parts.clock.now() - started)}, ${counts.indexed} indexed, ${counts.removed} removed${failed}.`);
+      return { status: 'done', indexed: counts.indexed, removed: counts.removed, ...(counts.failed.length === 0 ? {} : { failed: counts.failed }) };
     } catch (error) {
       if (error instanceof LockLost) return { status: 'lost' };
       // Released so that a resume need not wait for the lock to run out. A release that fails too leaves the lock to expire; the
@@ -347,7 +364,7 @@ export class Rebuilder {
     me: string,
     row: RebuildRow,
     options: RebuildOptions,
-    counts: { indexed: number; removed: number },
+    counts: { indexed: number; removed: number; failed: SearchKey[] },
   ): Promise<void> {
     const { reader } = this.#parts;
     let after = row.after === null ? undefined : (JSON.parse(row.after) as SearchKey);
@@ -356,14 +373,21 @@ export class Rebuilder {
       if (keys.length === 0) break;
       const last = keys[keys.length - 1]!;
       let found: ReadResult;
+      let tooLong: DocumentsTooLongError | undefined;
       if (driver.writes === 'transaction') {
-        // The batch and its checkpoint commit together: a run that stops never skips or repeats a written batch.
-        found = await this.#parts.connections().transaction(async () => {
+        ({ found, tooLong } = await this.#lockedBatch(info.name, keys, async () => {
           const read = await reader.read(Index, keys);
-          await write(driver, into, read);
+          let failed: DocumentsTooLongError | undefined;
+          try {
+            await write(driver, into, read);
+          } catch (error) {
+            // The driver wrote the rest of the batch and removed these documents: the run goes on, and the command exits with 1.
+            if (!(error instanceof DocumentsTooLongError)) throw error;
+            failed = error;
+          }
           await this.#beat(info.name, me, { after: keyId(last) });
-          return read;
-        });
+          return { found: read, tooLong: failed };
+        }));
       } else {
         // The rows are read again after each write, and written again while they changed: a job of the same rows that wrote between
         // this read and this write would otherwise be overwritten with the older state, which a swap would then put live.
@@ -379,8 +403,12 @@ export class Rebuilder {
         }
         await this.#beat(info.name, me, { after: keyId(last) });
       }
-      counts.indexed += found.documents.length;
+      counts.indexed += found.documents.length - (tooLong?.keys.length ?? 0);
       counts.removed += found.removed.length;
+      if (tooLong !== undefined) {
+        counts.failed.push(...tooLong.keys);
+        options.report(`${info.name}: ${tooLong.message}`);
+      }
       options.report(`${info.name}: ${counts.indexed} indexed, ${counts.removed} removed`);
       after = last;
       await this.#parts.hooks?.afterBatch?.('copy');
@@ -389,10 +417,37 @@ export class Rebuilder {
   }
 
   /**
+   * Runs one batch in a transaction with its checkpoint, so a run that stops never skips or repeats a written batch, after it took the
+   * lock slots of its documents (`lockDocuments`). It queues for each slot like any writer, so slots that app transactions hold briefly
+   * are taken one after another, but it gives them all up before the deadlock detector could pick an app transaction (see
+   * `lockDocuments` for the bound): the batch gives way. A wait that ran out rolls the batch back; it tries again after a pause that grows to a second, and stops the run after
+   * `LOCK_ATTEMPTS` tries.
+   */
+  async #lockedBatch<T>(index: string, keys: readonly SearchKey[], work: () => Promise<T>): Promise<T> {
+    const connections = this.#parts.connections();
+    const attempts = this.#parts.hooks?.lockAttempts ?? LOCK_ATTEMPTS;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await connections.transaction(async () => {
+          if (!(await lockDocuments(connections, index, keys, { brief: true }))) throw new SlotsBusy();
+          return work();
+        });
+      } catch (error) {
+        if (!(error instanceof SlotsBusy)) throw error;
+        if (attempt >= attempts) {
+          throw new Error(`Other writes of search held documents of a batch of "${index}" at each of ${attempts} tries; run marmeon search:rebuild ${index} again to resume.`);
+        }
+        await this.#parts.hooks?.beforeRetry?.(attempt);
+        await sleep(Math.min(50 * attempt, 1000));
+      }
+    }
+  }
+
+  /**
    * Removes the documents of the `database` driver whose rows are gone or no longer belong, in batches by row id. A document is removed
    * only with the revision it was read with, so one the app wrote again meanwhile stays.
    */
-  async #sweep(Index: SearchIndexClass, info: IndexInfo, driver: DatabaseSearchDriver, me: string, from: number, options: RebuildOptions, counts: { indexed: number; removed: number }): Promise<void> {
+  async #sweep(Index: SearchIndexClass, info: IndexInfo, driver: DatabaseSearchDriver, me: string, from: number, options: RebuildOptions, counts: { indexed: number; removed: number; failed: SearchKey[] }): Promise<void> {
     let after = from;
     let checked = 0;
     for (;;) {
@@ -405,7 +460,10 @@ export class Rebuilder {
           documents.map((document) => document.key),
           { tolerant: true },
         );
-        const gone = new Set(found.removed.map(keyId));
+        // A key the read built a document for is never swept, whatever else the read lists for it: the sweep only removes, and a
+        // document it removed by mistake would stay out of the index until the next write.
+        const kept = new Set(found.documents.map((document) => keyId(document.key)));
+        const gone = new Set(found.removed.map(keyId).filter((id) => !kept.has(id)));
         await this.#parts.hooks?.beforeSweepDelete?.();
         const removed = await driver.deleteUnchanged(
           info,

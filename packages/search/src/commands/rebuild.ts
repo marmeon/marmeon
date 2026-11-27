@@ -56,6 +56,10 @@ export class SearchRebuildCommand {
       } else if (outcome.status === 'lost') {
         output.error(`The rebuild of "${name}" lost its lock to another run and stopped. That run goes on from the last saved batch.`);
         return 1;
+      } else if (outcome.failed !== undefined && outcome.failed.length > 0) {
+        const keys = outcome.failed.slice(0, 20).map((key) => JSON.stringify(key)).join(', ') + (outcome.failed.length > 20 ? ` and ${outcome.failed.length - 20} more` : '');
+        output.error(`The rebuild of "${name}" wrote no document for ${outcome.failed.length === 1 ? 'the key' : `${outcome.failed.length} keys`} ${keys}: the text is too long for the database (see the lines above).`);
+        code = 1;
       }
     }
     return code;

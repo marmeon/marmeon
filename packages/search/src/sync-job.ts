@@ -4,7 +4,7 @@ import * as v from 'valibot';
 import type { SearchDriver } from './driver.ts';
 import { SearchSyncError } from './drivers/meilisearch/client.ts';
 import type { IndexInfo, SearchIndexes } from './registry.ts';
-import { BATCH_SIZE, keyId, MAX_KEY_LENGTH, write, type IndexReader, type ReadResult, type SyncPayload } from './search.ts';
+import { BATCH_SIZE, MAX_KEY_LENGTH, MAX_WRITES, sameRead, write, type IndexReader, type ReadResult, type SyncPayload } from './search.ts';
 
 const key = v.union([
   v.pipe(v.string(), v.minLength(1), v.maxLength(MAX_KEY_LENGTH), v.check((text) => text.isWellFormed() && !text.includes('\u0000'), 'must be well-formed text without NUL')),
@@ -16,22 +16,6 @@ export const syncPayloadSchema = v.strictObject({
   index: v.pipe(v.string(), v.regex(/^[a-z][a-z0-9_-]{0,63}$/)),
   keys: v.pipe(v.array(key), v.minLength(1), v.maxLength(BATCH_SIZE)),
 });
-
-/** The most times one attempt writes its rows while they keep changing. */
-export const MAX_WRITES = 3;
-
-/** @internal Whether two reads of the same keys found the same documents and the same removals. */
-export function sameRead(first: ReadResult, second: ReadResult): boolean {
-  // Filters keep the order toDocument() gave them, so they are compared sorted; fields are already in declared order.
-  const shape = (found: ReadResult): string =>
-    JSON.stringify([
-      found.documents
-        .map((document) => [keyId(document.key), { ...document, filters: Object.fromEntries(Object.entries(document.filters).sort(([a], [b]) => (a < b ? -1 : 1))) }] as const)
-        .sort(([a], [b]) => (a < b ? -1 : 1)),
-      found.removed.map(keyId).sort(),
-    ]);
-  return shape(first) === shape(second);
-}
 
 /**
  * The framework job behind `search.index()` and `search.remove()` on a driver that writes through the queue: reads the rows of its

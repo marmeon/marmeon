@@ -3,10 +3,11 @@ import { withCode } from '@marmeon/core/internal';
 import { Connections, SchemaRequirements } from '@marmeon/database';
 import { declareDerivedSchema, type DerivedSchemaEntry } from '@marmeon/database/internal';
 import type { DriverPage, DriverQuery, SearchDriver, SearchDriverFactory, SearchFailure, SearchKey, SearchProblem, StoredDocument } from '../../driver.ts';
-import { SearchSetupError } from '../../errors.ts';
+import { DocumentsTooLongError, SearchSetupError } from '../../errors.ts';
 import type { IndexInfo } from '../../registry.ts';
 import { searchOptions } from '../../config.ts';
 import { configFor } from '../../languages.ts';
+import { hasCode, keyId } from '../../search.ts';
 import { checkConfigurations, missingConfigurations, missingConfigurationsMessage, pgsqlSchemaGaps, queryPgsql } from './pgsql.ts';
 import { querySqlite, sqliteSchemaGaps } from './sqlite.ts';
 import { deleteDocuments, deleteUnchanged, documentsAfter, DOCUMENTS_COLUMNS, DOCUMENTS_TABLE, flushDocuments, TEXT_COLUMNS, UNIQUE_INDEX, upsertDocuments, type StoredRevision } from './statements.ts';
@@ -43,6 +44,15 @@ function schemaProblem(gap: { readonly name: string; readonly problem: 'missing'
 function setup(message: string): SearchSetupError {
   return new SearchSetupError(withCode('Q9', message));
 }
+
+/** Documents per statement and savepoint on Postgres. */
+const PGSQL_CHUNK = 100;
+
+/** @internal Whether an error, or one it was caused by, is SQLSTATE 54000 (program limit exceeded): a `tsvector` over its limit. */
+export function overLimit(error: unknown): boolean {
+  return hasCode(error, '54000');
+}
+
 
 /**
  * The `database` driver: every index in the table `search_documents` of the default connection, written in the caller's transaction.
@@ -83,10 +93,41 @@ export class DatabaseSearchDriver implements SearchDriver {
     return this.#languages;
   }
 
+  /**
+   * On Postgres each statement runs in a savepoint: a document whose `tsvector` would pass the limit of Postgres (SQLSTATE 54000)
+   * fails only itself. Every other document is written, the old documents of the keys that failed are removed, and then a
+   * `DocumentsTooLongError` names them. The 200 000 characters a document keeps cannot rule that out, since the limit counts bytes
+   * and positions of the words.
+   */
   async upsert(index: IndexInfo, documents: readonly StoredDocument[]): Promise<void> {
     if (!this.#postgres) return upsertDocuments(this.#db, index, documents);
     const map = await this.#map();
-    await upsertDocuments(this.#db, index, documents, (locale) => configFor(locale, map));
+    const configuration = (locale: string | null) => configFor(locale, map);
+    const write = (list: readonly StoredDocument[]) => this.#connections.transaction(() => upsertDocuments(this.#db, index, list, configuration));
+    const tooLong: SearchKey[] = [];
+    let cause: unknown;
+    for (let at = 0; at < documents.length; at += PGSQL_CHUNK) {
+      const chunk = documents.slice(at, at + PGSQL_CHUNK);
+      try {
+        await write(chunk);
+      } catch (error) {
+        if (!overLimit(error)) throw error;
+        // One document at a time, to find the ones over the limit.
+        for (const document of chunk) {
+          try {
+            await write([document]);
+          } catch (single) {
+            if (!overLimit(single)) throw single;
+            cause ??= single;
+            tooLong.push(document.key);
+          }
+        }
+      }
+    }
+    if (tooLong.length === 0) return;
+    // A row whose document cannot be written must not stay searchable with its old one.
+    await deleteDocuments(this.#db, index, tooLong);
+    throw new DocumentsTooLongError(index.name, [...new Map(tooLong.map((key) => [keyId(key), key])).values()], cause);
   }
 
   async delete(index: IndexInfo, keys: readonly SearchKey[]): Promise<void> {
