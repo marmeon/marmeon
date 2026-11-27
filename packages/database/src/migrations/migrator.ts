@@ -5,6 +5,7 @@ import { Application } from '@marmeon/core';
 import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
+import { derivedSchemaOf } from '../derived-schema.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
 import { appTables, assertInterruptionReadable, assertNotUnreleased, assertRecordReadable, createMigrationsTable, INTERRUPTION_TABLE, interruptedError, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, MigrationStateError, readInterruption, recordVersion, type Interruption } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
@@ -148,6 +149,22 @@ function fold(planned: readonly Planned[], from: Folded = nothing): Folded {
     }
   }
   return { projection, connections };
+}
+
+/** The names SQLite gives the shadow tables of an FTS5 table. */
+const FTS5_SHADOWS = ['_data', '_idx', '_content', '_docsize', '_config'];
+
+/**
+ * The tables a framework package declared derived that the database has, and on SQLite the FTS5 shadow tables of a declared virtual
+ * table — by SQLite's own word (`shadow`), not by name alone, so an app's `docs_data` next to a declared plain `docs` is still named.
+ */
+async function derivedTablesOf(db: Kysely<any>, driver: Driver, declared: ReadonlySet<string>): Promise<Set<string>> {
+  const tables = new Set(declared);
+  if (driver !== 'sqlite' || declared.size === 0) return tables;
+  const listed = (await sql<{ name: string; type: string }>`select name, type from pragma_table_list where schema = 'main' and type in ('virtual', 'shadow')`.execute(db)).rows;
+  const virtual = new Set(listed.filter((row) => row.type === 'virtual' && declared.has(row.name)).map((row) => row.name));
+  for (const { name, type } of listed) if (type === 'shadow' && FTS5_SHADOWS.some((suffix) => name.endsWith(suffix) && virtual.has(name.slice(0, -suffix.length)))) tables.add(name);
+  return tables;
 }
 
 function runner(db: Kysely<any>): CatalogQuery {
@@ -1051,20 +1068,27 @@ export class Migrator {
   /** What the database has that no migration made, said once per connection after a run; and the tables 0.3 left. */
   async #notice(state: Folded, options: MigrateOptions): Promise<void> {
     if (!options.onUnknown && !options.onLegacy) return;
+    // What a framework package declares derived only stays out of this notice. `undescribedColumns` and `#catalog` do not read the
+    // declaration: `db:query` and the database MCP keep treating these objects as undescribed and withhold them.
     for (const connection of await this.connections()) {
-      const { types, extension } = await tableColumns(runner(this.#books(connection)), this.#driver(connection));
+      const derived = derivedSchemaOf(this.#app, connection);
+      const driver = this.#driver(connection);
+      const { types, extension } = await tableColumns(runner(this.#books(connection)), driver);
       const columns = new Map([...types].map(([table, found]) => [table, [...found.keys()]]));
       const left = legacyTables(columns);
       if (left.length > 0) options.onLegacy?.(connection, left);
+      const derivedTables = await derivedTablesOf(this.#books(connection), driver, derived.tables);
       const tables: string[] = [];
       const extra: string[] = [];
       for (const [table, found] of columns) {
         if (isMigratorTable(table, this.#driver(connection)) || left.includes(table) || table.startsWith('sqlite_') || extension.has(table)) continue;
         const known = state.projection.tables.get(table);
-        if (known === undefined || state.connections.get(table) !== connection) tables.push(table);
-        else {
+        if (known === undefined || state.connections.get(table) !== connection) {
+          if (!derivedTables.has(table)) tables.push(table);
+        } else {
           const names = new Set(known.columns.map((column) => column.name));
-          for (const column of found) if (!names.has(column)) extra.push(`${table}.${column}`);
+          const declared = derived.columns.get(table);
+          for (const column of found) if (!names.has(column) && !declared?.has(column)) extra.push(`${table}.${column}`);
         }
       }
       if (tables.length > 0 || extra.length > 0) options.onUnknown?.(connection, { tables, columns: extra });
