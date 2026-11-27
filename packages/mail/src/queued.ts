@@ -2,8 +2,9 @@ import type { Application, StandardSchemaV1 } from '@marmeon/core';
 import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import type { Attachment, MailMessage } from './message.ts';
+import { messageIdOf, type MailSentReporter } from './events.ts';
 import { traceMail } from './trace.ts';
-import { MailDeliveryError } from './mailer.ts';
+import { MailDeliveryError, type SentMail } from './mailer.ts';
 import type { MailTransport } from './transports.ts';
 
 const address = v.object({ address: v.string(), name: v.optional(v.string()) });
@@ -68,19 +69,22 @@ export class SendQueuedMail {
 
   readonly #transport: MailTransport;
   readonly #app: Application | undefined;
+  readonly #report: MailSentReporter | undefined;
 
-  constructor(transport: MailTransport, app?: Application) {
+  constructor(transport: MailTransport, app?: Application, report?: MailSentReporter) {
     this.#transport = transport;
     this.#app = app;
+    this.#report = report;
   }
 
   async handle(payload: QueuedMailPayload, job: JobContext): Promise<void> {
+    let sent: SentMail;
     try {
-      await traceMail(this.#app, payload.mailable, 'worker', async () => {
+      sent = await traceMail(this.#app, payload.mailable, 'worker', async () => {
         const message = fromQueued(payload.message);
         // The job id stays over retries, so every attempt of one mail carries the same key.
-        await this.#transport.send(message, { signal: job.signal, idempotencyKey: `marmeon-mail-${job.id}` });
-        return message;
+        const receipt = await this.#transport.send(message, { signal: job.signal, idempotencyKey: `marmeon-mail-${job.id}` });
+        return { ...message, messageId: messageIdOf(receipt) };
       });
     } catch (error) {
       if (error instanceof MailDeliveryError) {
@@ -97,6 +101,10 @@ export class SendQueuedMail {
       }
       throw error;
     }
+    // The mail is out and the job is done: it does not wait for the listeners. A job that waited would hold its claim while a
+    // stopping worker releases it, and the retry would send the mail twice. The reporter never rejects, and its listeners come
+    // from the root container, so no job scope ends under them.
+    void this.#report?.({ mailable: payload.mailable, message: sent, messageId: sent.messageId, queued: true });
   }
 }
 

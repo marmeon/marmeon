@@ -1,5 +1,7 @@
 import { token, type Application, type Duration } from '@marmeon/core';
 import { RENDER_MAIL, rendersMail } from './content.ts';
+import type { MailSentReporter } from './events.ts';
+import { messageIdOf } from './events.ts';
 import { fromHtml, Html } from './html.ts';
 import type { Address, Mailable, MailContent, MailMessage } from './message.ts';
 import { toQueued, type QueuedMailPayload } from './queued.ts';
@@ -117,22 +119,26 @@ export class TransportMailer implements Mailer {
   readonly #from: Address;
   readonly #queue: MailQueue | undefined;
   readonly #app: Application | undefined;
+  readonly #report: MailSentReporter | undefined;
 
-  /** `app`: the mails are reported on its `mail.send` channel. */
-  constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue, app?: Application) {
+  /** `app`: the mails are reported on its `mail.send` channel. `report`: tells the app a sent mail went out (`MailSent`). */
+  constructor(transport: MailTransport | (() => MailTransport), from: Address, queue?: MailQueue, app?: Application, report?: MailSentReporter) {
     this.#transport = typeof transport === 'function' ? transport : () => transport;
     this.#from = from;
     this.#queue = queue;
     this.#app = app;
+    this.#report = report;
   }
 
-  send(mailable: Mailable): Promise<SentMail> {
-    return traceMail(this.#app, mailable.constructor.name, 'send', async () => {
+  async send(mailable: Mailable): Promise<SentMail> {
+    const sent = await traceMail(this.#app, mailable.constructor.name, 'send', async () => {
       const message = await compose(mailable, this.#from);
       // After delivery nothing may throw: a retry would send the mail twice. A transport that resolves with nothing has no id.
       const receipt = (await this.#transport().send(message, {})) as MailReceipt | undefined;
-      return { ...message, messageId: typeof receipt?.messageId === 'string' ? receipt.messageId : undefined };
+      return { ...message, messageId: messageIdOf(receipt) };
     });
+    await this.#report?.({ mailable: mailable.constructor.name, message: sent, messageId: sent.messageId, queued: false });
+    return sent;
   }
 
   async queue(mailable: Mailable, options: QueueMailOptions = {}): Promise<MailMessage> {

@@ -413,6 +413,7 @@ The framework's packages dispatch events of their own, classes like any other:
 | Package | Events |
 | --- | --- |
 | `@marmeon/auth` | The 19 events in the table below |
+| `@marmeon/mail` | `MailSent`, when a transport took a mail ([mail](mail.md#knowing-when-a-mail-went-out)) |
 | `@marmeon/queue` | `JobQueued`, `JobProcessing`, `JobProcessed`, `JobReleased`, `JobFailed`, all extending `JobEvent` |
 | `@marmeon/scheduler` | `ScheduledTaskStarting`, `ScheduledTaskFinished`, `ScheduledTaskFailed`, `ScheduledTaskSkipped`, all extending `ScheduledTaskEvent` |
 

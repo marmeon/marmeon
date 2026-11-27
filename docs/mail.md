@@ -411,7 +411,7 @@ change an app has to follow. [Releases](releases.md#libraries-the-framework-buil
 
 `messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends, for `postmark` Postmark's `MessageID`, or for `resend` Resend's `id`. It is `undefined` with `log`
 and `array`, where no provider takes part, and with a provider that gives none. `mailer.queue()` has no id to return: the worker
-sends the mail later.
+sends the mail later, and [`MailSent`](#knowing-when-a-mail-went-out) brings the id then.
 
 ```ts
 const { messageId } = await this.#mailer.send(new ReceiptMail(order, t));
@@ -439,8 +439,8 @@ Queue a mail whenever a request sends it:
 `queue()` needs `@marmeon/queue`, which every new app has, and a worker that takes the mail's queue. `queue:work` without
 `--queue` takes every queue. The [queues](queues.md#running-workers) page covers workers.
 
-`mailer.queue()` resolves with the composed message only: no job id, no `messageId`, and no word when the mail is sent or fails for good.
-A mail whose outcome the app keeps, such as a delivery log, is sent by a job of its own that calls `mailer.send()`. Its payload is the id of a log row that is
+`mailer.queue()` resolves with the composed message only: no job id, no `messageId`, and no word when it fails for good. The `MailSent` event
+tells when the worker handed the mail to the transport and with which `messageId`. A mail whose outcome the app keeps, such as a delivery log, is sent by a job of its own that calls `mailer.send()`. Its payload is the id of a log row that is
 written with the request's change, so a rollback takes the row with it. The job sets the row to `sent` with the `messageId`, and its
 `failed()` tries to close the log (`failed`). A worker that dies first, or a `failed()` that throws or times out, leaves the row open,
 so look for rows that stay unsent. A job runs at least once, so it skips the send when the row is already `sent`; a crash between the send and the update can still send twice, as [When a job fails for good](queues.md#when-a-job-fails-for-good) shows.
@@ -448,6 +448,54 @@ so look for rows that stay unsent. A job runs at least once, so it skips the sen
 A token that must stay the same over the mail's retries, such as a password reset token, is made before the mail is queued. The
 starter kit queues a job that makes the token and then queues the mail, so the request's answer takes the same time whether the
 account exists or not.
+
+### Knowing when a mail went out
+
+The app dispatches `MailSent` whenever a transport takes a mail, whether `mailer.send()` sent it at once or the worker of a queued mail did.
+A transport that throws dispatches nothing. Listen to it like to any [event](events.md):
+
+```ts title="modules/system/listeners/LogSentMail.ts"
+import { Logger } from '@marmeon/core';
+import type { MailSent } from '@marmeon/mail';
+
+export class LogSentMail {
+  readonly #logger: Logger;
+
+  constructor(logger: Logger) {
+    this.#logger = logger.child({ channel: 'mail' });
+  }
+
+  handle(event: MailSent): void {
+    this.#logger.info(`Mail sent: ${event.mailable} (${event.messageId ?? 'no id'})`);
+  }
+}
+```
+
+Register it with `listen(MailSent, LogSentMail)` in a module's `listeners`. The event has these fields:
+
+| Field | Holds |
+| --- | --- |
+| `mailable` | The class name of the mailable. Use it as a label in logs, never to branch: a bundler may rename classes in a production build. |
+| `driver` | The `MAIL_DRIVER` that took the mail. |
+| `messageId` | The id the provider gave the mail, `undefined` where there is none, as with `log` and `array`. |
+| `to`, `cc`, `bcc` | The addresses, without display names. |
+| `subject` | The subject. |
+| `queued` | `true` when a worker sent the mail, `false` for `mailer.send()`. |
+
+The event has no `html`, `text`, attachments or headers. A reset link or an unsubscribe URL must not travel into listeners, logs
+and recordings, so ask the mailable for them where you need them. The addresses and the subject can name a person: log them only
+when you must.
+
+The event is not queueable, so its listeners run in the process that sent the mail. For a queued mail, the worker does not wait for them to finish, and a worker that is stopping may cut them off, so the event is best effort there. `mailer.send()` waits for its listeners, in a request or in a job of your own, and their time counts against the request or against that job's timeout and stop timeout. Keep listeners fast, and dispatch a queued job from a listener for slow work. Give a listener's own I/O a timeout: a listener that never settles is never logged and holds its resources until the process ends.
+
+Listeners of `MailSent` are built from the root container on both paths, like the listeners of the queue's job events. They cannot
+inject a scoped service, such as the current request's. Such a listener fails like any other listener that throws.
+
+A listener that throws is logged as a warning, with secrets in the error's message redacted, and the mail counts as sent: a failing
+listener never makes the job try again, which would send the mail twice. The dispatcher stops at the first listener that throws, so
+the listeners after it do not run for that mail. The fake mailer of a test app dispatches nothing. Test a listener with `mail: 'real'` and `MAIL_DRIVER=array`, or
+build the event, `new MailSent({ mailable: 'WelcomeMail', driver: 'array', messageId: 'id-1', to: ['ada@example.com'], subject: 'Welcome', queued: false })`,
+and call the listener.
 
 ### The recipient's language
 
