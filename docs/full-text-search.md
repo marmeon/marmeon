@@ -155,7 +155,7 @@ Search checks every document that `toDocument()` returns before it reaches the d
 - A filter value is a string of at most 255 characters without the NUL character, a finite number or a boolean. Any other value,
   `null` and a string that is no well-formed Unicode included, throws a `TypeError`. A filter that the document leaves out matches no filter on that name.
 - The locale is `null` or a language tag such as `en` or `pt-BR`. It is stored in its canonical form, so `pt-br` and `pt-BR` are
-  the same locale. Any other value throws a `TypeError`.
+  the same locale. Any other value throws a `TypeError`, and so does a tag that is longer than 35 characters in its canonical form.
 - The texts lose the NUL character and the two characters of the Unicode private use area that mark the matches in excerpts.
 - A document keeps at most 200 000 characters of text. The fields fill that budget in the order of their weights, `A` first, and
   in the order of `fields` within one weight. The field that reaches the limit is cut, and the fields after it are left out.
@@ -247,7 +247,7 @@ An option that is not in this table throws a `TypeError`, so a misspelt `filter`
 
 A search reaches at most the first 1000 hits. A `page` and `perPage` whose product is larger than 1000 throw a `TypeError`, and
 `meta.total` counts at most 1000. A `page` or a `perPage` outside its range throws a `TypeError` as well, and so does a locale that
-is not a language tag.
+is not a language tag or is longer than 35 characters in its canonical form.
 
 `query()` returns a [`Result`](errors.md#results). Its value is a page in the shape `paginate()` returns: the hits in `data`, and
 where the page stands in `meta` (`page`, `perPage`, `total`, `lastPage`, `from`, `to`). Its error is a `SearchFailure` with a
@@ -308,10 +308,59 @@ Search refuses a filter that would quietly widen a search:
   symbol key throws a `TypeError`, because a filter that could not be read would quietly drop out of the search.
 - A document that leaves a filter out matches no search that filters on it.
 
+The score of a hit depends only on the document itself and the term. On every built-in driver, the documents that the filters
+hide move neither the scores nor the order of the hits a user sees.
+The time a search takes still grows with the documents that match its words, those of other tenants included. Tenants that must
+not learn anything about each other belong in separate databases.
+
 ## The database driver
 
 The `database` driver keeps every index in one table of your app's database and searches it with the text search of SQLite or
 Postgres.
+
+The table comes with the package as a migration. Publish it into your app and run it:
+
+```sh
+pnpm marmeon publish @marmeon/search
+pnpm marmeon migrate
+```
+
+Once you have published it, `marmeon check` reports a migration that a newer version of the package ships and your app lacks, as
+it does for [every package that ships migrations](migrations.md#publishing-the-migrations-of-a-package).
+
+The migration makes two tables on the default connection. `search_documents` holds one row per document: the name of its index,
+its key, its locale, its filters and the text of its fields in the columns `a` to `d`, one column per weight. `search_rebuilds` holds the
+state of a running rebuild. The text columns are [secret](migrations.md#secret-columns), so `selectAll()`, `marmeon db:query` and the
+database MCP never show indexed text. What the schema builder cannot write is part of the migration as raw SQL, and `migrate` does
+not name those objects as unknown.
+
+The driver writes in your transaction: a document is stored or removed with the statements of your own change, and a rollback
+takes it back with them. `/up/ready` stays red until `search_documents` has every column the driver uses and its text columns are
+secret ([package tables](package-tables.md#tables)). An error of the database, such as a table that was not migrated yet, throws from `search.query()` like any
+other query of your app; the `unavailable` failure is for search services outside your database. The driver has no SQL for MySQL: on a MySQL connection the start stops with
+[Q9](errors.md#server-error-codes). Select `SEARCH_DRIVER=meilisearch` there.
+
+### SQLite
+
+On SQLite the driver searches with FTS5, the full-text search built into SQLite. The migration makes an FTS5 table
+`search_documents_fts` over the four text columns, and triggers keep it in step with `search_documents` on every insert, update and
+delete.
+
+- **Words.** The text is split into words of letters and numbers (the `unicode61` tokenizer). Case does not count, and neither do
+  diacritics: `see` finds "Sée", and `hauser` finds "Häuser".
+- **Prefixes.** With `prefix: true`, the last word of the term also matches the start of a word: `hau` finds "Häuser".
+- **No stemming.** SQLite compares whole words, so `house` does not find "houses". Use Postgres in production when your users
+  search in a language with many word forms.
+- **Ranking.** A hit's score counts, for each weight, how many words of the term occur in the fields of that weight. A word in a
+  field of weight `A` counts ten times one of weight `D`, `B` four times and `C` twice. A word that occurs several times in the
+  fields of one weight counts once for that weight.
+- **Locales.** SQLite searches every locale with the same rules. The locale only narrows a search to the documents of that locale
+  and those without one.
+- **Filters.** A filter value is compared with its type: the filter `true` does not match a document that carries `1`, and `"1"`
+  does not match `1`.
+
+`marmeon db:query` and the database MCP cannot read the FTS5 table or its shadow tables, like
+[any virtual table that raw SQL made](database.md#querying-a-connection).
 
 ## Meilisearch
 

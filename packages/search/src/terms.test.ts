@@ -15,6 +15,7 @@ import {
   searchText,
   tokens,
 } from './terms.ts';
+import { HOSTILE } from './test-helpers/hostile-terms.ts';
 
 const NUL = String.fromCharCode(0);
 const COMBINING_ACUTE = String.fromCharCode(0x0301);
@@ -22,28 +23,6 @@ const LONE_SURROGATE = String.fromCharCode(0xd800);
 /** A list of `length` holes: no entries at all, unlike a list of undefined. */
 const holes = (length: number): string[] => Object.assign([], { length });
 const codePoints = (text: string) => [...text].length;
-
-const HOSTILE: readonly (readonly [string, string])[] = [
-  ['an unterminated FTS5 string and a group', 'foo" OR (bar'],
-  ['an FTS5 column filter', 'a:see'],
-  ['an FTS5 NEAR group', 'NEAR(x y)'],
-  ['a lone star', '*'],
-  ['every tsquery operator', "'):*&!<->\\"],
-  ['only double quotes', '"""'],
-  ['a NUL character', `ab${NUL}cd`],
-  ['a forged highlight marker', `ab${MARK_START}cd${MARK_END}`],
-  ['only stop words', 'the and of'],
-  ['10 000 characters', 'x'.repeat(10_000)],
-  ['40 words', Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ')],
-  ['emoji', '🔍 search 👩‍💻 code'],
-  ['combining marks', `cafe${COMBINING_ACUTE} nai${String.fromCharCode(0x0308)}ve`],
-  ['Arabic', 'مرحبا بالعالم'],
-  ['Chinese', '全文搜索 测试'],
-  ['FTS5 keywords and a caret', 'AND OR NOT ^start +more'],
-  ['a tsquery weight and phrase', 'foo:AB <2> bar'],
-  ['fullwidth operators that NFKC turns into syntax', '＂ａ＂ ＆ ｂ＊ ｜ （ｃ）'],
-  ['a lone surrogate', `ab${LONE_SURROGATE}cd`],
-];
 
 // No character with a meaning in tsquery, FTS5 or a Meilisearch filter may come from the input.
 const SYNTAX = /["':()&|!*\\<>^+]/;

@@ -21,6 +21,8 @@ export const MAX_DOCUMENT_LENGTH = 200_000;
 export const MAX_FILTER_VALUE_LENGTH = 255;
 /** The most characters of a string key. */
 export const MAX_KEY_LENGTH = 253;
+/** The most characters of a locale in its canonical form. */
+export const MAX_LOCALE_LENGTH = 35;
 
 const REQUEST_OPTIONS: readonly string[] = ['in', 'term', 'filters', 'locale', 'prefix', 'excerpts', 'page', 'perPage'];
 const FAILURE_KINDS: readonly unknown[] = ['unavailable', 'missing-index'];
@@ -97,17 +99,20 @@ export function checkKey(value: unknown, where: string): SearchKey {
   throw new TypeError(`${where} is ${shown(value)}, but a search key is a string of 1 to ${MAX_KEY_LENGTH} characters (well-formed, without NUL) or a safe integer.`);
 }
 
-/** A locale in its canonical form (`pt-br` → `pt-BR`); a tag that is no language tag is a `TypeError`. */
+/**
+ * A locale in its canonical form (`pt-br` → `pt-BR`); a tag that is no language tag, or whose canonical form is longer than 35
+ * characters (the width of the stored locale), is a `TypeError`.
+ */
 export function canonicalLocale(value: unknown, where: string): string {
   if (typeof value === 'string' && LOCALE.test(value)) {
     try {
       const [canonical] = Intl.getCanonicalLocales(value);
-      if (canonical !== undefined) return canonical;
+      if (canonical !== undefined && canonical.length <= MAX_LOCALE_LENGTH) return canonical;
     } catch {
       // falls through to the refusal below
     }
   }
-  throw new TypeError(`${where} is ${shown(value)}, but a locale is a language tag such as "en" or "pt-BR".`);
+  throw new TypeError(`${where} is ${shown(value)}, but a locale is a language tag such as "en" or "pt-BR", at most ${MAX_LOCALE_LENGTH} characters in its canonical form.`);
 }
 
 /** Checks one filter value: a string of at most 255 characters, a finite number or a boolean. */

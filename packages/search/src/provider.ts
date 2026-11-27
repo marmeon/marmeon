@@ -1,6 +1,6 @@
 import { Application, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers, withCode } from '@marmeon/core/internal';
-import { Connections } from '@marmeon/database';
+import { Connections, type ProviderMigrations } from '@marmeon/database';
 import { BUILT_IN_SEARCH_DRIVERS, SearchConfig } from './config.ts';
 import { SearchDriver, type SearchDriverFactory } from './driver.ts';
 import { databaseDriver, declareSearchSchema } from './drivers/database/index.ts';
@@ -90,6 +90,8 @@ function collectIndexes(app: Application): SearchIndexes {
  */
 export class SearchServiceProvider implements ServiceProvider {
   static config = [SearchConfig];
+  /** The tables of `SEARCH_DRIVER=database`, copied into an app by `marmeon publish @marmeon/search`. */
+  static migrations = { from: new URL('../stubs/migrations', import.meta.url), module: 'system' } satisfies ProviderMigrations;
 
   /** The driver, once built — closed at shutdown. */
   #driver: SearchDriver | undefined;

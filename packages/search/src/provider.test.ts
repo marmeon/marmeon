@@ -29,10 +29,10 @@ describe('SearchServiceProvider: the driver record', () => {
     await expect(boot({ SEARCH_DRIVER: 'typesense' }, [plugin('TypesenseProvider', { typesense })])).resolves.toBeDefined();
   });
 
-  it('stops on the database driver, which this version does not build yet', async () => {
-    const database = await rejection(boot());
-    expect(database).toBeInstanceOf(SearchSetupError);
-    expect(database.message).toBe('[marmeon:Q9] SEARCH_DRIVER=database is not built in this version of @marmeon/search. Select a driver a provider brings.');
+  it('starts on the default database driver, on SQLite', async () => {
+    const app = await boot({ DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' }, [DatabaseServiceProvider]);
+    expect(app.container.make(SearchDriver).writes).toBe('transaction');
+    await app.shutdown();
   });
 
   it('stops for a name nobody brought and lists the known names, those of providers too', async () => {

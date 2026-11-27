@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SearchDriver, type SearchDriverFactory } from './driver.ts';
 import { SearchSetupError } from './errors.ts';
 import { SearchServiceProvider } from './provider.ts';
-import { MAX_DOCUMENT_LENGTH, Search } from './search.ts';
+import { canonicalLocale, MAX_DOCUMENT_LENGTH, Search } from './search.ts';
 import { SearchIndex, type SearchDocument, type SearchIndexClass } from './search-index.ts';
 import { SyncSearchDocuments } from './sync-job.ts';
 import { MemoryDriver } from './test-helpers/memory-driver.ts';
@@ -407,7 +407,8 @@ describe('Search refuses input it cannot index', () => {
       [{ fields: {}, filters: { audience: Number.NaN } }, 'ShapedIndex.toDocument() for the key 1: the filter "audience" is NaN, but a filter value is a string of at most 255 characters (well-formed, without NUL), a finite number or a boolean.'],
       [{ fields: {}, filters: { audience: 'x'.repeat(256) } }, `ShapedIndex.toDocument() for the key 1: the filter "audience" is ${JSON.stringify('x'.repeat(80))}…, but a filter value is a string of at most 255 characters (well-formed, without NUL), a finite number or a boolean.`],
       [{ fields: {}, filters: { audience: 'a\u0000b' } }, 'ShapedIndex.toDocument() for the key 1: the filter "audience" is "a\\u0000b", but a filter value is a string of at most 255 characters (well-formed, without NUL), a finite number or a boolean.'],
-      [{ fields: {}, locale: 'english' }, 'ShapedIndex.toDocument() for the key 1: locale is "english", but a locale is a language tag such as "en" or "pt-BR".'],
+      [{ fields: {}, locale: 'english' }, 'ShapedIndex.toDocument() for the key 1: locale is "english", but a locale is a language tag such as "en" or "pt-BR", at most 35 characters in its canonical form.'],
+      [{ fields: {}, locale: 'de-DE-u-ca-gregory-co-phonebk-hc-h23-nu-latn' }, 'ShapedIndex.toDocument() for the key 1: locale is "de-DE-u-ca-gregory-co-phonebk-hc-h23-nu-latn", but a locale is a language tag such as "en" or "pt-BR", at most 35 characters in its canonical form.'],
       [undefined, 'ShapedIndex.toDocument() for the key 1 returned undefined, but a document is an object with fields.'],
     ];
     for (const [document, message] of cases) {
@@ -617,5 +618,21 @@ describe('Search.query()', () => {
     const capped = await search.query({ in: PageIndex, term: 'whales', perPage: 2 });
     expect(capped.ok && capped.value.data.map((hit) => hit.key)).toEqual([1, 2]);
     expect(result.ok && result.value.meta).toMatchObject({ total: 1000, lastPage: 50 });
+  });
+});
+
+describe('canonicalLocale', () => {
+  it('keeps a canonical tag of exactly 35 characters, the width of the stored locale', () => {
+    expect(canonicalLocale('EN-aaaaaaaa-bbbbbbbb-cccccccc-ddddd', 'locale')).toBe('en-aaaaaaaa-bbbbbbbb-cccccccc-ddddd');
+  });
+
+  it('refuses a canonical tag of 36 characters', () => {
+    expect(() => canonicalLocale('en-aaaaaaaa-bbbbbbbb-cccccccc-dddddd', 'locale')).toThrow(TypeError);
+  });
+
+  it('refuses a tag whose canonical form is longer than 35 characters', () => {
+    expect(() => canonicalLocale('de-DE-u-ca-gregory-co-phonebk-hc-h23-nu-latn', 'search.query({ locale })')).toThrow(
+      new TypeError('search.query({ locale }) is "de-DE-u-ca-gregory-co-phonebk-hc-h23-nu-latn", but a locale is a language tag such as "en" or "pt-BR", at most 35 characters in its canonical form.'),
+    );
   });
 });
