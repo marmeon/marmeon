@@ -43,7 +43,7 @@ export const queuedChatSchema = v.object({
  * The framework job behind `chat.queue()`: posts one message. **Encrypted** (APP_KEY): a recipient's webhook address is a secret and
  * travels inside the payload, so `jobs` and `failed_jobs` keep only ciphertext, bound to the job name. The worker checks the message and
  * the address again before it posts: a payload is data, not a promise. A webhook that answers `throttled` or `unavailable` is tried
- * again (waiting what it asks), one that is gone or refuses the message fails the job at once. Delivery is at-least-once. See `docs/chat-notifications.md#delivery-and-retries`.
+ * again (waiting what it asks, until its last try), one that is gone or refuses the message fails the job at once. Delivery is at-least-once. See `docs/chat-notifications.md#delivery-and-retries`.
  */
 export class SendQueuedChatMessage {
   static readonly job = 'marmeon.chat';
@@ -70,7 +70,8 @@ export class SendQueuedChatMessage {
       await this.#poster.deliver(message.to, message.content, job.signal);
     } catch (error) {
       if (error instanceof ChatDeliveryError) {
-        if ((error.reason === 'throttled' || error.reason === 'unavailable') && error.retryAfterSeconds !== undefined) return job.release(error.retryAfterSeconds);
+        // The last attempt fails with the delivery error: a release there would become a bare "released on its last attempt" failure.
+        if ((error.reason === 'throttled' || error.reason === 'unavailable') && error.retryAfterSeconds !== undefined && job.attempt < job.tries) return job.release(error.retryAfterSeconds);
         if (error.permanent) return job.fail(error);
         throw error;
       }

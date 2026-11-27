@@ -250,7 +250,7 @@ worker checks the message and the address again before it posts, since a payload
 | The webhook answers | What happens |
 | --- | --- |
 | 2xx | Done. Teams answers `202`: its flow accepted the message and posts it a moment later. |
-| 429, 503 | The job waits for the `Retry-After` of the answer, at least one second and at most an hour, and tries again. Without a usable header the backoff applies. |
+| 429, 503 | The job waits for the `Retry-After` of the answer, at least one second and at most an hour, and tries again until its last try. Without a usable header the backoff applies. |
 | Any other 5xx, 408, 425, a timeout, a network error | Tried again with the backoff. |
 | An address the `HttpClient` refuses | Fails at once. |
 | 404, 410 | Fails at once: the webhook was deleted or disabled. |
@@ -260,7 +260,11 @@ The job has five tries and waits 10, 60, 300 and 300 seconds between them, and t
 is at least once, so a retry after a lost answer can post a message twice. The `failed_jobs` entry names the provider and the
 status, and the provider's own error code when it is a short word, never an address.
 
+Each wait for a `Retry-After` uses one of the five tries.
+The last try does not wait: the job fails with the error of the webhook, and the `failed_jobs` entry keeps its status and provider code.
+
 On the `sync` queue connection none of this waiting and retrying happens: the job fails, and its error goes to the caller.
+A `429` or `503` with a `Retry-After` reaches the caller as a `QueueError`, because the job asked to wait and `sync` runs it only once.
 
 ## Untrusted content
 
