@@ -46,6 +46,21 @@ describe.each(drivers)('the unique index is the truth — on %s', (driver) => {
     expect(await failOnDuplicate('email', () => users.update(ada.id, { name: 'Ada L.' }))).toMatchObject({ name: 'Ada L.' });
   });
 
+  // Only Postgres reports the constraint's name, so only there are the columns read from the projection's array; the other drivers build a fresh one.
+  it('hands out its own copy of the columns: changing them changes nothing for the next call', async () => {
+    const ada = await users.insert({ name: 'Ada', email: 'ada@example.com' });
+    const columnsOf = async () => {
+      const result = await users.tryInsert({ name: 'Ada 2', email: 'ada@example.com' });
+      return result.ok ? undefined : (result.error.columns as string[]);
+    };
+    const given = (await columnsOf())!;
+    expect(given).toEqual(['email']);
+    given.push('id');
+    given[0] = 'name';
+    expect(await columnsOf()).toEqual(['email']);
+    expect(await users.find(ada.id)).toMatchObject({ email: 'ada@example.com' });
+  });
+
   it('a conflict on another index stays what it is (a bug, not the input): rethrown', async () => {
     await users.insert({ name: 'Ada', email: 'ada@example.com' });
     const error = await failOnDuplicate('name', () => users.insert({ name: 'Ada', email: 'ada@example.com' })).catch((failure: unknown) => failure);

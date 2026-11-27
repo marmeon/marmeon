@@ -269,6 +269,8 @@ and `nullable()` changes (by the column's name after the renames), new checks, n
 at once. Error D19 stops a table name that two migrations create without a `drop` between them, a column added twice, and a change of a table or column
 no migration created with the blueprint (`alter`, `rename`, `renameColumn()`, `notNull()`, `nullable()`, or an index on it, or a column in the `where` of an index); dropping such a table is allowed.
 
+`projection()` returns a copy: changing it changes nothing for the app's connections, which keep working with their own.
+
 A table name with a dot names a table together with its schema or database, and the migrations do not describe such a table. In an `up()`, `schema.create()` and the new name of `schema.rename()` refuse it with error D31 before any statement runs: use a name without a dot. `drop()` and `dropIfExists()` still accept one, for a table of another tool; `alter()` and the old name of `rename()` of such a table end in error D19, since the migrations do not know it. A `down()` is not checked against the migrations, so `create()`, `alter()` and `rename()` accept a name with a dot there, except a `oneOf()` change of such a table, which ends in error D19 as it does for any table the migrations do not know.
 
 Tables that nothing in the migrations creates, such as a table another tool made in the same database or one that raw SQL made, are not

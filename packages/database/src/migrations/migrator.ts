@@ -638,10 +638,12 @@ export class Migrator {
   /**
    * The schema the migrations describe, computed from their plans without a database: every table with its columns, keys and marks, as
    * the migrations of all modules leave it. Raw SQL is not looked into: what it makes is unknown. Read from `.marmeon/schema.json` while
-   * that fits every migration file, otherwise computed and written back. See `docs/migrations.md#what-the-migrations-describe`.
+   * that fits every migration file, otherwise computed and written back. A copy: the process's connections work with the cached
+   * original, so changing what you get changes nothing for them. See `docs/migrations.md#what-the-migrations-describe`.
    */
   async projection(): Promise<SchemaProjection> {
-    return loadProjection(this.#app.root, this.files());
+    // The connections' own object is cached for the process: a caller that changes it would change which columns are secret.
+    return structuredClone(await loadProjection(this.#app.root, this.files()));
   }
 
   /** @internal — {@link projection} for a caller that must write nothing: the cached `.marmeon/schema.json` when it fits, otherwise computed and not saved. */
