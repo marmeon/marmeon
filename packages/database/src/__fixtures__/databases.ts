@@ -20,6 +20,9 @@ export type TestDriver = (typeof drivers)[number];
  */
 export const MYSQL_URL = process.env[`MARMEON_TEST_${'MYSQL_URL'}`];
 
+/** The drivers of a suite that also runs on MySQL. A file that uses it names the variable of `test:mysql` itself: its own mention is what selects it for that project. */
+export const driversWithMysql = MYSQL_URL ? ([...drivers, 'mysql'] as const) : drivers;
+
 /** `describe` for the cases that need the MySQL server: skipped when none is configured. */
 export const withMysql = (name: string, body: () => void): void => void describe.runIf(MYSQL_URL !== undefined)(name, body);
 

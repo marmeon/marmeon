@@ -1,10 +1,11 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import { deriveRelations, introspect, type ForeignKey, type SchemaFacts } from './introspection.ts';
 import { factsOf, projectMigrations } from './schema/projection.ts';
 import { Migrator, type Connections } from './index.ts';
+
 
 const fixtures = (name: string) => new URL(`./__fixtures__/migrations/${name}/`, import.meta.url);
 const modules: ModuleDefinition[] = [
@@ -161,7 +162,8 @@ describe('deriving relations from foreign keys', () => {
   });
 });
 
-describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (driver) => {
+// Also runs on MySQL: the variable MARMEON_TEST_MYSQL_URL of `pnpm test:mysql`; this mention selects the file for it.
+describe.each(driversWithMysql)('introspecting foreign keys and unique indexes on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeAll(async () => {
@@ -184,7 +186,7 @@ describe.each(drivers)('introspecting foreign keys and unique indexes on %s', (d
       { table: 'posts', column: 'author_id', references: 'users', referenced: 'id', nullable: false },
       { table: 'posts', column: 'editor_id', references: 'users', referenced: 'id', nullable: true },
     ]);
-    const uniques = Object.fromEntries([...found.uniques].filter(([table]) => !['migrations', 'migration_lock'].includes(table)));
+    const uniques = Object.fromEntries([...found.uniques].filter(([table]) => !['migrations', 'migration_lock', 'migration_interruption'].includes(table)));
     expect(uniques).toEqual({
       categories: [['id']],
       comments: [['id']],

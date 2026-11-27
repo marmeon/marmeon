@@ -534,7 +534,7 @@ collation such as `utf8mb4_0900_ai_ci`, the default of MySQL 8, two values that 
 both in, and a lookup through it misses one; the collation of the column counts, not that of the connection), and views.
 
 The role must see every table. MySQL shows a role only the tables it has a privilege on, and a table it does not show does not exist
-as far as Marmeon can tell. That has four consequences:
+as far as Marmeon can tell. That has five consequences:
 
 - A migration's check after it ran counts the table as missing and fails the migration (on MySQL the steps that ran stay: every
   `create` and `alter` commits at once, so nothing is rolled back).
@@ -545,6 +545,7 @@ as far as Marmeon can tell. That has four consequences:
   and no secret column is known. Give such a role `select` on every table of the database.
 - A role that sees `migrations` and not `migration_interruption` cannot say whether a migration has not finished, so every query of a
   managed connection fails with error D32. Grant it `select` on both ([a migration that stopped halfway](migrations.md#a-migration-that-stopped-halfway)).
+- When an earlier migration's table is the one the role does not see, `migrate` stops before it runs anything, with error D3.
 
 `migrate:fresh` drops all tables with one `drop table`, with the foreign key checks on, and the views after them: the keys between the
 tables are no obstacle. A key from a table of another database is an obstacle: the server refuses (error 3730) and, on InnoDB, drops none

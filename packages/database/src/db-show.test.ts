@@ -6,8 +6,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { migratorConnection, registerInspection } from './migrator-connection.ts';
 import { DbShowCommand } from './commands/db-show.ts';
 import { Connections, DatabaseServiceProvider, defineConnection } from './index.ts';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
+
 
 function fixture(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(new URL(`./__fixtures__/formats/cli-db-show/${name}.json`, import.meta.url), 'utf8'));
@@ -157,7 +158,8 @@ describe('db:show never prints a secret of the connection', () => {
   });
 });
 
-describe.each(drivers)('db:show with names that hold a dot and control characters on %s', (driver) => {
+// Also runs on MySQL: the variable MARMEON_TEST_MYSQL_URL of `pnpm test:mysql`; this mention selects the file for it.
+describe.each(driversWithMysql)('db:show with names that hold a dot and control characters on %s', (driver) => {
   async function showOf(connections: Connections, options: Record<string, string | boolean>) {
     const stdout: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((text) => (stdout.push(String(text)), true));

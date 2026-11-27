@@ -6,7 +6,7 @@ import { sql, type Kysely } from 'kysely';
 import type { CommandInput } from 'marmeon';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
-import { createLegacyTables, drivers, freshConnections, silent } from './__fixtures__/databases.ts';
+import { createLegacyTables, drivers, driversWithMysql, freshConnections, silent } from './__fixtures__/databases.ts';
 import { MigrateCommand } from './commands/migrate.ts';
 import { Connections, MigrationStateError, Migrator, Schema, SchemaError } from './index.ts';
 import { tableColumns } from './introspection.ts';
@@ -26,16 +26,17 @@ const migrator = (connections: Connections, ...modules: ModuleDefinition[]) =>
 const formats = new URL('./__fixtures__/formats/migrations/', import.meta.url);
 const allTables = async (db: Kysely<any>) => (await db.introspection.getTables()).map((table) => table.name).sort();
 
-describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
+// Also runs on MySQL: the variable MARMEON_TEST_MYSQL_URL of `pnpm test:mysql`; this mention selects the file for it.
+describe.each(driversWithMysql)('the migrator keeps two tables on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => ({ connections, close } = await freshConnections(driver, { record: false })));
   afterEach(() => close());
 
-  it('has `migrations` and, on SQLite, `migration_lock` beside the tables of the app — nothing else', async () => {
+  it('has `migrations` and, on SQLite, `migration_lock` and, on MySQL, `migration_interruption` beside the tables of the app — nothing else', async () => {
     await migrator(connections).migrate();
     const tables = await allTables(connections.get<any>());
-    expect(tables.filter((table) => !['accounts', 'users'].includes(table))).toEqual(driver === 'sqlite' ? ['migration_lock', 'migrations'] : ['migrations']);
+    expect(tables.filter((table) => !['accounts', 'users'].includes(table))).toEqual({ sqlite: ['migration_lock', 'migrations'], mysql: ['migration_interruption', 'migrations'], pgsql: ['migrations'] }[driver]);
   });
 
   it('writes the record with a checksum per migration, which is part of its format', async () => {
@@ -126,7 +127,8 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
     await byVersion[version]();
   });
 
-  it('names the tables of 0.3 on every connection a migration runs on, not only on `default`', async () => {
+  // Several MySQL schema changes in a row: slower than the default limit when the server is shared.
+  it('names the tables of 0.3 on every connection a migration runs on, not only on `default`', { timeout: 30_000 }, async () => {
     const other = await freshConnections(driver, { record: false });
     try {
       const both = new Connections({ connections: { default: connections.options(), system: other.connections.options() }, root: '/', logger: silent });
@@ -158,11 +160,12 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
     expect(unknown).toEqual([{ tables: ['secret_columns'], columns: [] }]);
   });
 
-  it('drops the tables of 0.3 with everything else on `migrate:fresh`', async () => {
+  // Several MySQL schema changes in a row: slower than the default limit when the server is shared.
+  it('drops the tables of 0.3 with everything else on `migrate:fresh`', { timeout: 30_000 }, async () => {
     await migrator(connections, auth).migrate();
     await createLegacyTables(migratorConnection(connections));
     await migrator(connections, auth).fresh();
-    expect((await allTables(connections.get<any>())).filter((table) => !['users', 'migrations', LOCK_TABLE].includes(table))).toEqual([]);
+    expect((await allTables(connections.get<any>())).filter((table) => !['users', 'migrations', LOCK_TABLE, ...(driver === 'mysql' ? ['migration_interruption'] : [])].includes(table))).toEqual([]);
   });
 
   it('gives the migrator a connection that reads its own tables only', async () => {
@@ -180,7 +183,8 @@ describe.each(drivers)('the migrator keeps two tables on %s', (driver) => {
   });
 });
 
-describe.each(drivers.flatMap((driver) => [[driver, 'alone'], [driver, 'next to a placeholder of the 0.3 record']] as const))('a database migrated by a build that was never released, on %s (%s)', (driver, variant) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql.flatMap((driver) => [[driver, 'alone'], [driver, 'next to a placeholder of the 0.3 record']] as const))('a database migrated by a build that was never released, on %s (%s)', (driver, variant) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => {
@@ -203,14 +207,16 @@ describe.each(drivers.flatMap((driver) => [[driver, 'alone'], [driver, 'next to 
     await expect(connections.get<any>().selectFrom('users').selectAll().execute()).rejects.toMatchObject({ reason: 'unmigrated' });
   });
 
-  it('is started over by `migrate:fresh`', async () => {
+  // Several MySQL schema changes in a row: slower than the default limit when the server is shared.
+  it('is started over by `migrate:fresh`', { timeout: 30_000 }, async () => {
     await migrator(connections).fresh();
     expect((await allTables(connections.get<any>())).filter((table) => table.startsWith('marmeon_'))).toEqual([]);
     expect(await connections.get<any>().selectFrom('users').selectAll().execute()).toEqual([]);
   });
 });
 
-describe.each(drivers)('a database with tables and no record of migrations, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('a database with tables and no record of migrations, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => {
@@ -268,11 +274,18 @@ describe.each(drivers)('a database with tables and no record of migrations, on %
     await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toMatchObject({ reason: 'unmigrated' });
   });
 
-  it('leaves no record behind when the first migration fails', async () => {
+  it.runIf(driver !== 'mysql')('leaves no record behind when the first migration fails', async () => {
     const broken: ModuleDefinition = { name: 'broken', migrations: fixtures('broken') };
     await expect(migrator(connections, broken).migrate()).rejects.toThrow('this migration is broken');
     expect(await allTables(migratorConnection(connections))).not.toContain('migrations');
     await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toMatchObject({ reason: 'unmigrated' });
+  });
+
+  it.runIf(driver === 'mysql')('keeps the record and the marker when the first migration fails, because MySQL cannot take them back', async () => {
+    const broken: ModuleDefinition = { name: 'broken', migrations: fixtures('broken') };
+    await expect(migrator(connections, broken).migrate()).rejects.toThrow('this migration is broken');
+    expect(await allTables(migratorConnection(connections))).toEqual(expect.arrayContaining(['migrations', 'migration_interruption']));
+    await expect(connections.get<any>().selectFrom('stranger').selectAll().execute()).rejects.toMatchObject({ reason: 'interrupted' });
   });
 
   it('is said by `migrate` as a warning that names the tables and the way to know them', async () => {
@@ -287,7 +300,8 @@ describe.each(drivers)('a database with tables and no record of migrations, on %
   });
 });
 
-describe.each(drivers)('the record of migrations and the lock, in a form this release does not read, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('the record of migrations and the lock, in a form this release does not read, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => {
@@ -299,6 +313,12 @@ describe.each(drivers)('the record of migrations and the lock, in a form this re
   it.each([
     ['one column more', 'alter table migrations add column note varchar(64)'],
     ['a column renamed', 'alter table migrations rename column module to owner'],
+    ...(driver === 'mysql'
+      ? [
+          ['one column more in migration_interruption', 'alter table migration_interruption add column note varchar(64)'],
+          ['a column of migration_interruption renamed', 'alter table migration_interruption rename column owner to host'],
+        ]
+      : []),
   ])('is refused with %s — by migrate, rollback, status and migrate:fresh', async (_name, statement) => {
     await sql.raw(statement).execute(migratorConnection(connections));
     for (const run of [(m: Migrator) => m.migrate(), (m: Migrator) => m.rollback(), (m: Migrator) => m.status(), (m: Migrator) => m.fresh()]) {
@@ -313,6 +333,7 @@ describe.each(drivers)('the record of migrations and the lock, in a form this re
   });
 });
 
+// No release of 0.3 ran on MySQL, so there is no record of that form there: Postgres and SQLite only.
 describe.each(drivers)('the record of migrations in the form of 0.3, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
@@ -394,7 +415,8 @@ describe.each(drivers)('the record of migrations in the form of 0.3, on %s', (dr
   });
 });
 
-describe.each(drivers)('the migration files the migrator reads, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('the migration files the migrator reads, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => ({ connections, close } = await freshConnections(driver)));
@@ -411,7 +433,8 @@ describe.each(drivers)('the migration files the migrator reads, on %s', (driver)
   };
   const canRefuseReading = process.platform !== 'win32' && process.getuid?.() !== 0;
 
-  it.runIf(canRefuseReading)('leaves the record in the form of 0.3 when a file cannot be read while it is carried over, and carries it over in the next run', async () => {
+  // The form of 0.3 never existed on MySQL (no release of 0.3 ran on it).
+  it.runIf(canRefuseReading && driver !== 'mysql')('leaves the record in the form of 0.3 when a file cannot be read while it is carried over, and carries it over in the next run', async () => {
     const directory = copyOfAccounts();
     const module: ModuleDefinition = { name: 'accounts', migrations: directory };
     await migrator(connections, module).migrate();
@@ -443,7 +466,8 @@ describe.each(drivers)('the migration files the migrator reads, on %s', (driver)
   });
 });
 
-describe.each(drivers)('the names of the migrator, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('the names of the migrator, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => {
@@ -482,7 +506,8 @@ describe.each(drivers)('the names of the migrator, on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('the database against the migrations after each one, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('the database against the migrations after each one, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => {
@@ -491,10 +516,10 @@ describe.each(drivers)('the database against the migrations after each one, on %
   });
   afterEach(() => close());
 
-  it.each([
+  it.runIf(driver !== 'mysql').each([
     ['a secret column renamed in raw SQL', 'raw-rename-column', /the column accounts\.password/],
     ['a table with secret columns renamed in raw SQL', 'raw-rename-table', /the table accounts/],
-  ])('rolls back a migration that leaves %s, with D3 and the way to do it', async (_name, directory, what) => {
+  ])('on SQLite and Postgres rolls back a migration that leaves %s, with D3 and the way to do it', async (_name, directory, what) => {
     const hand: ModuleDefinition = { name: 'hand', migrations: fixtures(directory) };
     await expect(migrator(connections, auth, accounts, hand).migrate()).rejects.toThrow(what);
     await expect(migrator(connections, auth, accounts, hand).migrate()).rejects.toThrow(/\[marmeon:D3\].*schema\.alter\(\).*schema\.rename\(\)/s);
@@ -503,6 +528,20 @@ describe.each(drivers)('the database against the migrations after each one, on %
     await sql`select id, password from accounts`.execute(migratorConnection(connections));
     expect(await connections.get<any>().selectFrom('accounts').selectAll().execute()).toEqual([]);
     expect((await migrator(connections, auth, accounts, hand).status()).filter((file) => file.batch === undefined).map((file) => file.module)).toEqual(['hand']);
+  });
+
+  it.runIf(driver === 'mysql').each([
+    ['a secret column renamed in raw SQL', 'raw-rename-column', /the column accounts\.password/],
+    ['a table with secret columns renamed in raw SQL', 'raw-rename-table', /the table accounts/],
+  ])('on MySQL fails a migration that leaves %s with D3, keeps what it did, and marks it halfway', async (_name, directory, what) => {
+    const hand: ModuleDefinition = { name: 'hand', migrations: fixtures(directory) };
+    const error = await migrator(connections, auth, accounts, hand).migrate().then(() => undefined, (e: unknown) => e as Error);
+    expect(error).toBeInstanceOf(SchemaError);
+    expect(error!.message).toMatch(what);
+    expect(error!.message).toMatch(/\[marmeon:D3\].*schema\.alter\(\).*schema\.rename\(\)/s);
+    // MySQL cannot undo the rename: the migration stays marked as stopped halfway, and every further migrate is refused (D32) instead of repeating the D3.
+    await expect(migrator(connections, auth, accounts, hand).migrate()).rejects.toMatchObject({ reason: 'interrupted', message: expect.stringContaining('[marmeon:D32]') });
+    expect(await migratorConnection(connections).selectFrom('migration_interruption').select(['module', 'direction']).execute()).toEqual([{ module: 'hand', direction: 'up' }]);
   });
 
   it('does not take what the database has beyond the migrations for an error: a column and a table raw SQL added are named after the run', async () => {
@@ -521,7 +560,7 @@ describe.each(drivers)('the database against the migrations after each one, on %
     expect(await allTables(migratorConnection(connections))).not.toContain('things');
   });
 
-  it('rolls back a down() that takes more along than the migration made, with D3, and keeps the record', async () => {
+  it.runIf(driver !== 'mysql')('rolls back a down() that takes more along than the migration made, with D3, and keeps the record', async () => {
     const bad: ModuleDefinition = { name: 'bad', migrations: fixtures('bad-down') };
     await migrator(connections, auth, accounts, bad).migrate();
     await expect(migrator(connections, auth, accounts, bad).rollback()).rejects.toThrow(/\[marmeon:D3\].*the column scratch\.kept/s);
@@ -530,7 +569,25 @@ describe.each(drivers)('the database against the migrations after each one, on %
     await sql`select kept from scratch`.execute(migratorConnection(connections));
   });
 
-  it('hands the connections back after a rollback or reset that fails: the next query checks the database like a fresh process', async () => {
+  it.runIf(driver === 'mysql')('on MySQL fails a down() that takes more along than the migration made with D3, and marks it halfway with the record keeping its row', async () => {
+    const bad: ModuleDefinition = { name: 'bad', migrations: fixtures('bad-down') };
+    await migrator(connections, auth, accounts, bad).migrate();
+    await expect(migrator(connections, auth, accounts, bad).rollback()).rejects.toThrow(/\[marmeon:D3\].*the column scratch\.kept/s);
+    // MySQL keeps what down() already dropped, so the migration is marked and the record keeps its row.
+    const [marked] = await migratorConnection(connections).selectFrom('migration_interruption').select(['name', 'module', 'direction']).execute();
+    expect(marked).toMatchObject({ module: 'bad', direction: 'down' });
+    expect(await migratorConnection(connections).selectFrom('migrations').select('name').where('name', '=', marked!.name).execute()).toHaveLength(1);
+  });
+
+  it.runIf(driver === 'mysql').each(['rollback', 'reset'] as const)('on MySQL hands the connections back after a failed %s, and the marker it left refuses the next query', async (undo) => {
+    const run = migrator(connections, auth, accounts, { name: 'bad', migrations: fixtures('bad-down') });
+    await run.migrate();
+    await expect(run[undo]()).rejects.toThrow(/\[marmeon:D3\]/);
+    expect(connections.metadata().ready).toBe(false);
+    await expect(connections.get<any>().selectFrom('users').select('id').execute()).rejects.toMatchObject({ reason: 'interrupted' });
+  });
+
+  it.runIf(driver !== 'mysql')('hands the connections back after a rollback or reset that fails: the next query checks the database like a fresh process', async () => {
     const bad: ModuleDefinition = { name: 'bad', migrations: fixtures('bad-down') };
     for (const undo of ['rollback', 'reset'] as const) {
       const run = migrator(connections, auth, accounts, bad);
@@ -544,7 +601,8 @@ describe.each(drivers)('the database against the migrations after each one, on %
   });
 });
 
-describe.each(drivers)('an order of the run that the names do not give, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('an order of the run that the names do not give, on %s', (driver) => {
   const order: ModuleDefinition = { name: 'order', migrations: fixtures('order') };
   const late: ModuleDefinition = { name: 'late', migrations: fixtures('order-late') };
   const independent: ModuleDefinition = { name: 'independent', migrations: fixtures('order-independent') };
@@ -572,7 +630,8 @@ describe.each(drivers)('an order of the run that the names do not give, on %s', 
   });
 });
 
-describe.each(drivers)('`managed: false`, on %s', (driver) => {
+// Also runs on MySQL.
+describe.each(driversWithMysql)('`managed: false`, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeEach(async () => ({ connections, close } = await freshConnections(driver, { managed: false })));
