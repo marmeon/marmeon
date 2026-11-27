@@ -28,3 +28,10 @@ describe('MailConfig: switches', () => {
     await expect(resolve({ MAIL_REQUIRE_TLS: 'no' })).rejects.toThrow(/MAIL_REQUIRE_TLS/);
   });
 });
+
+describe('MailConfig: Postmark', () => {
+  it('reads MAIL_POSTMARK_TOKEN, empty by default', async () => {
+    expect((await resolve({})).postmark).toEqual({ token: '' });
+    expect((await resolve({ MAIL_DRIVER: 'postmark', MAIL_POSTMARK_TOKEN: 'abc' })).postmark).toEqual({ token: 'abc' });
+  });
+});

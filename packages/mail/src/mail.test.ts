@@ -401,7 +401,7 @@ describe('mail drivers a provider brings', () => {
 
   it('stops the start for a name nobody brought, and lists the known ones', async () => {
     const error = await boot([plugin('SesProvider', { ses })], { MAIL_DRIVER: 'nope' }).catch((caught: unknown) => caught);
-    expect(String(error)).toContain('[marmeon:Q8] MAIL_DRIVER=nope is not a mail driver. Known: log, array, smtp, ses.');
+    expect(String(error)).toContain('[marmeon:Q8] MAIL_DRIVER=nope is not a mail driver. Known: log, array, smtp, postmark, ses.');
   });
 
   it('stops the start for a malformed name', async () => {

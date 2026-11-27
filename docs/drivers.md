@@ -264,21 +264,21 @@ it, the command says the entries expire on their own. A store that expires entri
 
 A mail transport implements `MailTransport` and is a `MailDriverFactory`: it gets the `name` it was registered under, the
 `container` and a `logger` of the `mail` channel, and returns the transport. `MAIL_DRIVER` selects it by name,
-like the built-in `log`, `array` and `smtp`:
+like the built-in `log`, `array`, `smtp` and `postmark`. These four names are taken: a provider that brings a driver with one of them stops the start.
 
-```ts title="src/PostmarkServiceProvider.ts"
+```ts title="src/MailgunServiceProvider.ts"
 import type { MailDriverFactory } from '@marmeon/mail';
 
-const postmark: MailDriverFactory = ({ container }) => new PostmarkTransport(container.make(PostmarkConfig));
+const mailgun: MailDriverFactory = ({ container }) => new MailgunTransport(container.make(MailgunConfig));
 
-export class PostmarkServiceProvider {
-  static config = [PostmarkConfig];
-  static mailDrivers = { postmark };
+export class MailgunServiceProvider {
+  static config = [MailgunConfig];
+  static mailDrivers = { mailgun };
 }
 ```
 
 ```sh title=".env"
-MAIL_DRIVER=postmark
+MAIL_DRIVER=mailgun
 ```
 
 `send()` resolves with `{ messageId }`, the id the provider gave the mail, or `{ messageId: undefined }` when it gave none.
@@ -287,11 +287,11 @@ MAIL_DRIVER=postmark
 ```ts
 import { MailDeliveryError, type MailMessage, type MailReceipt, type MailSendOptions, type MailTransport } from '@marmeon/mail';
 
-class PostmarkTransport implements MailTransport {
+class MailgunTransport implements MailTransport {
   async send(message: MailMessage, options?: MailSendOptions): Promise<MailReceipt> {
-    const reply = await this.#client.post('/email', toPostmark(message), { signal: options?.signal });
-    if (reply.status === 422) throw new MailDeliveryError('rejected', 'Postmark rejected the mail.', { status: 422 });
-    return { messageId: reply.body.MessageID };
+    const reply = await this.#client.post('/messages', toMailgun(message), { signal: options?.signal });
+    if (reply.status === 422) throw new MailDeliveryError('rejected', 'Mailgun rejected the mail.', { status: 422 });
+    return { messageId: reply.body.id };
   }
 }
 ```

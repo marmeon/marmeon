@@ -67,6 +67,9 @@ export declare const MailConfig: import("@marmeon/core").ConfigDefinition<{
         username: string;
         password: string;
     };
+    postmark: {
+        token: string;
+    };
     previews: boolean;
     previewHosts: ReadonlySet<string>;
     protected: boolean;
@@ -163,6 +166,9 @@ export declare class MailServiceProvider implements ServiceProvider {
             requireTls: boolean;
             username: string;
             password: string;
+        };
+        postmark: {
+            token: string;
         };
         previews: boolean;
         previewHosts: ReadonlySet<string>;
@@ -372,6 +378,8 @@ export interface SentMail extends MailMessage {
 `MAIL_PASSWORD` = `""`
 // MAIL_PORT
 `MAIL_PORT` = `587`
+// MAIL_POSTMARK_TOKEN
+`MAIL_POSTMARK_TOKEN` = `""`
 // MAIL_REQUIRE_TLS
 `MAIL_REQUIRE_TLS` = `true`
 // MAIL_SECURE

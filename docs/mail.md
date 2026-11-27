@@ -3,7 +3,7 @@
 ## Introduction
 
 A mail is a class, like a controller: its data comes through the constructor, and `envelope()` and `content()` say who gets it
-and what it says. `@marmeon/mail`, which every new app has, sends it over SMTP or writes it to the log in development:
+and what it says. `@marmeon/mail`, which every new app has, sends it over SMTP or through the Postmark API, or writes it to the log in development:
 
 ```ts title="modules/notes/mail/NoteSharedMail.ts"
 import type { Translator } from '@marmeon/i18n';
@@ -51,7 +51,7 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. A package can bring more (see [Mail transports](drivers.md#mail-transports)); a name nobody brought stops the start. |
+| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `postmark` sends it through the Postmark API (see [Postmark](#postmark)), `array` keeps it in memory. A package can bring more (see [Mail transports](drivers.md#mail-transports)); a name nobody brought stops the start. |
 | `MAIL_FROM_ADDRESS` | optional, falls back to `hello@example.com` | The sender of every mail that names none. Set it to an address of your domain; see [The sender address](#the-sender-address). |
 | `MAIL_FROM_NAME` | empty | The sender's name. Empty, the address goes alone. |
 | `MAIL_HOST` | `127.0.0.1` | The SMTP server. |
@@ -59,6 +59,7 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 | `MAIL_SECURE` | `false` | A switch (`true`, `false`, `1` or `0`). `true` speaks TLS from the first byte, for port 465. |
 | `MAIL_REQUIRE_TLS` | `true` | A switch like `MAIL_SECURE`. Without `MAIL_SECURE`, the connection must be upgraded with STARTTLS. |
 | `MAIL_USERNAME`, `MAIL_PASSWORD` | empty | The SMTP credentials. |
+| `MAIL_POSTMARK_TOKEN` | empty | The Postmark server API token. `MAIL_DRIVER=postmark` stops the start without it. |
 
 `smtp` needs nothing more: the package brings its SMTP client. A new app's `.env.test` sets `MAIL_DRIVER=array`.
 
@@ -71,10 +72,10 @@ out (it can hold password reset and sign-in links, and whoever reads the log may
 sent in a queue worker too:
 
 ```text
-MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.
+MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD, or MAIL_DRIVER=postmark and MAIL_POSTMARK_TOKEN.
 ```
 
-It is a warning and not an error. Set `MAIL_DRIVER=smtp` in production. A deployment that wants its mails in a log or a file
+It is a warning and not an error. Set `MAIL_DRIVER=smtp` or `MAIL_DRIVER=postmark` in production. A deployment that wants its mails in a log or a file
 on purpose writes its own transport ([Mail transports](drivers.md#mail-transports)).
 
 ### The sender address
@@ -97,6 +98,43 @@ credentials and no mail, and the send fails instead of going out in plain text. 
 `MAIL_REQUIRE_TLS=false` turns the requirement off, for a local server without TLS such as Mailpit, or a relay on the same
 machine. With it, credentials and mails go in plain text whenever the server offers no STARTTLS, so never use it over a network you
 do not control. Prefer port 465 with `MAIL_SECURE=true` where your provider offers it.
+
+### Postmark
+
+`MAIL_DRIVER=postmark` sends every mail through the Postmark API instead of SMTP. It needs `@marmeon/fetch`, which sends the
+request (`marmeon add fetch`, or `pnpm add -E @marmeon/fetch@<version of your app>`), and `MAIL_POSTMARK_TOKEN`:
+
+```sh title=".env"
+MAIL_DRIVER=postmark
+MAIL_POSTMARK_TOKEN=<the token of your Postmark server>
+MAIL_FROM_ADDRESS=hello@your-domain.example
+```
+
+Take the token from "API Tokens" of your Postmark server, and confirm the sender signature or the domain of `MAIL_FROM_ADDRESS` in
+Postmark, which refuses other senders. The token `POSTMARK_API_TEST` makes Postmark accept every request and deliver no mail, which suits a test run or a staging
+environment that must not send. The boot of a protected app (production, or no `NODE_ENV`) warns when it runs on that token, because
+every send then succeeds and nobody gets a mail. The start stops with a message that names the variable when the token is empty,
+`@marmeon/fetch` is not installed, or the app does not register its `HttpClient`.
+
+The driver always sends to `https://api.postmarkapp.com/email`; no variable changes the address, and the request goes through your
+`HttpClient`, so a `FETCH_DRIVER` of your own applies. The token goes into one request header and never into an error, a log line or
+a `cause`. A redirect from Postmark is not followed.
+
+- **`messageId`** of the sent mail is Postmark's `MessageID`. A mail that was accepted but whose answer cannot be read has none.
+- **Headers** that address or shape the mail (`From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Sender`, `Subject`, `Date`, `Message-ID`,
+  `Return-Path`, `MIME-Version`, `Content-Type`, `Content-Transfer-Encoding`) cannot be set in `envelope().headers`: the mail is
+  refused before any request, with a `MailDeliveryError` whose `reason` is `refused`. Other headers, such as `List-Unsubscribe`, go
+  through.
+- **Names** of recipients are quoted, or encoded when they are not ASCII, so a name with a comma is never an extra recipient.
+- **Failures** are a `MailDeliveryError`, and its `reason` says what a retry can do:
+  - `unauthorized`: Postmark refuses the token (401, 403). `providerCode` holds Postmark's `ErrorCode` when the answer has one.
+  - `rejected`: any other answer Postmark gives, such as 422 for an inactive recipient, and a redirect, which is not followed.
+  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, 408, 409, 425 and every 5xx.
+  - `refused`: before any request, for a reserved header or an address that is not a plain `local@host`, and when the HTTP client blocks the address.
+
+  The message names the status and the code, never Postmark's text. A queued mail retries for `throttled` and `unavailable`
+  and fails at once for the others, as described in [Sending mails](#sending-mails).
+- **No idempotency**: Postmark has no key to deduplicate a mail, so a retry after a lost answer can send it twice.
 
 ## Writing mails
 
@@ -334,7 +372,7 @@ change an app has to follow. [Releases](releases.md#libraries-the-framework-buil
 | `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). The `sync` queue connection sends without it and logs one warning for all queued mails. |
 | `mailer.send(mail)` | Composes the mail and sends it now. Resolves with the message and the `messageId` the provider gave it. |
 
-`messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends. It is `undefined` with `log`
+`messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends, or for `postmark` Postmark's `MessageID`. It is `undefined` with `log`
 and `array`, where no provider takes part, and with a provider that gives none. `mailer.queue()` has no id to return: the worker
 sends the mail later.
 

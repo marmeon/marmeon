@@ -968,6 +968,9 @@ importers:
       '@marmeon/encryption':
         specifier: workspace:*
         version: link:../encryption
+      '@marmeon/fetch':
+        specifier: workspace:*
+        version: link:../fetch
       '@marmeon/queue':
         specifier: workspace:*
         version: link:../queue

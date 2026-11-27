@@ -134,6 +134,9 @@ The promise of a version covers the public API. These are part of it:
 - The commands of `marmeon`, their flags and exit codes. A minor version may add a command. A command of your own with the same
   name then stops `marmeon build` and the start with K8 and needs another name; the [upgrade guide](../UPGRADING.md) lists each new
   command with a `Low` line. A name in your module's group, such as `notes:prune` (the default of `make:command`), does not meet one.
+- The built-in driver names (`MAIL_DRIVER=smtp`, `CACHE_DRIVER=redis` …). A minor version may add one. A driver of your own provider
+  with the same name then stops the start and needs another name; the [upgrade guide](../UPGRADING.md) lists each new built-in
+  driver name with a `Low` line.
 - The flags and exit codes of `create-marmeon` ([listed here](installation.md#options)). The files it writes are not: they follow the
   starter kit of its version, `marmeon-stubs.json` records where they came from, and the release notes name changes.
 - The JSON body of an error: the keys `message` and `errors` (a field's dotted path, a list index as a number, to a list of

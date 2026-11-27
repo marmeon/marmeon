@@ -22,6 +22,6 @@ describe('the app\'s own mail transport', () => {
   });
 
   it('stops the start for a MAIL_DRIVER nobody brought, naming the ones there are', async () => {
-    await expect(createTestApp(application, { mail: 'real', env: { MAIL_DRIVER: 'scrach' } })).rejects.toThrow(/Known: log, array, smtp, scratch\./);
+    await expect(createTestApp(application, { mail: 'real', env: { MAIL_DRIVER: 'scrach' } })).rejects.toThrow(/Known: log, array, smtp, postmark, scratch\./);
   });
 });
