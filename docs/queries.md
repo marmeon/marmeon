@@ -520,7 +520,8 @@ await this.relation(noteId, 'tags').detach(4); // 1
 
 `sync(ids)` leaves the note linked to exactly these tags: it attaches the missing ones, detaches the others and leaves the rest
 alone, and says which it attached and detached. `attach()` takes one id or a list, skips the ones linked already, also by a
-request at the same moment, and returns those it linked. `detach()` returns how many links went: without an argument, every
+request at the same moment, and returns those it linked. Only a link on the pivot's two keys is skipped: when another unique
+index of the pivot refuses a link, `attach()` and `sync()` throw and write nothing. `detach()` returns how many links went: without an argument, every
 one; with an empty list, none. Every write through a relation, also with an empty list, answers 404 when the parent row is
 missing or soft-deleted. Ids that may be `undefined`, such as a field a request did not send, are a compile error and
 refused when the call runs.
