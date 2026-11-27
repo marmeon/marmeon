@@ -157,8 +157,9 @@ const FTS5_SHADOWS = ['_data', '_idx', '_content', '_docsize', '_config'];
 /**
  * The tables a framework package declared derived that the database has, and on SQLite the FTS5 shadow tables of a declared virtual
  * table — by SQLite's own word (`shadow`), not by name alone, so an app's `docs_data` next to a declared plain `docs` is still named.
+ * @internal Also read by the projection test, which leaves out exactly these.
  */
-async function derivedTablesOf(db: Kysely<any>, driver: Driver, declared: ReadonlySet<string>): Promise<Set<string>> {
+export async function derivedTablesOf(db: Kysely<any>, driver: Driver, declared: ReadonlySet<string>): Promise<Set<string>> {
   const tables = new Set(declared);
   if (driver !== 'sqlite' || declared.size === 0) return tables;
   const listed = (await sql<{ name: string; type: string }>`select name, type from pragma_table_list where schema = 'main' and type in ('virtual', 'shadow')`.execute(db)).rows;
