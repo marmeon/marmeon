@@ -516,7 +516,9 @@ The projection says which tables and columns the database has now. After every m
   `returningAll()` of a table write out the columns the migrations know, so a column Marmeon does not know is never read by accident, and a
   table Marmeon did not create has no secret columns, soft deletes or timestamps: create what the app reads with `schema.create()`, or
   type a table of another tool with `withTables<…>()` ([queries](queries.md)). Tables of an extension (PostGIS's `spatial_ref_sys`), SQLite's
-  own and the leftovers of 0.3 are not named.
+  own and the leftovers of 0.3 are not named. A framework package can mark the tables and columns it makes on a connection with raw SQL (on
+  SQLite, an FTS5 table with its shadow tables), so `migrate` does not name them there either. Marmeon still does not know them, and `db:query` still
+  withholds them.
 
 Postgres cuts a table or column name at 63 bytes of the database's encoding without a word. A migration that leaves such a name usually
 ends in error D3, and the message names a name over 63 bytes of UTF-8 as the possible cause: use a shorter
