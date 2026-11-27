@@ -1,8 +1,8 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql, type Generated } from 'kysely';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { freshConnections, withMysql } from './__fixtures__/databases.ts';
-import { UserFactory } from './__fixtures__/factories.ts';
+import { ArticleFactory, define } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Factories, Migrator, Repository, type Connections, type Timestamp } from './index.ts';
 import { uuidv7 } from './mysql-returning.ts';
@@ -261,23 +261,6 @@ withMysql('writing on MySQL without RETURNING', () => {
         expect((error as Error).message).toMatch(name === 'İd' ? /no column named "İd"/ : new RegExp(`name it as ${name}`));
         expect(sent).toEqual([]);
       }
-    });
-
-    it.each(['relation().create()', 'a factory'] as const)('refuses %s with D29 and sends no statement of its own', async (name) => {
-      const user = await new Users(connections).insert({ name: 'Owner', email: `${name.replaceAll(/\W/g, '')}@example.com` });
-      const works = {
-        'relation().create()': () => (new Users(connections) as any).relation(user.id, 'articles').create({ title: 'T' }),
-        'a factory': () => new Factories(connections).for(UserFactory).create(),
-      };
-      const before = await count(connections, 'coupons');
-      const { error, sent } = await attempt(connections, works[name]);
-      expect(error).toBeInstanceOf(UnsupportedDriverError);
-      expect((error as Error).message).toContain('[marmeon:D29]');
-      // Only the transaction's own statements: the compiler refuses the write itself.
-      // A relation write first locks the owner's row with a select.
-      const lock = name === 'relation().create()' ? /^select .* for update$/is : /^$/;
-      expect(sent.filter((statement) => !/^(begin|commit|savepoint|release|rollback)/i.test(statement) && !lock.test(statement))).toEqual([]);
-      expect(await count(connections, 'coupons')).toBe(before);
     });
 
     it('refuses a key that matches more than one row, and the insert does not commit, not even with an outer transaction that commits', async () => {
@@ -707,6 +690,306 @@ withMysql('writing on MySQL without RETURNING', () => {
       expect(error).toBeInstanceOf(TypeError);
       expect((error as Error).message).toMatch(/found no unique index on coupons \(note\)/);
       expect(sent.filter(isWrite)).toEqual([]);
+    });
+  });
+});
+
+interface RelationTables extends FixtureTables {
+  tags: { id: Generated<number>; slug: string };
+  post_tag: { post_id: number; tag_id: number };
+}
+class Posts extends Repository<'posts', RelationTables> {
+  static table = 'posts' as const;
+}
+class Tags extends Repository<'tags', RelationTables> {
+  static table = 'tags' as const;
+}
+class Shelves extends Repository<'shelves', any> {
+  static table = 'shelves' as const;
+}
+
+withMysql('creating rows through factories and relations on MySQL', () => {
+  let connections: Connections;
+  let close: () => Promise<void>;
+  let plain: { connections: Connections; close: () => Promise<void> };
+  let factories: Factories;
+  let posts: Posts;
+  let tags: Tags;
+  let users: Users;
+  let author = 0;
+  const relationRoot = workspaceTempDir('marmeon-mysql-relations-app-');
+  const relationModules: ModuleDefinition[] = [
+    { name: 'auth', migrations: dir('auth') },
+    { name: 'blog', migrations: dir('blog') },
+    { name: 'relations', migrations: dir('relations') },
+    { name: 'relations-secrets', migrations: dir('relations-secrets') },
+    { name: 'mysql-writes', migrations: dir('mysql-writes') },
+    { name: 'mysql-relations', migrations: dir('mysql-relations') },
+  ];
+  const db = () => connections.get<any>();
+  const pivot = async (post: number) => (await db().selectFrom('post_tag').select('tag_id').where('post_id', '=', post).orderBy('tag_id').execute()).map((link: { tag_id: number }) => link.tag_id);
+  const slug = (note: { slug: string }) => note.slug;
+  const threadOf = async (conn: Connections) => Number((await sql<{ id: string }>`select connection_id() as id`.execute(conn.get<any>())).rows[0]!.id);
+  // A lock wait is read from performance_schema: information_schema.innodb_trx can show a waiting transaction as running.
+  const waiting = async (thread: number) =>
+    Number(
+      (
+        await sql<{ n: string }>`select count(*) as n from performance_schema.data_lock_waits w join performance_schema.threads t on t.thread_id = w.requesting_thread_id where t.processlist_id = ${sql.lit(thread)}`.execute(db())
+      ).rows[0]!.n,
+    ) > 0;
+
+  // DDL on the shared Docker host is slow.
+  beforeAll(async () => {
+    ({ connections, close } = await freshConnections('mysql'));
+    await new Migrator({ modules: relationModules, root: relationRoot } as unknown as Application, connections).migrate();
+    factories = new Factories(connections);
+    posts = new Posts(connections);
+    tags = new Tags(connections);
+    users = new Users(connections);
+    author = (await users.insert({ name: 'Author', email: 'author@example.com' })).id;
+    plain = await freshConnections('mysql', { managed: false });
+    await sql`create table audit_lines (line varchar(40) not null)`.execute(plain.connections.get<any>());
+    await sql`create table parents (id varchar(40) not null primary key)`.execute(plain.connections.get<any>());
+  }, 60_000);
+  afterAll(async () => {
+    await close();
+    await plain.close();
+  });
+
+  describe('a factory', () => {
+    it('creates a row with the row of its related factory, both with their ids', async () => {
+      const article = await factories.for(ArticleFactory).create();
+      expect(article.id).toBeGreaterThan(0);
+      const writer = await users.find(article.user_id);
+      expect(writer?.email).toMatch(/^user\d+@example\.com$/);
+      expect(await new Articles(connections).find(article.id)).toEqual(article);
+    });
+
+    it('creates rows inside connections.transaction(), and a rollback takes them away', async () => {
+      const before = await count(connections, 'articles');
+      await connections.transaction(async () => {
+        const rows = await factories.for(ArticleFactory).count(2).create();
+        expect(rows.map((created) => created.id).every((id) => id > 0)).toBe(true);
+        expect(await count(connections, 'articles')).toBe(before + 2);
+      });
+      expect(await count(connections, 'articles')).toBe(before + 2);
+      await expect(
+        connections.transaction(async () => {
+          await factories.for(ArticleFactory).create();
+          throw new Error('roll back');
+        }),
+      ).rejects.toThrow('roll back');
+      expect(await count(connections, 'articles')).toBe(before + 2);
+    });
+
+    it('creates rows inside the driver’s isolate(), which is undone with it', async () => {
+      const before = await count(connections, 'articles');
+      const isolation = await connections.isolate();
+      try {
+        const article = await factories.for(ArticleFactory).create();
+        expect(await new Articles(connections).find(article.id)).toEqual(article);
+        expect(await count(connections, 'articles')).toBe(before + 1);
+      } finally {
+        await isolation.rollback();
+      }
+      expect(await count(connections, 'articles')).toBe(before);
+    });
+
+    it('takes back a row whose read-back failed, also when the transaction around it commits', async () => {
+      // The number 5 matches the text '05' too, so the read-back finds two rows: the insert of '5' has to be undone with it.
+      const Loose = define('slots' as never, () => ({ slug: 5 }) as never);
+      await db().insertInto('slots').values({ slug: '05' }).execute();
+      await connections.transaction(async () => {
+        const error = await failure(() => factories.for(Loose as never).create());
+        expect((error as Error).message).toMatch(/found 2 rows of slots by its primary key.*rolled back/);
+        await factories.for(ArticleFactory).create();
+      });
+      expect((await db().selectFrom('slots').select('slug').orderBy('slug').execute()).map((slot: { slug: string }) => slot.slug)).toEqual(['05']);
+      const alone = await failure(() => factories.for(Loose as never).create());
+      expect(alone).toBeInstanceOf(Error);
+      expect((await db().selectFrom('slots').select('slug').orderBy('slug').execute()).map((slot: { slug: string }) => slot.slug)).toEqual(['05']);
+    });
+
+    it('refuses a table without a primary key with D29 before it creates the rows it relates to, and writes nothing', async () => {
+      // The related parent would be created and committed first if the refusal came after it.
+      const Parent = define('parents' as never, ({ sequence }) => ({ id: `p${sequence}` }) as never);
+      const Lines = define('audit_lines' as never, ({ factory }) => ({ line: 'one', parent_id: factory(Parent as never) }) as never);
+      const sent: string[] = [];
+      const stop = plain.connections.onQuery((query) => sent.push(query.sql));
+      try {
+        const error = await failure(() => new Factories(plain.connections).for(Lines as never).count(2).create());
+        expect(error).toBeInstanceOf(UnsupportedDriverError);
+        expect((error as Error).message).toContain('[marmeon:D29]');
+        expect((error as Error).message).toMatch(/primary key/);
+      } finally {
+        stop();
+      }
+      expect(sent.filter(isWrite)).toEqual([]);
+      expect(await count(plain.connections, 'parents')).toBe(0);
+      expect(await count(plain.connections, 'audit_lines')).toBe(0);
+    });
+
+    it('takes back a row whose read-back failed inside a transaction it was given, which then commits', async () => {
+      const Loose = define('slots' as never, () => ({ slug: 5 }) as never);
+      await db().deleteFrom('slots').execute();
+      await db().insertInto('slots').values({ slug: '05' }).execute();
+      await db().transaction().execute(async (trx) => {
+        const error = await failure(() => factories.for(Loose as never).using(trx as never).create());
+        expect((error as Error).message).toMatch(/found 2 rows of slots by its primary key.*rolled back/);
+      });
+      expect((await db().selectFrom('slots').select('slug').orderBy('slug').execute()).map((slot: { slug: string }) => slot.slug)).toEqual(['05']);
+    });
+  });
+
+  describe('a relation', () => {
+    it('createMany() keeps the input order and returns no secret column', async () => {
+      const keys = await users.relation(author, 'api_keys').createMany([
+        { name: 'b', token: 'token-b' },
+        { name: 'a', token: 'token-a' },
+        { name: 'c', token: 'token-c' },
+      ] as never);
+      expect(keys.map((key) => key.name)).toEqual(['b', 'a', 'c']);
+      expect(keys.every((key) => key.id > 0 && !('token' in key))).toBe(true);
+      expect(new Set(keys.map((key) => key.id)).size).toBe(3);
+      const one = await users.relation(author, 'api_keys').create({ name: 'd', token: 'token-d' } as never);
+      expect(one).not.toHaveProperty('token');
+    });
+
+    it('createMany() refuses a key column written in another case and rolls back the earlier rows', async () => {
+      const before = await count(connections, 'api_keys');
+      const error = await failure(() => users.relation(author, 'api_keys').createMany([{ name: 'ok', token: 't1' }, { name: 'x', token: 't2', ID: 5 }] as never));
+      expect(error).toBeInstanceOf(UnsupportedDriverError);
+      expect((error as Error).message).toContain('[marmeon:D29]');
+      expect((error as Error).message).toMatch(/another case|ID/);
+      expect(await count(connections, 'api_keys')).toBe(before);
+    });
+
+    it('createMany() rolls back the earlier rows when the read-back of a later one finds two rows', async () => {
+      const shelf = await new Shelves(connections).insert({ name: 'Notes' });
+      await db().insertInto('shelf_notes').values({ slug: '05', shelf_id: shelf.id }).execute();
+      const error = await failure(() => (new Shelves(connections) as any).relation(shelf.id, 'shelf_notes').createMany([{ slug: '7' }, { slug: 5 }]));
+      expect((error as Error).message).toMatch(/found 2 rows of shelf_notes by its primary key.*rolled back/);
+      expect((await db().selectFrom('shelf_notes').select('slug').orderBy('slug').execute()).map((note: { slug: string }) => slug(note))).toEqual(['05']);
+    });
+
+    it('create() on a table without a primary key is refused with D29, and nothing is written', async () => {
+      const shelf = await new Shelves(connections).insert({ name: 'Marks' });
+      const { error, sent } = await attempt(connections, () => (new Shelves(connections) as any).relation(shelf.id, 'shelf_marks').create({ mark: 'm' }));
+      expect(error).toBeInstanceOf(UnsupportedDriverError);
+      expect((error as Error).message).toContain('[marmeon:D29]');
+      expect((error as Error).message).toMatch(/primary key/);
+      expect(sent.filter((statement) => /^\s*insert/i.test(statement))).toEqual([]);
+      expect(await count(connections, 'shelf_marks')).toBe(0);
+    });
+
+    it('attach() and sync() link one id at a time and answer the ids they linked', async () => {
+      const post = await posts.insert({ author_id: author, title: 'Links' });
+      const [one, two, three] = [await tags.insert({ slug: 'link-1' }), await tags.insert({ slug: 'link-2' }), await tags.insert({ slug: 'link-3' })];
+      const { error, sent } = await attempt(connections, async () => expect(await posts.relation(post.id, 'tags').attach([one.id, two.id])).toEqual([one.id, two.id]));
+      expect(error).toBeUndefined();
+      // One insert per link, never one statement for all.
+      expect(sent.filter((statement) => statement.startsWith('insert into `post_tag`'))).toHaveLength(2);
+      expect(await posts.relation(post.id, 'tags').sync([two.id, three.id])).toEqual({ attached: [three.id], detached: [one.id] });
+      expect(await pivot(post.id)).toEqual([two.id, three.id]);
+    });
+
+    /**
+     * A links `tag` to `post` with a raw insert and stays open; B attaches the same link, from a snapshot older than A's commit, so its own read of the
+     * links cannot see A's and only the insert meets it. B waits for A's lock, A commits, and B's answer is returned.
+     */
+    async function attachWhileLinked(
+      post: number,
+      tag: number,
+      { table = 'post_tag', parent = 'post_id', other = 'tag_id', conns = connections, attach = () => posts.relation(post, 'tags').attach([tag]) }: { table?: string; parent?: string; other?: string; conns?: Connections; attach?: () => Promise<unknown[]> } = {},
+    ): Promise<unknown[]> {
+      let linkedByA!: () => void;
+      const aHolds = new Promise<void>((resolve) => (linkedByA = resolve));
+      let commitA!: () => void;
+      const aMayCommit = new Promise<void>((resolve) => (commitA = resolve));
+      const a = conns.transaction(async () => {
+        await conns.get<any>().insertInto(table).values({ [parent]: post, [other]: tag }).execute();
+        linkedByA();
+        await aMayCommit;
+      });
+      await aHolds;
+      let thread = 0;
+      let readOnce!: () => void;
+      const bRead = new Promise<void>((resolve) => (readOnce = resolve));
+      const b = conns.transaction(
+        async () => {
+          thread = await threadOf(conns);
+          await conns.get<any>().selectFrom(table).select(other).where(parent, '=', post).execute();
+          readOnce();
+          return attach();
+        },
+        { isolationLevel: 'repeatable read' },
+      );
+      await bRead;
+      await vi.waitFor(async () => expect(await waiting(thread)).toBe(true), { timeout: 10_000, interval: 25 });
+      commitA();
+      await a;
+      return b;
+    }
+
+    it('attach() skips the link another transaction made at the same moment, and links once', async () => {
+      const post = await posts.insert({ author_id: author, title: 'Race' });
+      const tag = await tags.insert({ slug: 'race-9' });
+      expect(await attachWhileLinked(post.id, tag.id)).toEqual([]);
+      expect(await pivot(post.id)).toEqual([tag.id]);
+    });
+
+    it('attach() skips the link that is there already when MySQL names another unique index first', async () => {
+      await db().deleteFrom('post_tag').execute();
+      const post = await posts.insert({ author_id: author, title: 'Named first' });
+      const tag = await tags.insert({ slug: 'first-9' });
+      const [pair] = (
+        await sql<{ name: string }>`select index_name as name from information_schema.statistics where table_schema = database() and table_name = 'post_tag' and non_unique = 0 group by index_name having count(*) = 2`.execute(db())
+      ).rows;
+      // The index over one column goes first among the unique ones, so MySQL reports it for a link that breaks both.
+      await sql`create unique index post_tag_first on post_tag (post_id)`.execute(db());
+      await sql.raw(`alter table post_tag drop index \`${pair!.name}\``).execute(db());
+      await sql.raw(`alter table post_tag add unique index \`${pair!.name}\` (post_id, tag_id)`).execute(db());
+      try {
+        expect(await attachWhileLinked(post.id, tag.id)).toEqual([]);
+        expect(await pivot(post.id)).toEqual([tag.id]);
+      } finally {
+        await sql`drop index post_tag_first on post_tag`.execute(db());
+      }
+    });
+
+    it('attach() skips nothing when it knows no unique index over the two keys, even for a link that is there', async () => {
+      // A connection with managed: false reads no migrations, so it knows no index by name. Another unique index comes first and reports.
+      const d = plain.connections.get<any>();
+      await sql`create table shelves (id bigint not null auto_increment primary key, name varchar(40) not null)`.execute(d);
+      await sql`create table labels (id bigint not null auto_increment primary key, name varchar(40) not null)`.execute(d);
+      await sql`create table shelf_label (shelf_id bigint not null, label_id bigint not null, unique key by_label (label_id), unique key by_pair (shelf_id, label_id), foreign key (shelf_id) references shelves (id), foreign key (label_id) references labels (id))`.execute(d);
+      const shelf = await sql<any>`insert into shelves (name) values ('s')`.execute(d);
+      const label = await sql<any>`insert into labels (name) values ('l')`.execute(d);
+      const [shelfId, labelId] = [Number(shelf.insertId), Number(label.insertId)];
+      const relation = () => (new Shelves(plain.connections) as any).relation(shelfId, 'labels').attach([labelId]);
+      // Without the race the writer would see the link and write nothing: the proof needs the link to appear between its read and its insert.
+      const error = await failure(() => attachWhileLinked(shelfId, labelId, { table: 'shelf_label', parent: 'shelf_id', other: 'label_id', conns: plain.connections, attach: relation }));
+      expect(error).toMatchObject({ errno: 1062 });
+      expect(await count(plain.connections, 'shelf_label')).toBe(1);
+    });
+
+    it('attach() throws, and links nothing more, for a duplicate on another unique index of the pivot', async () => {
+      const post = await posts.insert({ author_id: author, title: 'Other index' });
+      const linked = await tags.insert({ slug: 'linked-tag' });
+      const second = await tags.insert({ slug: 'second-tag' });
+      const third = await tags.insert({ slug: 'third-tag' });
+      await db().insertInto('post_tag').values({ post_id: post.id, tag_id: linked.id }).execute();
+      // A post may now have one link only: the pair is new, the duplicate is on this index. Earlier tests' links would break the index.
+      await db().deleteFrom('post_tag').where('post_id', '!=', post.id).execute();
+      await sql`create unique index post_tag_extra on post_tag (post_id)`.execute(db());
+      try {
+        await expect(posts.relation(post.id, 'tags').attach([second.id, third.id])).rejects.toMatchObject({ errno: 1062 });
+        expect(await pivot(post.id)).toEqual([linked.id]);
+        await expect(posts.relation(post.id, 'tags').sync([linked.id, second.id])).rejects.toMatchObject({ errno: 1062 });
+        expect(await pivot(post.id)).toEqual([linked.id]);
+      } finally {
+        await sql`drop index post_tag_extra on post_tag`.execute(db());
+      }
     });
   });
 });

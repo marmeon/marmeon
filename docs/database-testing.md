@@ -388,7 +388,7 @@ const attributes = app.factory(NoteFactory).make();
 `create()` inserts the rows and resolves with them as stored, with their ids and defaults. `count(n)` makes `n` rows, and
 `create()` then resolves with an array. `state(name)` applies a named state, and `state({ … })` a set of attributes. `make()`
 returns the attributes without inserting anything. `factory(UserFactory)` in a definition creates the related row first and puts
-its id in the column, with `create()`. `make()` creates no related row and leaves that column as the pending factory. The
+its id in the column, with `create()`. `make()` creates no related row and leaves that column as the pending factory. On MySQL (which cannot be selected yet), `create()` reads each row back by its primary key and refuses a table without a primary key with [D29](errors.md#server-error-codes) before it creates a related row, and a key value it cannot read back by when its row is written; see [Writing on MySQL](queries.md#writing-on-mysql). The
 [seeding](seeding.md#defining-factories) page explains how to write factories.
 
 The starter kit's `UserFactory` makes users with a confirmed address and the password `password`. Its `unverified` state makes a

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { sql } from 'kysely';
 import { withCode } from '@marmeon/core/internal';
 import type { Connection } from './builder.ts';
 import type { SchemaMetadata } from './metadata.ts';
@@ -274,4 +275,24 @@ export async function readByKey(
     );
   }
   return rows[0]!;
+}
+
+let savepoints = 0;
+
+/**
+ * @internal Runs `work` all or nothing for a caller that has no repository (a factory): a savepoint on a connection that is a
+ * transaction, else a transaction of its own — which the driver turns into a savepoint inside an ambient transaction or `isolate()`.
+ */
+export async function atomically<R>(db: Connection<any>, work: (db: Connection<any>) => Promise<R>): Promise<R> {
+  if (!db.isTransaction) return db.transaction().execute(work as never) as Promise<R>;
+  const name = sql.raw(`mysql_write_savepoint_${++savepoints}`);
+  await sql`savepoint ${name}`.execute(db);
+  try {
+    const result = await work(db);
+    await sql`release savepoint ${name}`.execute(db);
+    return result;
+  } catch (error) {
+    await sql`rollback to savepoint ${name}`.execute(db);
+    throw error;
+  }
 }

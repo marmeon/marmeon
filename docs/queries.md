@@ -385,6 +385,16 @@ is rolled back: MySQL compares a number with text loosely, so the number `5` als
 A UUID key is compared as it is written, in the case it was stored in (Marmeon makes it lower case): `update()` with an upper-case UUID
 finds no row and returns `undefined`, so pass the id in lower case. A trigger that changes a primary key the row names is not supported on MySQL: the row is read back by the key that was given, which can find another row that has it.
 
+A relation's `create()` and `createMany()` read each row back by its primary key like `insert()`, in the order given and without secret columns. They refuse the
+same tables as `insert()` with [D29](errors.md#server-error-codes), and `createMany()` writes nothing of the earlier rows when a later row is refused or cannot be read back.
+
+`attach()` and `sync()` write the links one by one, inside the transaction they run in. A link is skipped, as `insertMissing()` skips a row, when MySQL reports the
+duplicate on the pivot's unique index over the two keys, or when the pivot already holds that very link. Every other duplicate throws and rolls the call back. A pivot with no
+unique index over the two keys that Marmeon knows skips nothing: on a connection with `managed: false` only a primary key over the two keys counts, and an index made by raw SQL is not known.
+
+A factory's `create()` reads each row back by its primary key, one row at a time and all or nothing for each. It refuses a table without a primary key with
+[D29](errors.md#server-error-codes) before it creates a row it relates to; a key value it cannot read back by is refused, as by `insert()`, when its row is written.
+
 `tryInsert()` reports `columns` for the primary key and for the unique indexes a migration describes, other than a partial one, and an
 empty list otherwise.
 
@@ -397,9 +407,9 @@ the row's exactly (text with text, and a number or bigint with the same whole nu
 `Date`, bytes, an object or a number that is not a whole number within 2^53 is never skipped that way (`true` and `false` count as `1` and `0`). A read that fails throws its own error, with the duplicate as its `cause` when the error has none. Every other duplicate throws and rolls the call back, and an `on` that no unique index backs throws before a row is
 written. It uses no `INSERT IGNORE`, which would also hide other errors. An `on` column that MySQL generates (auto-increment) needs a positive
 whole number in every row, since `0` would become a new id on every run: any other value is a `TypeError`. With `managed: false` only the primary key can be `on`, any
-other columns are refused with D29, and every primary key value in `on` must be a positive whole number: Marmeon cannot tell a key column from an auto-increment one there, so any other value is a `TypeError`. `create()` and `createMany()` of a
-relation, `attach()` and `sync()` when they link a row, and a factory's `create()` are refused with D29 on MySQL for now, as are the
-builder's `returning()`, `onConflict()` and merge. `detach()`, a `sync()` that only detaches and a factory's `make()` run.
+other columns are refused with D29, and every primary key value in `on` must be a positive whole number: Marmeon cannot tell a key column from an auto-increment one there, so any other value is a `TypeError`.
+
+The builder's `returning()`, `onConflict()` and merge are refused with D29 before they are sent.
 
 ### Route binding
 
@@ -561,7 +571,7 @@ await this.relation(noteId, 'tags').detach(4); // 1
 `sync(ids)` leaves the note linked to exactly these tags: it attaches the missing ones, detaches the others and leaves the rest
 alone, and says which it attached and detached. `attach()` takes one id or a list, skips the ones linked already, also by a
 request at the same moment, and returns those it linked. Only a link on the pivot's two keys is skipped: when another unique
-index of the pivot refuses a link, `attach()` and `sync()` throw and write nothing. `detach()` returns how many links went: without an argument, every
+index of the pivot refuses a link, `attach()` and `sync()` throw and write nothing. On MySQL they skip a link made at the same moment when MySQL reports the duplicate on the pivot's unique index of the two keys, or when the pivot already holds that link, see [Writing on MySQL](#writing-on-mysql). `detach()` returns how many links went: without an argument, every
 one; with an empty list, none. Every write through a relation, also with an empty list, answers 404 when the parent row is
 missing or soft-deleted. Ids that may be `undefined`, such as a field a request did not send, are a compile error and
 refused when the call runs.

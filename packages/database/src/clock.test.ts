@@ -10,6 +10,10 @@ class PostRepository extends Repository<'posts', FixtureTables> {
   static table = 'posts' as const;
 }
 
+class FlagRepository extends Repository<'flags', any> {
+  static table = 'flags' as const;
+}
+
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
 }
@@ -118,10 +122,9 @@ describe.each(driversWithMysql)('stamping with the app clock on %s', (driver) =>
     await expect(users.insertMany([{ name: 'A', email: 'a@example.com' }, { name: 'B', email: 'b@example.com', created_at: new Date() }])).rejects.toThrow(/first row/);
   });
 
-  // Writes through relations do not run on MySQL yet.
-  it.runIf(driver !== 'mysql')('relation().create() and createMany() stamp the related rows with the clock', async () => {
+  it('relation().create() and createMany() stamp the related rows with the clock', async () => {
     const author = await users.insert({ name: 'Ada', email: 'ada@example.com' });
-    const post = await connections.get<any>().insertInto('posts').values({ title: 'Hello', author_id: author.id }).returningAll().executeTakeFirstOrThrow();
+    const post = await new PostRepository(connections).insert({ title: 'Hello', author_id: author.id });
     const posts = new PostRepository(connections);
     clock.travel({ days: 4 });
     const one = (await posts.relation(post.id, 'comments').create({ user_id: author.id, body: 'One' } as never)) as { created_at: string; updated_at: string };
@@ -130,11 +133,12 @@ describe.each(driversWithMysql)('stamping with the app clock on %s', (driver) =>
     expect(many.map((row) => at(row.created_at))).toEqual([START + 4 * DAY, START + 4 * DAY]);
   });
 
-  it.runIf(driver !== 'mysql')('attach() and sync() stamp the links of a pivot with timestamps with the clock', async () => {
+  it('attach() and sync() stamp the links of a pivot with timestamps with the clock', async () => {
     const author = await users.insert({ name: 'Ada', email: 'ada@example.com' });
-    const post = await connections.get<any>().insertInto('posts').values({ title: 'Hello', author_id: author.id }).returningAll().executeTakeFirstOrThrow();
-    const flags = await connections.get<any>().insertInto('flags').values([{ label: 'a' }, { label: 'b' }, { label: 'c' }]).returning('id').execute();
-    const [a, b, c] = flags.map((flag: { id: number }) => flag.id);
+    const post = await new PostRepository(connections).insert({ title: 'Hello', author_id: author.id });
+    const flagRows = new FlagRepository(connections);
+    const flags = [await flagRows.insert({ label: 'a' }), await flagRows.insert({ label: 'b' }), await flagRows.insert({ label: 'c' })];
+    const [a, b, c] = flags.map((flag) => flag.id);
     const writer = new PostRepository(connections).relation(post.id, 'flags' as never) as unknown as { attach(ids: number[]): Promise<number[]>; sync(ids: number[]): Promise<unknown> };
     clock.travel({ days: 6 });
     await writer.attach([a!]);
@@ -154,7 +158,7 @@ describe.each(driversWithMysql)('stamping with the app clock on %s', (driver) =>
     expect(at(gone.deleted_at)).toBe(START + 9 * DAY);
   });
 
-  // Factories do not run on MySQL yet.
+  // A `…Z` string is refused by a MySQL datetime column, see docs/database.md#mysql.
   it.runIf(driver !== 'mysql')('now() of a factory definition is the app clock: make(), create(), using(trx) and a state as a function', async () => {
     const factories = new Factories(connections);
     clock.travel({ days: 5 });
@@ -173,7 +177,7 @@ describe.each(driversWithMysql)('stamping with the app clock on %s', (driver) =>
     expect(at((await factories.for(ClockedPostFactory).create()).published_at)).toBe(START + 7 * DAY);
   });
 
-  it.runIf(driver !== 'mysql')('a factory stamps its rows with the clock, and keeps what an override names', async () => {
+  it('a factory stamps its rows with the clock, and keeps what an override names', async () => {
     const factories = new Factories(connections);
     clock.travel({ days: 5 });
     const made = await factories.for(UserFactory).create();
@@ -214,7 +218,7 @@ describe.each(driversWithMysql)('a factory definition reading now() without an a
   });
   afterAll(() => close());
 
-  // Factories do not run on MySQL yet.
+  // A `…Z` string is refused by a MySQL datetime column, see docs/database.md#mysql.
   it.runIf(driver !== 'mysql')('gives the wall clock', async () => {
     const factories = new Factories(connections);
     const row = await factories.for(ClockedPostFactory).create();
