@@ -134,10 +134,11 @@ function sameDatabase(options: ReturnType<InstanceType<DatabaseModule['Connectio
 /**
  * Empties every table of the app's connection but the migrator's two, so that the next test starts from nothing and a refreshed
  * test after an isolated one finds no leftovers: Postgres in one `truncate … restart identity cascade` (the tables of extensions
- * stay), SQLite a `delete from` per table with foreign keys off, and the counters of `sqlite_sequence`. The triggers of the emptied
- * tables are put aside for that one transaction and back before it commits, so a table whose trigger refuses `TRUNCATE` or
- * `DELETE` (an append-only log) is emptied too. Only ever runs on the worker's own database: it throws when the connection is
- * another one. See docs/database-testing.md#testing-a-lock.
+ * stay), SQLite a `delete from` per table with foreign keys off (an FTS5 table with its `delete-all` command where SQLite allows
+ * it, then an integrity check), and the counters of `sqlite_sequence`. The triggers of the emptied tables are put aside for that
+ * one transaction and back before it commits, so a table whose trigger refuses `TRUNCATE` or `DELETE` (an append-only log) is
+ * emptied too. Only ever runs on the worker's own database: it throws when the connection is another one. See
+ * docs/database-testing.md#testing-a-lock.
  */
 export async function emptyWorkerDatabase(database: EmptyingModule, app: Application, worker: WorkerDatabase): Promise<void> {
   const driver = assertWorkerConnection(database, app, worker);
@@ -163,8 +164,41 @@ export async function emptyWorkerDatabase(database: EmptyingModule, app: Applica
           names.length === 0
             ? []
             : (await sql<{ name: string; sql: string }>`select name, sql from sqlite_master where type = 'trigger' and tbl_name in (${sql.join(names)}) and sql is not null`.execute(trx)).rows;
+        // An FTS5 table keeps its index in shadow tables (`<name>_data`, `_idx`, `_config`, …), which SQLite marks as `shadow` and which
+        // refuse a write. Known by those, not by its CREATE text (`using "fts5"(…)` is the same module). With external content or none it is
+        // emptied through its `delete-all` command: a `delete from` after its content table leaves an index whose rows point at nothing,
+        // and one without content refuses it. SQLite refuses `delete-all` when the table keeps its own content; `delete from` empties that
+        // one consistently. Any other virtual table, an FTS3/4 one too, and its shadow tables keep `delete from`, so it fails loudly.
+        const listed = (await sql<{ name: string; type: string }>`select name, type from pragma_table_list where schema = 'main'`.execute(trx)).rows;
+        const shadows = new Set(listed.filter((row) => row.type === 'shadow').map((row) => row.name));
+        const fts = new Set(
+          listed
+            .filter((row) => row.type === 'virtual' && ['data', 'idx', 'config'].every((suffix) => shadows.has(`${row.name}_${suffix}`)))
+            .map((row) => row.name)
+            .filter((name) => names.includes(name)),
+        );
+        const skipped = new Set([...fts].flatMap((name) => ['data', 'idx', 'config', 'docsize', 'content'].map((suffix) => `${name}_${suffix}`)).filter((name) => shadows.has(name)));
+        for (const name of fts) {
+          try {
+            await sql`insert into ${sql.id(name)}(${sql.id(name)}) values('delete-all')`.execute(trx);
+          } catch {
+            // Its own content: SQLite refuses `delete-all` there. A table that refused it for another reason refuses this too.
+            await sql`delete from ${sql.id(name)}`.execute(trx);
+          }
+        }
         for (const trigger of triggers) await sql`drop trigger ${sql.id(trigger.name)}`.execute(trx);
-        for (const name of names) await sql`delete from ${sql.id(name)}`.execute(trx);
+        for (const name of names) if (!fts.has(name) && !skipped.has(name)) await sql`delete from ${sql.id(name)}`.execute(trx);
+        // Fail closed: an index that does not match its (now empty) content stops the test app instead of answering with old rows.
+        for (const name of fts) {
+          try {
+            await sql`insert into ${sql.id(name)}(${sql.id(name)}, rank) values('integrity-check', 1)`.execute(trx);
+          } catch (error) {
+            throw new Error(
+              `Emptying the worker's test database left the FTS5 table \`${name}\` with an index that does not match its content. Does its \`content=\` name a view? See docs/database-testing.md#testing-a-lock.`,
+              { cause: error },
+            );
+          }
+        }
         const sequences = await sql`select 1 from sqlite_master where name = 'sqlite_sequence'`.execute(trx);
         if (sequences.rows.length > 0) await sql`delete from sqlite_sequence`.execute(trx);
         for (const trigger of triggers) await sql.raw(trigger.sql).execute(trx);
