@@ -149,7 +149,10 @@ database only, the triggers of the emptied tables are put aside and back in the 
 too), so every statement of your test meets them. The role of `DB_URL` creates and migrates that database and owns its tables;
 if a migration takes `TRUNCATE` from that role, or someone else owns a table with such a trigger, the test app does not start
 and the error names the table. Take privileges from the role your app runs as in production, not from the one that creates the
-test database. `seed: true` seeds after
+test database. On SQLite an FTS5 table with external content or without content is emptied with its `delete-all` command.
+An FTS5 table with its own content is emptied with `delete from`. An integrity check of each FTS5 index follows, and an index
+that does not match its content stops the test app. Any other virtual table, such as an FTS3, FTS4, R-tree or `fts5vocab`
+table, stops the test app, and the error names one of its tables. `seed: true` seeds after
 the tables were emptied. The worker's database, its migration and the rule of one open test app with a database are the same as with
 `'refresh'`: close the app before you open another. A test app that is not closed leaves its rows until the next one starts.
 
