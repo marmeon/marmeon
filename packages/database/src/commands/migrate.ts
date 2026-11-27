@@ -52,11 +52,21 @@ function changedMigrations(output: CommandInput['output']): (changed: readonly C
   };
 }
 
+/** What a command says when a MySQL migration stopped after it was marked: the marker refuses every query and every later run until it is resolved. */
+function interrupted(output: CommandInput['output']): NonNullable<MigrateOptions['onInterrupted']> {
+  return ({ name, module, connection, direction }) =>
+    output.error(
+      `Migration ${printable(name)} (module "${printable(module)}") stopped during its ${direction}() on the database connection "${printable(connection)}" and is marked as not finished: ` +
+        'every query of a process that starts, and `migrate`, `migrate:rollback` and `migrate:reset`, are refused until you resolve that. See docs/migrations.md#a-migration-that-stopped-halfway.',
+    );
+}
+
 /** What `migrate` says after a run: the tables 0.3 left, and what the database has that no migration made. */
 function notices(output: CommandInput['output']): MigrateOptions {
   return {
     onCarriedOver: carriedOver(output),
     onChanged: changedMigrations(output),
+    onInterrupted: interrupted(output),
     onLegacy: (connection, tables) =>
       output.info(`${printable(tables.join(', '))} on the connection "${connection}" are left in place for processes of Marmeon 0.3; drop them once none runs.`),
     onUnknown: (connection, { tables, columns }) => {
@@ -156,7 +166,7 @@ export class MigrateRollbackCommand {
     }
     if (!confirmed(input, 'roll back')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.rollback({ steps: step, onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
+      const runs = await this.#migrator.rollback({ steps: step, onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output), onInterrupted: interrupted(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -178,7 +188,7 @@ export class MigrateResetCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'roll back every migration')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.reset({ onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
+      const runs = await this.#migrator.reset({ onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output), onInterrupted: interrupted(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });

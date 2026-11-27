@@ -5,6 +5,7 @@ import { sql } from 'kysely';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { drivers, freshConnections, freshDatabase, MYSQL_URL, PGSQL_URL, silent, withMysql } from './__fixtures__/databases.ts';
 import { Connections, Migrator } from './index.ts';
+import { inspectionConnection } from './migrator-connection.ts';
 import { runMigration } from './migrations/run.ts';
 import { projectMigrations } from './schema/projection.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
@@ -415,6 +416,7 @@ withMysql('migrations on MySQL', () => {
     (await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(db())).rows.map((row) => row.name);
   const columns = async (table: string) =>
     (await sql<{ name: string }>`select column_name as name from information_schema.columns where table_schema = database() and table_name = ${table} order by ordinal_position`.execute(db())).rows.map((row) => row.name);
+  const markers = async (on: Connections) => (await sql<{ name: string }>`select name from migration_interruption order by name`.execute(inspectionConnection(on))).rows.map((row) => row.name);
 
   beforeAll(async () => ({ connections, close } = await freshConnections('mysql')));
   afterAll(() => close());
@@ -483,12 +485,15 @@ withMysql('migrations on MySQL', () => {
     try {
       const data = migrator(own.connections, mysqlModule('mysql-data'));
       await expect(data.migrate()).rejects.toThrow('the backfill failed');
-      const rows = own.connections.get<any>();
+      // As the server has it: the app's connection refuses every query while the migration is marked.
+      const rows = inspectionConnection(own.connections);
       expect((await sql<{ amount: number }>`select amount from ledger order by id`.execute(rows)).rows).toEqual([{ amount: 10 }, { amount: 20 }]);
       expect((await data.status()).map((m) => [m.name, m.batch])).toEqual([
         ['2026_03_01_000000_create_ledger_table', 1],
         ['2026_03_02_000000_raise_the_ledger', undefined],
       ]);
+      // The migration changed a table before its step failed: MySQL keeps that, so the marker says it did not finish.
+      expect(await markers(own.connections)).toEqual(['2026_03_02_000000_raise_the_ledger']);
     } finally {
       await own.close();
     }
@@ -514,6 +519,8 @@ withMysql('migrations on MySQL', () => {
       await expect(migrator(own.connections, mysqlModule('mysql-guard')).migrate()).rejects.toThrow(/^\[marmeon:D4\] Cannot run this statement in a schema\.data\(\) step: it ends or steers the transaction of the step, which the migrator controls, and a schema change would be missing from the plan of the migration\. /);
       expect((await sql<{ amount: number }>`select amount from ledger order by id`.execute(rows)).rows).toEqual([{ amount: 10 }, { amount: 20 }]);
       expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(rows)).rows.map((row) => row.name)).toEqual(['ledger', 'migration_interruption', 'migrations']);
+      // A migration of rows alone shares its transaction with the record: nothing was committed, so there is nothing to mark.
+      expect(await markers(own.connections)).toEqual([]);
     } finally {
       delete (globalThis as { guardedStatement?: string }).guardedStatement;
       await own.close();
@@ -544,11 +551,12 @@ withMysql('migrations on MySQL', () => {
     }
     const failing = await freshConnections('mysql', { record: false });
     try {
-      const rows = failing.connections.get<any>();
+      const rows = inspectionConnection(failing.connections);
       await expect(migrator(failing.connections, broken).migrate()).rejects.toThrow('this migration is broken');
       // MySQL cannot undo the table the migration made, and the record is made before the first migration: it is empty.
       expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(rows)).rows.map((row) => row.name)).toEqual(['half', 'migration_interruption', 'migrations']);
       expect((await sql<{ n: number }>`select count(*) as n from migrations`.execute(rows)).rows[0]?.n).toBe(0);
+      expect(await markers(failing.connections)).toEqual(['2026_01_04_000000_create_half_table']);
     } finally {
       await failing.close();
     }
@@ -584,12 +592,17 @@ withMysql('migrations on MySQL', () => {
       const sent: string[] = [];
       own.connections.onQuery((query) => void sent.push(query.sql));
       const run = migrator(own.connections, mysqlModule('mysql-raw-refused'));
-      await expect(run.migrate()).rejects.toThrow(
+      const interrupted: unknown[] = [];
+      await expect(run.migrate({ onInterrupted: (left) => interrupted.push(left) })).rejects.toThrow(
         /^\[marmeon:D18\] Migration 2026_03_04_000000_raw_without_mysql \(module "mysql-raw-refused"\) has a schema\.raw\(\) step \(step 1 of its plan\) with a statement for sqlite and pgsql and none for MySQL/,
       );
       // The create of the migration before it did not run either: nothing was sent that changes the schema.
       expect(sent.filter((text) => /^\s*(create|alter|drop|rename)\b/i.test(text))).toEqual([]);
       expect(await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>()).then((result) => result.rows.map((row) => row.name))).toEqual(['migration_interruption', 'migrations']);
+      // A refusal before the first statement marks nothing, so the next run says the same thing and not D32.
+      expect(await markers(own.connections)).toEqual([]);
+      expect(interrupted).toEqual([]);
+      await expect(migrator(own.connections, mysqlModule('mysql-raw-refused')).migrate()).rejects.toThrow(/^\[marmeon:D18\] /);
     } finally {
       await own.close();
     }
@@ -614,8 +627,11 @@ withMysql('migrations on MySQL', () => {
     try {
       const run = migrator(own.connections, mysqlModule('mysql-raw-down'));
       await run.migrate();
-      await expect(run.rollback()).rejects.toThrow(/^\[marmeon:D18\] Migration 2026_03_06_000000_create_keeps_down_table \(module "mysql-raw-down"\) has a schema\.raw\(\) step \(step 2 of its plan\)/);
+      const interrupted: unknown[] = [];
+      await expect(run.rollback({ onInterrupted: (left) => interrupted.push(left) })).rejects.toThrow(/^\[marmeon:D18\] Migration 2026_03_06_000000_create_keeps_down_table \(module "mysql-raw-down"\) has a schema\.raw\(\) step \(step 2 of its plan\)/);
       expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>())).rows.map((row) => row.name)).toEqual(['keeps_down', 'migration_interruption', 'migrations']);
+      expect(interrupted).toEqual([]);
+      expect(await markers(own.connections)).toEqual([]);
     } finally {
       await own.close();
     }

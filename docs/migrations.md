@@ -74,7 +74,7 @@ two migrations with the same name and a module whose `migrations` folder does no
 
 A migration file exports `defineMigration({ up, down })`. `up` makes the change, and `down` undoes it. Both receive a `Schema` and
 **build a plan** with it: each call adds a step and runs nothing. When the migration runs, `migrate` carries out the steps in the
-order they were added, all inside the migration's transaction (not on MySQL, see [MySQL](#mysql)).
+order they were added, all inside the migration's transaction (not on MySQL, except for a migration of row-only steps on `default`, see [MySQL](#mysql)).
 
 | Method | What it adds |
 | --- | --- |
@@ -174,7 +174,7 @@ schema.alter('notes', (table) => table.notNull('slug'));
 column stops the migration with the database's error, and the migration is rolled back (not on MySQL, see [MySQL](#mysql)). SQLite changes no column in place, so `migrate`
 refuses a plan with either call on SQLite before running any step, with error D18; use the form with the default there. MySQL refuses both calls before the migration runs too (D18): its `ALTER TABLE` takes the whole column again, so use `schema.raw()` with a `modify column` statement ([what MySQL refuses](#what-mysql-refuses-before-a-migration-runs)).
 
-`db` is a Kysely connection inside the migration's transaction, so a step that throws rolls back the schema steps before it too (not on MySQL, see [MySQL](#mysql)): there `db` is a transaction of the step alone, and only its rows are undone.
+`db` is a Kysely connection inside the migration's transaction, so a step that throws rolls back the schema steps before it too (not on MySQL, see [MySQL](#mysql)): there `db` is a transaction of the step alone, and only its rows are undone, unless the migration has row-only steps on `default`, which share one transaction with their record.
 Its tables are typed loosely, because a migration runs against the schema of its own time, not the one `bootstrap/database.d.ts`
 describes today. The second argument tells the driver, `'sqlite'`, `'pgsql'` or `'mysql'`, for the rare statement that differs.
 
@@ -228,7 +228,7 @@ export default defineMigration({
   with an object literal has lost the key before `JSON.stringify` runs. This matters most for content people typed, where a key or a
   field named `__proto__` is a value like any other.
 - **It runs on SQLite and Postgres, and on MySQL once it can be selected.** The callback gets the connection and, as its second
-  argument, `{ driver }` (`'sqlite'`, `'pgsql'` or `'mysql'`), for a statement that differs. On MySQL the step is a transaction of its own, see [MySQL](#mysql).
+  argument, `{ driver }` (`'sqlite'`, `'pgsql'` or `'mysql'`), for a statement that differs. On MySQL the step is a transaction of its own, or shares the transaction of a migration of row-only steps on `default`, see [MySQL](#mysql).
 - **D20 looks at the directory, not at the imports.** A file in a module's `migrations` folder and everything below it has to lie in
   your app or its workspace ([migrations from a package](#migrations-from-a-package)). An `import` of a helper that lies somewhere
   else is not followed, so a migration that imports its content passes the check and still changes with the package. Put the content into the file.
@@ -256,7 +256,7 @@ adds a column to leaves that column out (name it in the query), and `selectAll()
 `schema.create()`, `schema.alter()` and `schema.rename()`, for everything it can do: only what it describes is known. Changing a table or
 column that raw SQL made with `schema.alter()` or `schema.rename()` stops with error D19, because Marmeon would not know the change.
 
-Every migration runs in a transaction (not on MySQL), so `create index concurrently` of Postgres does not work in one. A plain `create index` on a large table blocks writes to it until the index is built.
+Every migration runs in a transaction (not on MySQL, except a migration of row-only steps on `default`), so `create index concurrently` of Postgres does not work in one. A plain `create index` on a large table blocks writes to it until the index is built.
 
 ### What the migrations describe
 
@@ -311,7 +311,7 @@ A table the projection does not know passes through the query builder unguarded,
 
 **Each migration runs in a transaction of its own.** SQLite and Postgres both roll back a schema change, so a migration that fails
 leaves no half-changed table behind, and it is not recorded. The migrations before it in the same run stay done. [MySQL](#mysql) has
-no such transaction.
+no such transaction, except around a migration of row-only steps on `default`.
 
 `migrate` and `migrate:fresh` write the table types afterwards when migrations ran, with `NODE_ENV=development` only. `--no-types`
 skips that. `migrate:rollback` and `migrate:reset` do not write them: after a rollback, run `marmeon db:types` to bring the file
@@ -364,21 +364,28 @@ not a migration's: raise `--wait` when one of yours takes longer than a minute. 
 MySQL cannot be selected yet (see [the database page](database.md#mysql)); this is how its migrations run once it can.
 
 Where this page says a migration is rolled back, that holds for SQLite and Postgres. MySQL commits every schema change as it runs it, so
-a migration has no transaction around it and nothing to roll back: the steps that ran stay. What differs:
+a migration that changes the schema has no transaction around it and nothing to roll back: the steps that ran stay. A migration of row-only steps on `default` has one (below). What differs:
 
-- **A failed migration leaves what it did.** The steps before the one that failed stay in the database, and the migration is not
+- **A failed migration leaves what it did, and a marker.** The steps before the one that failed stay in the database, and the migration is not
   recorded. The migrations before it in the same run stay done. D3 (a table or column the migrations say is there is gone) reports the
-  difference but undoes nothing.
-- **A `schema.data()` step has a transaction of its own.** Its `db` is that transaction: the rows it changes are committed when the
+  difference but undoes nothing. The migration is marked as one that did not finish, and nothing runs on top of it until you resolve that
+  ([a migration that stopped halfway](#a-migration-that-stopped-halfway), error D32).
+- **A migration of `schema.data()` steps alone on `default` runs in one transaction with its record.** It has no statement that
+  commits, so its rows and its record are committed together or not at all: a failure, or a lost migration lock, leaves the rows as
+  they were and the migration pending, and the next run does it once. Row-only means `schema.data()` steps, and `schema.raw()` steps with `mysql: null`.
+  Its marker is the first statement of that transaction, so a rollback takes it along; a statement that commits on its own (a prepared `drop`,
+  a procedure that commits, which the guard of a data step cannot read) commits it with what ran, and the migration stays marked.
+- **A `schema.data()` step of a migration that also changes the schema has a transaction of its own.** Its `db` is that transaction: the rows it changes are committed when the
   step ends and undone when it throws, whatever the steps around it did to the schema. A schema change in a data step is refused with
   D4 (a statement that ends the transaction of the step, such as `create`, `alter`, `drop`, `rename`, `truncate`, `lock tables`, `commit` or `rollback`, in raw SQL too: the step does not steer its transaction).
-- **The record is made before the first migration.** `migrations` exists from the first run on, so a first migration that fails leaves
-  an empty `migrations` and the tables it made.
-- **Starting again after a failed run** means cleaning up by hand: drop what the failed migration made, then run `migrate`.
-  `migrate:fresh` drops every table and starts over (outside development it needs `--force`). Until the half-made tables are gone, a run that creates one of them stops with error D3 (`already has the
-  table …`) before it changes anything, and a step that adds what is already there stops with the server's error. A migration that is run again starts at its first step, and a `schema.data()` step that was
-  committed before the failure runs a second time: write data steps so that running them twice is harmless (`where` the change has not
-  been made, or a value that is set, not added to).
+- **The record is made before the first migration.** `migrations` and `migration_interruption` exist from the first run on, so a first migration that fails leaves
+  empty tables of both and the tables it made.
+- **Starting again after a failed run** is described under [a migration that stopped halfway](#a-migration-that-stopped-halfway). What you
+  undo by hand matters: a migration that is run again starts at its first step, so a `schema.data()` step that was committed before the failure
+  runs a second time. Write data steps so that running them twice is harmless (`where` the change has not been made, or a value that is set,
+  not added to).
+- **A migration on a MySQL connection needs a MySQL `default`.** The marker lies beside the record of migrations, which only `default` holds. With
+  another driver on `default`, `migrate`, `migrate:rollback`, `migrate:reset` and `migrate:fresh` stop with D29 before they run or drop anything.
 - **A migration runs on one connection** of the pool, and the connection goes back when it ends, reset. A temporary table, a
   `@variable`, `foreign_key_checks` or `lock tables` that one migration sets is gone in the next. Write each migration so that it needs
   none of it from another.
@@ -397,7 +404,16 @@ a migration has no transaction around it and nothing to roll back: the steps tha
 #### A migration that stopped halfway
 
 On MySQL, `migration_interruption` is a table that `migrate` creates beside `migrations`. A row in it means a migration started and has
-not finished. While the row is there, every query of a process that starts or is not ready yet fails with a `MigrationStateError` (D32).
+not finished.
+
+`migrate`, `migrate:rollback` and `migrate:reset` write the row before the first statement of every migration or `down()` that sends a statement, except one whose steps
+only change rows (`schema.data()`, or `schema.raw()` with `mysql: null`) and that runs on `default`. They remove it in the transaction that records the
+migration or takes its record away. A migration of row-only steps writes the row inside its own transaction with its record, so a
+rollback leaves none and a statement that commits on its own leaves it. When a migration stops with its row in the table, the command says so with an error line
+that names the migration, and the error of the migration follows. The row names the migration, its module, whether it was an `up()` or a `down()`,
+the batch, the connection the migration runs on in `connection_name`, the time it started and the process that runs it. A statement the
+server refuses before it changes anything still leaves the row, because a marker cannot tell; a check that refuses the migration before its first
+statement leaves none. While the row is there, every query of a process that starts or is not ready yet fails with a `MigrationStateError` (D32).
 The message names the migration, its `up()` or `down()`, the connection and the time. `migrate`, `migrate:rollback` and `migrate:reset` do not start.
 A process that was ready before the row appeared keeps answering until it restarts.
 
@@ -518,7 +534,7 @@ is still running reads them, and 0.3 reads a table that is gone as "no column is
 The projection says which tables and columns the database has now. After every migration (and every `down()`), in its transaction (on MySQL directly after its steps),
 `migrate` reads the catalog of the connection the migration ran on and compares:
 
-- A table or column the projection puts on that connection and the database does not have **rolls the migration back** with error D3 (on MySQL it only reports: the steps that ran stay, see [MySQL](#mysql)).
+- A table or column the projection puts on that connection and the database does not have **rolls the migration back** with error D3 (on MySQL it only reports: the steps that ran stay and the migration stays marked, error D32, see [MySQL](#mysql)).
   This is what catches raw SQL that renames or drops a table or column (`` sql`alter table users rename column password_hash to pw` ``): the
   projection would go on to call `password_hash` secret and not know `pw`, which `select pw` would then return. Use `schema.alter()`
   (`renameColumn`, `dropColumn`) and `schema.rename()`, which the projection follows. The check cannot see a rename in raw SQL that

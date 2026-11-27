@@ -535,6 +535,8 @@ With old and new nodes side by side, from the release that marks them on:
   and hides the secret ones it knows ([how the migrator keeps track](migrations.md#how-the-migrator-keeps-track)). Update a node
   whose record of migrations is newer than it reads: it fails every query and fails readiness. Two nodes that run
   `marmeon migrate` at once are safe: one waits for the other ([one migration at a time](migrations.md#one-migration-at-a-time)).
+  On MySQL, a migration that stops halfway refuses every query of a node that starts, and `migrate`, `migrate:rollback` and
+  `migrate:reset` do not start (D32), until you resolve it ([a migration that stopped halfway](migrations.md#a-migration-that-stopped-halfway)).
 
 A release that changes a format after 1.0 writes the new version only once the readers of the release before read it
 ([the rules](releases.md#stored-and-wire-formats)). Until then, read the [upgrade guide](../UPGRADING.md) of a release before you roll it.
