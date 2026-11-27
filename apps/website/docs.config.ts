@@ -126,6 +126,7 @@ export default defineDocs({
         { slug: 'scheduling', label: 'Task Scheduling' },
         { slug: 'webhooks', label: 'Webhooks' },
         { slug: 'tables', label: 'Data Tables' },
+        { slug: 'full-text-search', label: 'Search' },
         { slug: 'drivers', label: 'Drivers' },
       ],
     },

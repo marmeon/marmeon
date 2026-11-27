@@ -133,6 +133,8 @@ reads them, and are known once that package is installed.
 | `fetchDrivers` | `Record<string, FetchDriverFactory>` | `@marmeon/fetch` | [Fetch transports](drivers.md#fetch-transports) |
 | `oauthProviders` | `Record<string, OAuthProviderFactory>` | `@marmeon/oauth` | [Social login](oauth.md#your-own-provider) |
 | `chatDrivers` | `Record<string, ChatDriverFactory>` | `@marmeon/chat-notifications` | [Chat drivers](drivers.md#chat-drivers) |
+| `searchDrivers` | `Record<string, SearchDriverFactory>` | `@marmeon/search` | [Writing a driver](full-text-search.md#writing-a-driver) |
+| `searchIndexes` | `readonly SearchIndexClass[]` | `@marmeon/search` | [Defining an index](full-text-search.md#defining-an-index) |
 
 ### Statics of other classes
 

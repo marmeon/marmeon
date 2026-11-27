@@ -171,7 +171,7 @@ describe('Application.shutdown', () => {
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySolutions] }, { env: {} })).resolves.toBeDefined();
     const Empty = class Empty {};
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [Empty] }, { env: {} })).rejects.toThrow(
-      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static checks, static migrations, static publishes or static [providerJobs].',
+      '[marmeon:K9] Empty is listed as a service provider but has no register(), boot(), shutdown(), static config, static health, static errorReporters, static solutions, static commands, static queueDrivers, static failedJobDrivers, static diskDrivers, static cacheDrivers, static mailDrivers, static fetchDrivers, static oauthProviders, static chatDrivers, static searchDrivers, static searchIndexes, static checks, static migrations, static publishes or static [providerJobs].',
     );
     // A list named migrationUpgrades brings nothing.
     const Revisions = class Revisions {
@@ -454,6 +454,21 @@ describe('createApplication(definition, options)', () => {
     }
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlyDrivers as never] }, { env: {} })).resolves.toBeDefined();
     await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [EmptyDrivers as never] }, { env: {} })).rejects.toThrow(/static queueDrivers/);
+  });
+
+  it('accepts a provider that only brings search drivers or search indexes, and refuses one whose list is empty', async () => {
+    class OnlySearchDrivers {
+      static searchDrivers = { typesense: () => ({}) };
+    }
+    class OnlySearchIndexes {
+      static searchIndexes = [class PageIndex {}];
+    }
+    class NoSearchIndexes {
+      static searchIndexes = [];
+    }
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySearchDrivers as never] }, { env: {} })).resolves.toBeDefined();
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [OnlySearchIndexes as never] }, { env: {} })).resolves.toBeDefined();
+    await expect(createApplication({ root: import.meta.dirname, discover: false, providers: [NoSearchIndexes as never] }, { env: {} })).rejects.toThrow(/static searchIndexes/);
   });
 
   it('boots a clean definition', async () => {

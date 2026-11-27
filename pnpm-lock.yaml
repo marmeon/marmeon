@@ -1210,6 +1210,25 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
 
+  packages/search:
+    dependencies:
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@marmeon/database':
+        specifier: workspace:*
+        version: link:../database
+      '@marmeon/fetch':
+        specifier: workspace:*
+        version: link:../fetch
+      '@marmeon/queue':
+        specifier: workspace:*
+        version: link:../queue
+
   packages/server:
     dependencies:
       '@hono/node-server':

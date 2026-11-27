@@ -1,0 +1,98 @@
+{
+  "name": "@marmeon/search",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Full-text search for Marmeon apps: indexes as classes, kept current from your data, searched in the database or through Meilisearch.",
+  "keywords": [
+    "marmeon",
+    "search",
+    "full-text search",
+    "fts5",
+    "tsvector",
+    "meilisearch"
+  ],
+  "homepage": "https://marmeon.com/docs/full-text-search",
+  "bugs": {
+    "url": "https://github.com/marmeon/marmeon/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marmeon/marmeon.git",
+    "directory": "packages/search"
+  },
+  "engines": {
+    "node": ">=26.10"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@marmeon/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@marmeon/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./testing": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "stubs",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "!{dist,src}/**/*.test.*",
+    "!{dist,src}/**/*.type-test.*",
+    "!{dist,src}/**/__fixtures__/**",
+    "!{dist,src}/**/test-helpers/**",
+    "!**/*.tsbuildinfo"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "marmeon": {
+    "providers": [
+      "SearchServiceProvider"
+    ]
+  },
+  "dependencies": {
+    "@marmeon/core": "workspace:*",
+    "valibot": "^1.5.0"
+  },
+  "peerDependencies": {
+    "@marmeon/database": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
+    "@marmeon/queue": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@marmeon/fetch": {
+      "optional": true
+    },
+    "@marmeon/queue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@marmeon/database": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
+    "@marmeon/queue": "workspace:*"
+  }
+}
