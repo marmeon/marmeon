@@ -11,7 +11,7 @@ import { PACKAGE_CODE } from './source-files.ts';
 /** The areas a variable belongs to; a variable starts with one of these. */
 export const PREFIXES = [
   'APP_', 'AUTH_', 'HASH_', 'CACHE_', 'CHAT_', 'CSRF_', 'DB_', 'DEVTOOLS_', 'FETCH_', 'LIVE_', 'LOG_', 'MAIL_', 'NOTIFICATIONS_', 'OAUTH_', 'QUEUE_', 'REDIS_', 'SCHEDULE_',
-  'SERVER_', 'SESSION_', 'UPLOADS_', 'MARMEON_OTEL_',
+  'SEARCH_', 'SERVER_', 'SESSION_', 'UPLOADS_', 'MARMEON_OTEL_',
 ] as const;
 /** Set by platforms, so without a prefix. */
 export const PLATFORM_NAMES = ['NODE_ENV', 'PORT', 'HOST'] as const;

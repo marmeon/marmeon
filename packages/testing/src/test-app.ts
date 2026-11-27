@@ -775,10 +775,10 @@ export class TestApp {
 
   /**
    * The search indexes, kept in memory by a fake that records every write: `app.search.assertIndexed(PageIndex, page.id)`.
-   * Needs @marmeon/search in the app and a driver other than `database` (or `search: 'fake'`), and not `search: 'real'`; a `SearchDriver` the test's `override` binds turns it off too. See `docs/fakes.md#search`.
+   * Needs @marmeon/search in the app and a driver other than `database` (or `search: 'fake'`), and not `search: 'real'`; a `SearchDriver` the test's `override` binds turns it off too. Without the package or its provider there is no fake either; the getter's message names the cause. See `docs/fakes.md#search`.
    */
   get search(): SearchFake {
-    if (!this.#shared.search) throw new Error(this.#shared.searchAbsent ?? 'app.search needs @marmeon/search in the app.');
+    if (!this.#shared.search) throw new Error(this.#shared.searchAbsent ?? 'app.search needs @marmeon/search, which the app does not have: install it with marmeon add search.');
     return this.#shared.search;
   }
 

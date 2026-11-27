@@ -1,7 +1,6 @@
 {
   "name": "@marmeon/search",
   "version": "1.3.0",
-  "private": true,
   "description": "Full-text search for Marmeon apps: indexes as classes, kept current from your data, searched in the database or through Meilisearch.",
   "keywords": [
     "marmeon",

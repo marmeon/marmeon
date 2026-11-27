@@ -32,9 +32,6 @@ export type IndexRowOf<I extends SearchIndexClass> = InstanceType<I>['toDocument
 /** The type of an index's key: the type of the key column in its rows, narrowed to a string or a number. */
 export type KeyOf<I extends SearchIndexClass> = I['key'] extends keyof IndexRowOf<I> ? Extract<IndexRowOf<I>[I['key']], string | number> : string | number;
 
-/** The names of the fields an index declares. */
-export type FieldsOf<I extends SearchIndexClass> = DeclaredFields<I>;
-
 /**
  * The names of the filters an index declares; for a union of indexes, the names of any of them. A list written without `as const`
  * declares no name the type can know, so it counts as none, and every filter is a type error instead of every name passing.

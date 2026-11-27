@@ -5,8 +5,24 @@
 `@marmeon/search` gives your app full-text search over its own data. You describe what to search as an index class, the package
 keeps that index current when your rows change, and a search returns a page of hits in the order of their relevance. By default the
 index lives in a table of your app's database, so search needs no other service: SQLite searches with FTS5, Postgres with its text
-search. The `database` driver does not run on MySQL. When the database is not enough, or your app runs on MySQL, the same
-indexes and the same searches run on a Meilisearch server instead.
+search. When the database is not enough, the same indexes and the same searches run on a Meilisearch server instead.
+
+After you write a row, `index()` brings its document into the index, and `query()` finds it by the words a user types:
+
+```ts
+import type { Search } from '@marmeon/search';
+import { PageIndex } from './PageIndex.ts';
+
+export async function indexAndFind(search: Search, pageId: number) {
+  await search.index(PageIndex, pageId);
+  const result = await search.query({ in: PageIndex, term: 'garden party', filters: { audience: 'public' } });
+  return result.ok ? result.value.data : []; // [{ index: 'pages', key: 42, score: … }], best hit first
+}
+```
+
+`PageIndex` is the class of [Defining an index](#defining-an-index), and `search` is the `Search` service the container injects. How a score is computed depends on the driver.
+
+Install the package with `pnpm marmeon add search`, which also publishes its migration, and run `pnpm marmeon migrate`.
 
 ## Configuration
 

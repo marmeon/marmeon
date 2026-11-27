@@ -9,5 +9,5 @@ export type { IndexInfo } from './registry.ts';
 export { Search } from './search.ts';
 export type { IndexInput, SearchHit, SearchRequest } from './search.ts';
 export { SearchIndex } from './search-index.ts';
-export type { FieldsOf, FilterNamesOf, FiltersOf, FilterValue, IndexRowOf, KeyOf, SearchDocument, SearchIndexClass, SearchIndexStatics, SearchWeight } from './search-index.ts';
+export type { FilterNamesOf, FiltersOf, FilterValue, IndexRowOf, KeyOf, SearchDocument, SearchIndexClass, SearchIndexStatics, SearchWeight } from './search-index.ts';
 export type { ExcerptSegment } from './terms.ts';

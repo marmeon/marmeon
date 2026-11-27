@@ -315,7 +315,7 @@ A search finds a document that holds every word of the term in its fields, compa
 
 `failNext(kind, times)` makes the next searches return an `err`, of the kind `unavailable` by default or `missing-index`.
 
-With `search: 'real'`, on the `database` driver without `search: 'fake'`, or when your `override` binds a search driver of its own, `app.search` throws, and its message says which of these it is. The [search](full-text-search.md#testing) page covers the package.
+With `search: 'real'`, on the `database` driver without `search: 'fake'`, when your `override` binds a search driver of its own, and when the app lacks `@marmeon/search` or does not register its provider, `app.search` throws, and its message says which of these it is. The [search](full-text-search.md#testing) page covers the package.
 
 ## Storage
 
