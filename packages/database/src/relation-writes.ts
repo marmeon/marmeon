@@ -130,7 +130,11 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
   const linked = async (db: Connection<any>, relation: Relation, key: unknown): Promise<unknown[]> =>
     (await db.selectFrom(relation.pivot!).select(relation.relatedKey!).where(relation.foreignKey, '=', key).execute()).map((link) => (link as Record<string, unknown>)[relation.relatedKey!]);
 
-  /** Inserts the links, and returns the ids it linked: a link another transaction made meanwhile is left alone (the pivot is unique). */
+  /**
+   * Inserts the links, and returns the ids it linked: a link another transaction made meanwhile is left alone. Only a conflict on the
+   * pivot's two keys is skipped — a pivot is read as one because they are unique together — so another unique index that refuses
+   * a link throws instead of the link going missing.
+   */
   const link = async (db: Connection<any>, relation: Relation, key: unknown, ids: readonly unknown[]): Promise<unknown[]> => {
     if (ids.length === 0) return [];
     // A pivot with `timestamps()` keeps the time of its links: the app's clock, like every row a repository writes.
@@ -138,7 +142,7 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     const inserted = await db
       .insertInto(relation.pivot!)
       .values(rows)
-      .onConflict((conflict) => conflict.doNothing())
+      .onConflict((conflict) => conflict.columns([relation.foreignKey, relation.relatedKey!]).doNothing())
       .returning(relation.relatedKey!)
       .execute();
     const linkedNow = new Set(inserted.map((row) => same((row as Record<string, unknown>)[relation.relatedKey!])));

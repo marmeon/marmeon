@@ -1,5 +1,6 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
-import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
+import { sql } from 'kysely';
+import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { drivers, freshConnections } from './__fixtures__/databases.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
@@ -119,6 +120,53 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     });
   });
 
+  describe('a pivot with another unique index', () => {
+    const uniqueViolation = driver === 'pgsql' ? { code: '23505' } : { errcode: 2067 };
+    beforeAll(async () => {
+      await db.deleteFrom('post_tag').execute();
+      await sql`create unique index post_tag_one on post_tag (post_id)`.execute(db);
+    });
+    afterAll(() => sql`drop index post_tag_one`.execute(db));
+
+    it('attach() of a link that breaks the other index throws and links nothing', async () => {
+      await posts.relation(ids.first, 'tags').attach(ids.kysely);
+      await expect(posts.relation(ids.first, 'tags').attach([ids.sql])).rejects.toMatchObject(uniqueViolation);
+      expect(await tagsOf(ids.first)).toEqual([ids.kysely]);
+    });
+
+    it('sync() throws and keeps every old link when a new link breaks the other index', async () => {
+      await posts.relation(ids.first, 'tags').attach(ids.kysely);
+      await expect(posts.relation(ids.first, 'tags').sync([ids.sql])).rejects.toMatchObject(uniqueViolation);
+      expect(await tagsOf(ids.first)).toEqual([ids.kysely]);
+    });
+  });
+
+  // Only Postgres: a SQLite database has one writer at a time. The link is written with the foreign-key triggers off — with them on,
+  // the writer holds a key lock on the parent row, and attach() waits for it there, before the insert it is meant to reach.
+  it.runIf(driver === 'pgsql')('attach() leaves a link another transaction commits while its insert waits on the pivot index', async () => {
+    const inserted = Promise.withResolvers<void>();
+    const commit = Promise.withResolvers<void>();
+    const writer = connections.transaction(async () => {
+      await sql`set local session_replication_role = replica`.execute(db);
+      await db.insertInto('post_tag').values({ post_id: ids.first, tag_id: ids.kysely }).execute();
+      inserted.resolve();
+      await commit.promise;
+    });
+    await inserted.promise;
+    const attach = posts.relation(ids.first, 'tags').attach([ids.kysely]);
+    try {
+      await vi.waitFor(async () => {
+        const { rows } = await sql`select 1 from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like 'insert into "post_tag"%'`.execute(db);
+        expect(rows).toHaveLength(1);
+      });
+    } finally {
+      commit.resolve();
+    }
+    await writer;
+    expect(await attach).toEqual([]);
+    expect(await tagsOf(ids.first)).toEqual([ids.kysely]);
+  });
+
   it('attach() twice at once links once — the row is locked on Postgres, and the pivot insert leaves an existing link alone', async () => {
     queries.length = 0;
     const both = await Promise.all([posts.relation(ids.first, 'tags').attach([ids.kysely]), posts.relation(ids.first, 'tags').attach([ids.kysely])]);
@@ -127,7 +175,7 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     const parentReads = queries.filter((query) => query.sql.startsWith('select "id" from "posts"'));
     expect(parentReads).toHaveLength(2);
     expect(parentReads.every((query) => query.sql.endsWith(' for update') === (driver === 'pgsql'))).toBe(true);
-    expect(queries.some((query) => /on conflict do nothing/.test(query.sql))).toBe(true);
+    expect(queries.some((query) => /on conflict \("post_id", "tag_id"\) do nothing/.test(query.sql))).toBe(true);
   });
 
   it('refuses to write the links of a pivot with soft deletes — sync, attach and detach', async () => {
