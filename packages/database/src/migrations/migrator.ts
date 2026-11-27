@@ -6,7 +6,7 @@ import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
-import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
+import { appTables, assertInterruptionReadable, assertNotUnreleased, assertRecordReadable, createMigrationsTable, INTERRUPTION_TABLE, interruptedError, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, MigrationStateError, readInterruption, recordVersion, type Interruption } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
 import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
@@ -14,11 +14,12 @@ import { assertNamesFitPgsql, assertRawFitsMysql, check, executePlan, planOf, pg
 import { loadProjection, readProjection } from '../schema/projection-file.ts';
 import { applyPlan, differingTables, listCheckOf, emptyProjection, projectMigrations, tablesAtOf, type SchemaProjection } from '../schema/projection.ts';
 import { SchemaError } from '../schema/schema.ts';
+import { UnsupportedDriverError } from '../supported-driver.ts';
 import { migrationChecksum } from './checksum.ts';
 import { dropAllTables } from './drop-all.ts';
 import { migrationFiles, type MigrationFile } from './files.ts';
 import { loadMigration, spendImport } from './load.ts';
-import { MigrationLock, type HeldLock, type LockOptions } from './lock.ts';
+import { MigrationLock, ownerOf, type HeldLock, type LockOptions } from './lock.ts';
 import type { Migration } from './migration.ts';
 
 export type { MigrationFile };
@@ -57,6 +58,24 @@ export interface MigrateOptions {
    * it was when they ran. Never stops the run. `rollback` and `reset` call it before the first `down()`, with the migrations they roll back only. See `docs/migrations.md#a-migration-that-changed-after-it-ran`.
    */
   readonly onChanged?: (changed: readonly ChangedMigration[]) => void;
+  /**
+   * Called when a MySQL migration or `down()` stopped with its marker still in `migration_interruption`, with that migration, before the
+   * error goes on. What the callback throws or rejects with never replaces that error. See `docs/migrations.md#a-migration-that-stopped-halfway`.
+   */
+  readonly onInterrupted?: (left: InterruptedMigration) => unknown;
+  /**
+   * @internal — the rows `resolveInterruption('retry')` named after an `up()`: this run runs those migrations again and replaces each row with its own when
+   * that migration starts. Any other row refuses the run, and so does a listed migration that is not pending.
+   */
+  readonly retrying?: readonly { readonly name: string; readonly startedAt: string }[];
+}
+
+/** A MySQL migration that stopped with its marker still in `migration_interruption`. */
+export interface InterruptedMigration {
+  readonly name: string;
+  readonly module: string;
+  readonly connection: string;
+  readonly direction: 'up' | 'down';
 }
 
 /** A migration that ran and whose file has another checksum now than when it ran. */
@@ -103,6 +122,11 @@ interface Planned {
 interface Folded {
   readonly projection: SchemaProjection;
   readonly connections: ReadonlyMap<string, string>;
+}
+
+/** Whether a plan only changes rows: it has no statement that commits as it runs on MySQL, so its steps can share a transaction with the record. */
+function dataOnly(plan: readonly PlanStep[]): boolean {
+  return plan.every((step) => step.kind === 'data' || (step.kind === 'raw' && step.statements.mysql === null));
 }
 
 const nothing: Folded = { projection: emptyProjection, connections: new Map() };
@@ -167,17 +191,32 @@ function checkNamed(driver: Driver, plan: readonly PlanStep[], who: string): voi
   }
 }
 
+
+/** A row of `migration_interruption` as the {@link Interruption} it says. */
+function interruptionOf(row: Record<string, any>): Interruption {
+  return { name: row.name, module: row.module, connection: row.connection_name, direction: row.direction, batch: Number(row.batch), startedAt: row.started_at, owner: row.owner };
+}
+
+/** A row of `migration_interruption` with a direction this release does not know: a newer Marmeon wrote it. */
+function unknownDirection(row: Interruption): MigrationStateError {
+  return new MigrationStateError(
+    'newer',
+    'default',
+    withCode('D1', `The marker of migration ${printable(row.name)} names the direction "${printable(row.direction)}", which this release of Marmeon does not know: a newer Marmeon wrote it. Update @marmeon/*. Nothing was changed.`),
+  );
+}
+
 /**
- * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps two tables for it, `migrations` (which
- * ran, in which batch) and, on SQLite, `migration_lock`; what the migrations say about the schema (secret columns, `timestamps()`,
+ * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps `migrations` for it (which
+ * ran, in which batch). On SQLite it keeps `migration_lock` too, and on MySQL `migration_interruption`. What the migrations say about the schema (secret columns, `timestamps()`,
  * `softDeletes()`, `.inverse()`, the owner of a table) is computed from their plans, not stored. After every migration the
- * database is checked against that schema, and a migration that left it different is rolled back (on MySQL, which cannot, it is reported and what it did stays).
+ * database is checked against that schema, and a migration that left it different is rolled back (on MySQL, which cannot, it is reported and marked: see docs/migrations.md#a-migration-that-stopped-halfway).
  *
  * A migration may run on another connection (`connection` in `defineMigration`, e.g. the cache's own SQLite
  * file): its record stays on `default` (one order, one batch number for all).
  *
  * `migrations` has exactly the columns `batch, checksum, id, module, name` (or `batch, id, module, name` as Marmeon 0.3 wrote them, which the
- * migrating methods carry over); any other set was written by a Marmeon this release does not know and is
+ * migrating methods carry over). On MySQL `migration_interruption` has exactly its own columns. Any other set was written by a Marmeon this release does not know and is
  * refused ({@link MigrationStateError}). It reads the record on a connection of its own, so it works on a database whose migrations
  * are not all there, which the app's connections refuse; in a process that migrates it hands the schema it leaves to that process's
  * connections. See `docs/migrations.md#how-the-migrator-keeps-track`.
@@ -262,6 +301,111 @@ export class Migrator {
     });
   }
 
+  /** @internal — the migration that started and has not finished on MySQL (or is running now), if the table of interruptions says so. Reads only. */
+  async interruption(): Promise<Interruption | undefined> {
+    return this.#interruption();
+  }
+
+  /**
+   * @internal — ends the refusal of a migration that did not finish, inside the migration lock: the one the table of interruptions
+   * names, or undefined when it names none. The caller says what was done by hand, and the database must show it (D3 otherwise,
+   * nothing changed): the schema of the migrations that ran, with this migration for `done` after an `up()` and for `retry` after a
+   * `down()` (the rollback was undone), without it for `done` after a `down()`. The row's connection must be the one the migration's
+   * file runs on now. `done` writes what the migration would have written, in one transaction with the marker's deletion: the record row
+   * with the checksum of its file as it is now after an `up()`, the record row deleted after a `down()`. `retry` after a `down()` deletes
+   * the marker and keeps the record. `retry` after an `up()` changes nothing: it returns the row with `retrying`, the name and start of every row of an `up()`
+   * (each one's file and connection are checked here, and a row of a `down()` or of a migration that is recorded refuses), and the caller passes
+   * them to {@link Migrator.migrate}, whose checks decide and which replaces each row when its migration starts. Nothing is run here.
+   * See docs/migrations.md#a-migration-that-stopped-halfway.
+   */
+  async resolveInterruption(how: 'retry' | 'done'): Promise<(Interruption & { readonly retrying?: readonly { readonly name: string; readonly startedAt: string }[] }) | undefined> {
+    if (how !== 'retry' && how !== 'done') throw new TypeError(`resolveInterruption() takes 'retry' or 'done', not ${JSON.stringify(how)}.`);
+    return this.locked(async () => {
+      // The record is judged as every command judges it, before anything is read from or written to it.
+      const columns = await columnsOf(this.#books(), this.#driver());
+      assertNotUnreleased(columns, 'default');
+      assertRecordReadable(columns, 'default');
+      const found = await this.#interruption(columns);
+      if (found === undefined) return undefined;
+      if (found.direction !== 'up' && found.direction !== 'down') throw unknownDirection(found);
+      const planned = await this.#plans(this.files());
+      // The row says where the migration ran; the plan of its file says where it runs now. They must be one connection, or what is checked is another database.
+      const entryOf = (row: Interruption) => {
+        const entry = planned.find((candidate) => candidate.file.name === row.name);
+        if (entry === undefined) {
+          throw new MigrationStateError(
+            'interrupted',
+            'default',
+            withCode('D32', `Migration ${printable(row.name)} (module "${printable(row.module)}") has no file in any module, so Marmeon cannot tell what it left: restore the file. Nothing was changed. See docs/migrations.md#a-migration-that-stopped-halfway.`),
+          );
+        }
+        if (entry.connection !== row.connection) {
+          throw new MigrationStateError(
+            'interrupted',
+            'default',
+            withCode(
+              'D32',
+              `The row of migration ${printable(row.name)} (module "${printable(row.module)}") says it ran on the database connection "${printable(row.connection)}", and its file runs on "${printable(entry.connection)}" now, so what it left cannot be checked. Put the file back as it was. Nothing was changed. See docs/migrations.md#a-migration-that-stopped-halfway.`,
+            ),
+          );
+        }
+        return entry;
+      };
+      const entry = entryOf(found);
+      // `retry` after an `up()` covers every row of an `up()`: a run that started a migration before this one left its row too, and the run goes on with all of them.
+      // The migrate run checks the database from here on and keeps each row until its migration starts again. A row of a `down()`, or of a migration that is not pending, refuses.
+      if (how === 'retry' && found.direction === 'up') {
+        const ran = new Set((await this.#ran()).map((row) => row.name));
+        const rows = await this.#interruptions();
+        for (const row of rows) {
+          if (row.direction === 'down') {
+            throw new MigrationStateError(
+              'interrupted',
+              'default',
+              withCode('D32', `Migration ${printable(row.name)} (module "${printable(row.module)}") stopped during its down(), and its row stays beside the ones of an up(): resolve it first with "marmeon migrate --interrupted=done" or "--interrupted=retry" when it is the oldest. Nothing was changed. See docs/migrations.md#a-migration-that-stopped-halfway.`),
+            );
+          }
+          if (row.direction !== 'up') throw unknownDirection(row);
+          entryOf(row);
+          if (ran.has(row.name)) {
+            throw new MigrationStateError(
+              'interrupted',
+              'default',
+              withCode('D32', `Migration ${printable(row.name)} (module "${printable(row.module)}") is recorded as ran, so it cannot run again, and its row stays: Marmeon writes no such row, so check the database against the migration and delete the row from migration_interruption by hand. Nothing was changed. See docs/migrations.md#a-migration-that-stopped-halfway.`),
+            );
+          }
+        }
+        return { ...found, retrying: rows.map(({ name, startedAt }) => ({ name, startedAt })) };
+      }
+      const checksum = found.direction === 'up' && how === 'done' ? migrationChecksum(readFileSync(entry.file.path)) : undefined;
+      // The database must be what the operator says: `done` after an `up()` has the migration in, `done` after a `down()` has it out, and `retry` after a `down()` has it still in.
+      const ran = new Set((await this.#ran()).map((row) => row.name));
+      const stays = (found.direction === 'up') === (how === 'done');
+      const expected = fold(planned.filter(({ file }) => (ran.has(file.name) || file.name === found.name) && (stays || file.name !== found.name)));
+      const { lacking } = await this.#lacking(this.#books(found.connection), found.connection, expected);
+      if (lacking.length > 0) {
+        throw new SchemaError(
+          withCode(
+            'D3',
+            `Migration ${printable(found.name)} (module "${printable(found.module)}") is not ${how === 'done' ? 'done' : 'undone'}: the database connection "${printable(found.connection)}" lacks ${lacking.slice(0, 5).join(', ')}${lacking.length > 5 ? ', …' : ''}, which the migrations say is there ` +
+              `${stays ? (found.direction === 'up' ? 'once it ran' : 'while it counts as ran') : 'after it was rolled back'}. ${how === 'done' ? 'Finish' : 'Undo'} it by hand first. Nothing was changed. See docs/migrations.md#a-migration-that-stopped-halfway.`,
+          ),
+        );
+      }
+      await this.#books().transaction().execute(async (trx) => {
+        // A lock lost by now rolls the resolution back.
+        await this.#held?.heartbeat(trx);
+        if (how === 'done') {
+          if (found.direction === 'up') await trx.insertInto(MIGRATIONS_TABLE).values({ name: found.name, module: found.module, batch: found.batch, checksum: checksum! }).execute();
+          else await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', found.name).execute();
+        }
+        await trx.deleteFrom(INTERRUPTION_TABLE).where('name', '=', found.name).execute();
+      });
+      for (const name of this.#connections.names()) this.#connections.metadata(name).reload();
+      return found;
+    });
+  }
+
   /** @internal — runs every pending migration, in one new batch. Apps run migrations with `marmeon migrate`. */
   async migrate(options: MigrateOptions = {}): Promise<MigrationRun[]> {
     return this.locked(() => this.#withdrawnOnFailure(() => this.#migrate(options)));
@@ -282,7 +426,10 @@ export class Migrator {
 
   async #migrate(options: MigrateOptions): Promise<MigrationRun[]> {
     const { onRun } = options;
-    let hasRecord = await this.#prepare();
+    const prepared = await this.#prepare(options.retrying);
+    let hasRecord = prepared.hasRecord;
+    // `retrying` counts only while its row is there: a stale or foreign one (the row gone, another driver) is a plain run.
+    const retrying = prepared.retrying;
     await this.#carryOver(options);
     // Every connection a migration runs on, not only those with a migration pending.
     for (const connection of await this.connections()) assertManaged(this.#connections, connection);
@@ -292,6 +439,15 @@ export class Migrator {
     const files = this.files();
     const planned = await this.#plans(files);
     const pending = planned.filter(({ file }) => !ran.has(file.name));
+    // `retry` named a migration this run cannot run again (its file is gone, or it is recorded): no other migration runs on top of the row.
+    const gone = retrying?.find((row) => !pending.some(({ file }) => file.name === row.name));
+    if (gone) {
+      throw new MigrationStateError(
+        'interrupted',
+        'default',
+        withCode('D32', `Migration ${printable(gone.name)} is not pending (its file is gone, or it is recorded), so it cannot run again, and its row stays. Nothing was run. See docs/migrations.md#a-migration-that-stopped-halfway.`),
+      );
+    }
     const byName = new Map(planned.map((entry) => [entry.file.name, entry]));
     const changed = changedOf(rows, (name) => byName.get(name)?.checksum);
     if (changed.length > 0) options.onChanged?.(changed);
@@ -309,8 +465,9 @@ export class Migrator {
       // MySQL runs no statement written for another driver: a raw step without one for it stops the run before the first migration. So does
       // what the plans alone show MySQL cannot do. What depends on the tables is held against the database right before each migration's first statement.
       for (const { file, connection, plan } of pending) {
-        if (this.#driver(connection) !== 'mysql') continue;
         const who = `Migration ${file.name} (module "${file.module}")`;
+        this.#assertMarkable(connection, `${who} runs`);
+        if (this.#driver(connection) !== 'mysql') continue;
         assertRawFitsMysql(plan, who);
         checkNamed('mysql', plan, who);
       }
@@ -326,7 +483,8 @@ export class Migrator {
       // to create must not be there already (a database that is not this app's).
       await this.#precheck(state, pending);
       const batch = hasRecord ? (await this.#lastBatch()) + 1 : 1;
-      // MySQL commits as it runs DDL, so the record cannot be made in the first migration's transaction: it comes first.
+      // MySQL commits as it runs DDL, so the record cannot be made in the first migration's transaction: it comes first. Its table of
+      // interruptions comes with it, so a marker can be written before the first statement of any migration.
       if (!hasRecord && this.#driver() === 'mysql') {
         await createMigrationsTable(this.#books(), 'mysql');
         hasRecord = true;
@@ -336,30 +494,50 @@ export class Migrator {
         await this.#held?.heartbeat();
         const started = performance.now();
         const after = fold([entry], state);
-        // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL).
-        if (connection === 'default' && this.#driver() !== 'mysql') {
-          await db.transaction().execute(async (trx) => {
-            // The record is made with the first migration, in its transaction: a run that fails leaves no empty record behind, which
-            // would turn "tables and no record" into "migrations pending".
-            if (!hasRecord) await createMigrationsTable(trx, this.#driver());
-            await this.#execute(trx, entry, state.projection, after);
-            await this.#held?.heartbeat(trx);
-            await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch, checksum: entry.checksum }).execute();
-          });
+        // One transaction per migration: a failing one leaves no half-changed schema (SQLite and Postgres both roll back DDL). On a MySQL
+        // `default` the same for a migration that only changes rows: the record exists already (it is made before the loop), so no DDL
+        // ends the transaction, and the rows commit together with the record or not at all.
+        if (connection === 'default' && (this.#driver() !== 'mysql' || dataOnly(entry.plan))) {
+          // On MySQL its marker is the first statement of the same transaction: a rollback takes it along, while a statement a data step
+          // got past the guard that commits on its own (a prepared `drop`, a procedure that commits) commits the marker with what ran.
+          const marker = this.#marker(file, connection, 'up', batch, entry.plan, retrying);
+          try {
+            await db.transaction().execute(async (trx) => {
+              await marker.write?.(trx);
+              // The record is made with the first migration, in its transaction: a run that fails leaves no empty record behind, which
+              // would turn "tables and no record" into "migrations pending".
+              if (!hasRecord) await createMigrationsTable(trx, this.#driver());
+              await this.#execute(trx, entry, state.projection, after);
+              await this.#held?.heartbeat(trx);
+              await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch, checksum: entry.checksum }).execute();
+              await marker.clear(trx);
+            });
+          } catch (error) {
+            await this.#reportInterrupted(marker, options.onInterrupted, { name: file.name, module: file.module, connection, direction: 'up' });
+            throw error;
+          }
           hasRecord = true;
         } else {
           // Not in one transaction with its record, for one of two reasons. Another connection: two databases, so two transactions (the record
           // comes last: a migration that failed is not recorded). MySQL: it commits DDL as it runs, so the migration has no transaction to
-          // roll back, and a lock lost meanwhile stops the run with the schema steps that ran left in place.
-          await this.#applying(connection, async (trx) => {
-            await this.#execute(trx, entry, state.projection, after);
-            await this.#held?.heartbeat(); // with a transaction (not on MySQL) a lock lost here rolls the migration back
-          });
-          await db.transaction().execute(async (trx) => {
-            if (!hasRecord) await createMigrationsTable(trx, this.#driver());
-            await this.#held?.heartbeat(trx);
-            await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch, checksum: entry.checksum }).execute();
-          });
+          // roll back, and a lock lost meanwhile stops the run with the schema steps that ran left in place. There the marker is committed
+          // first and removed with the record, so what stopped halfway is refused afterwards.
+          const marker = this.#marker(file, connection, 'up', batch, entry.plan, retrying);
+          try {
+            await this.#applying(connection, async (trx) => {
+              await this.#execute(trx, entry, state.projection, after, state.projection, marker.write);
+              await this.#held?.heartbeat(); // with a transaction (not on MySQL) a lock lost here rolls the migration back
+            });
+            await db.transaction().execute(async (trx) => {
+              if (!hasRecord) await createMigrationsTable(trx, this.#driver());
+              await this.#held?.heartbeat(trx);
+              await trx.insertInto(MIGRATIONS_TABLE).values({ name: file.name, module: file.module, batch, checksum: entry.checksum }).execute();
+              await marker.clear(trx);
+            });
+          } catch (error) {
+            await this.#reportInterrupted(marker, options.onInterrupted, { name: file.name, module: file.module, connection, direction: 'up' });
+            throw error;
+          }
           hasRecord = true;
         }
         // Committed: from here on the other connections of this process see what the migration made.
@@ -379,8 +557,9 @@ export class Migrator {
   }
 
   /** @internal — rolls back the last batch, or the last `steps` migrations. */
-  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
+  async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged' | 'onInterrupted'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () => {
+      await this.#refuseInterrupted('rollback');
       await this.#withdrawnOnFailure(() => this.#carryOver(options));
       const rows = (await this.#ran()).toReversed();
       const last = rows[0]?.batch;
@@ -390,9 +569,10 @@ export class Migrator {
   }
 
   /** @internal — rolls back every migration. */
-  async reset(options: Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
+  async reset(options: Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged' | 'onInterrupted'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () =>
       this.#withdrawnOnFailure(async () => {
+        await this.#refuseInterrupted('rollback');
         await this.#carryOver(options);
         return this.#down((await this.#ran()).toReversed(), options);
       }),
@@ -414,6 +594,8 @@ export class Migrator {
   async dropAllTables(): Promise<string[]> {
     return this.locked(async () => {
       const connections = await this.connections();
+      // Before anything is dropped: a database dropped by a run that then refuses its migrations would be lost for nothing.
+      for (const connection of connections) this.#assertMarkable(connection, 'A migration runs', 'dropped');
       for (const connection of connections) {
         assertManaged(this.#connections, connection);
         // Through the migrator's connection: dropping everything is the way out of a state the app's connection refuses. A record of a
@@ -423,6 +605,8 @@ export class Migrator {
           // A database an unreleased build migrated is the one this command is the way out of; a record of a newer Marmeon is not dropped.
           const columns = await columnsOf(books, this.#driver());
           if (!isUnreleased(columns)) assertRecordReadable(columns, connection);
+          // A marker that reads is no obstacle (dropping it is the point of this command), one of a newer Marmeon is left alone like its record.
+          if (this.#driver() === 'mysql') assertInterruptionReadable(columns, connection);
         }
         await dropAllTables(books, this.#driver(connection));
       }
@@ -547,7 +731,7 @@ export class Migrator {
 
   async #tablesOf(connection: string): Promise<string[]> {
     const { columns, extension } = await this.#catalog(connection);
-    return appTables(columns, extension);
+    return appTables(columns, this.#driver(connection), extension);
   }
 
   /**
@@ -559,7 +743,7 @@ export class Migrator {
     const catalog = await this.#catalog(connection);
     const found = new Map<string, Set<string>>();
     const withheld = new Set<string>();
-    for (const table of appTables(catalog.columns, catalog.extension)) {
+    for (const table of appTables(catalog.columns, this.#driver(connection), catalog.extension)) {
       if (catalog.withheld.has(table)) {
         withheld.add(table);
         continue;
@@ -587,7 +771,7 @@ export class Migrator {
       const columns = new Map(names.map((name): [string, string[]] => [name, []]));
       const found = db.prepare(`select name from pragma_table_info('${MIGRATIONS_TABLE}')`).all() as { name: string }[];
       if (found.length > 0) columns.set(MIGRATIONS_TABLE, found.map((row) => row.name));
-      const tables = appTables(columns);
+      const tables = appTables(columns, 'sqlite');
       if (recordVersion(columns, 'default') === undefined) return { rows: [], tables };
       const rows = db.prepare(`select * from ${MIGRATIONS_TABLE} order by batch, id`).all() as { name: string; module: string; batch: number; checksum?: string | null }[];
       return { rows: rows.map((row) => ({ ...row, checksum: row.checksum ?? null })), tables };
@@ -596,7 +780,7 @@ export class Migrator {
     }
   }
 
-  async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], options: Pick<MigrateOptions, 'onRun' | 'onChanged'>): Promise<MigrationRun[]> {
+  async #down(rows: readonly { name: string; module: string; batch: number; checksum: string | null }[], options: Pick<MigrateOptions, 'onRun' | 'onChanged' | 'onInterrupted'>): Promise<MigrationRun[]> {
     const { onRun } = options;
     const known = this.files();
     const files = new Map(known.map((file) => [file.name, file]));
@@ -619,6 +803,7 @@ export class Migrator {
       const migration = await loadMigration(file);
       if (!migration.down) throw new Error(withCode('D16', `Cannot roll back "${printable(row.name)}" (module "${printable(row.module)}"): it has no down().`));
       const connection = this.#connectionOf(migration, file);
+      this.#assertMarkable(connection, `${who} runs`);
       const plan = planOf(migration, 'down', who);
       if (this.#driver(connection) === 'mysql') assertRawFitsMysql(plan, who);
       checkNamed(this.#driver(connection), plan, who);
@@ -642,21 +827,38 @@ export class Migrator {
       // What the migrations that remain leave: their plans again, as `down()` is not looked into for the schema (the database is checked against it).
       remaining.delete(row.name);
       const after = left();
-      if (connection === 'default' && this.#driver() !== 'mysql') {
-        await db.transaction().execute(async (trx) => {
-          await this.#execute(trx, entry, undefined, after, starting);
-          await this.#held?.heartbeat(trx);
-          await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
-        });
+      // As in `#migrate`: one transaction with the record where the database rolls DDL back, and for a `down()` of rows alone on a MySQL `default`.
+      if (connection === 'default' && (this.#driver() !== 'mysql' || dataOnly(entry.plan))) {
+        // The marker of a MySQL `down()` of rows alone is the first statement of this transaction, as in `#migrate`.
+        const marker = this.#marker(entry.file, connection, 'down', row.batch, entry.plan);
+        try {
+          await db.transaction().execute(async (trx) => {
+            await marker.write?.(trx);
+            await this.#execute(trx, entry, undefined, after, starting);
+            await this.#held?.heartbeat(trx);
+            await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
+            await marker.clear(trx);
+          });
+        } catch (error) {
+          await this.#reportInterrupted(marker, options.onInterrupted, { name: row.name, module: row.module, connection, direction: 'down' });
+          throw error;
+        }
       } else {
-        await this.#applying(connection, async (trx) => {
-          await this.#execute(trx, entry, undefined, after, starting);
-          await this.#held?.heartbeat();
-        });
-        await db.transaction().execute(async (trx) => {
-          await this.#held?.heartbeat(trx);
-          await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
-        });
+        const marker = this.#marker(entry.file, connection, 'down', row.batch, entry.plan);
+        try {
+          await this.#applying(connection, async (trx) => {
+            await this.#execute(trx, entry, undefined, after, starting, marker.write);
+            await this.#held?.heartbeat();
+          });
+          await db.transaction().execute(async (trx) => {
+            await this.#held?.heartbeat(trx);
+            await trx.deleteFrom(MIGRATIONS_TABLE).where('name', '=', row.name).execute();
+            await marker.clear(trx);
+          });
+        } catch (error) {
+          await this.#reportInterrupted(marker, options.onInterrupted, { name: row.name, module: row.module, connection, direction: 'down' });
+          throw error;
+        }
       }
       this.#connections.publish(after.projection);
       const run = { name: row.name, module: row.module, ms: performance.now() - started };
@@ -709,7 +911,14 @@ export class Migrator {
    * the migrations before it left: the `data` steps of the plan see it with what the plan has changed up to them — and no other
    * connection does.
    */
-  async #execute(trx: Kysely<any>, { file, connection, plan }: Omit<Planned, 'checksum'>, before: SchemaProjection | undefined, after: Folded, listFrom: SchemaProjection | undefined = before): Promise<void> {
+  async #execute(
+    trx: Kysely<any>,
+    { file, connection, plan }: Omit<Planned, 'checksum'>,
+    before: SchemaProjection | undefined,
+    after: Folded,
+    listFrom: SchemaProjection | undefined = before,
+    beforeFirst?: (on: Kysely<any>) => Promise<void>,
+  ): Promise<void> {
     const metadata = this.#connections.metadata(connection);
     const aroundData = before
       ? async (index: number, run: () => Promise<void>) => {
@@ -723,7 +932,7 @@ export class Migrator {
           }
         }
       : undefined;
-    await executePlan(trx, this.#driver(connection), plan, aroundData, listFrom && listCheckOf(listFrom, plan, file), listFrom && tablesAtOf(listFrom, plan, file));
+    await executePlan(trx, this.#driver(connection), plan, aroundData, listFrom && listCheckOf(listFrom, plan, file), listFrom && tablesAtOf(listFrom, plan, file), beforeFirst);
     await this.#verify(trx, connection, file, after);
   }
 
@@ -848,7 +1057,7 @@ export class Migrator {
       const tables: string[] = [];
       const extra: string[] = [];
       for (const [table, found] of columns) {
-        if (isMigratorTable(table) || left.includes(table) || table.startsWith('sqlite_') || extension.has(table)) continue;
+        if (isMigratorTable(table, this.#driver(connection)) || left.includes(table) || table.startsWith('sqlite_') || extension.has(table)) continue;
         const known = state.projection.tables.get(table);
         if (known === undefined || state.connections.get(table) !== connection) tables.push(table);
         else {
@@ -861,13 +1070,50 @@ export class Migrator {
   }
 
   /** Refuses a record of a newer Marmeon or of an unreleased build; whether `default` has the record yet (the first migration makes it). */
-  async #prepare(): Promise<boolean> {
+  async #prepare(retrying?: MigrateOptions['retrying']): Promise<{ hasRecord: boolean; retrying: MigrateOptions['retrying'] }> {
     assertManaged(this.#connections, 'default');
     const books = this.#books();
     const columns = await columnsOf(books, this.#driver());
     assertNotUnreleased(columns, 'default');
     assertRecordReadable(columns, 'default');
-    return columns.has(MIGRATIONS_TABLE);
+    const named = await this.#refuseInterrupted('migrate', retrying);
+    return { hasRecord: columns.has(MIGRATIONS_TABLE), retrying: named && this.#driver() === 'mysql' ? retrying : undefined };
+  }
+
+  /** On MySQL: the migration that started and has not finished, if the table of interruptions says so (or cannot be read). */
+  async #interruption(columns?: ReadonlyMap<string, readonly string[]>): Promise<Interruption | undefined> {
+    if (this.#driver() !== 'mysql') return undefined;
+    const books = this.#books();
+    const found = columns ?? (await columnsOf(books, 'mysql'));
+    // The record is judged before the marker, as every command judges it: a record this release cannot read is D1, not D32.
+    assertNotUnreleased(found, 'default');
+    assertRecordReadable(found, 'default');
+    return readInterruption(runner(books), found, 'default');
+  }
+
+  /** Every row of the table of interruptions, the oldest first. Callers ask on MySQL only, after {@link Migrator.#interruption} found one. */
+  async #interruptions(): Promise<Interruption[]> {
+    const rows = await this.#books().selectFrom(INTERRUPTION_TABLE).selectAll().orderBy('started_at').orderBy('name').execute();
+    return rows.map(interruptionOf);
+  }
+
+  /** Refuses a command that would run migrations on top of one that has not finished. Inside the lock: a second `migrate` that waited for it reads the marker after the first one ended. */
+  async #refuseInterrupted(refused: 'migrate' | 'rollback', retrying?: MigrateOptions['retrying']): Promise<boolean> {
+    const found = await this.#interruption();
+    if (found === undefined) return false;
+    if (retrying === undefined || refused !== 'migrate') throw interruptedError(found, 'default', refused);
+    // The rows `retry` named, exactly (name, start and direction), are what this run replaces. Any other row, the oldest first, refuses it.
+    const other = await this.#books()
+      .selectFrom(INTERRUPTION_TABLE)
+      .selectAll()
+      .where((eb) => eb.not(eb.or(retrying.map((row) => eb.and([eb('name', '=', row.name), eb('started_at', '=', row.startedAt), eb('direction', '=', 'up')])))))
+      .orderBy('started_at')
+      .orderBy('name')
+      .limit(1)
+      .executeTakeFirst();
+    // Nothing else is there, so every row is a named one.
+    if (other === undefined) return true;
+    throw interruptedError(interruptionOf(other), 'default', 'migrate');
   }
 
   /**
@@ -879,6 +1125,7 @@ export class Migrator {
     const books = this.#books();
     const columns = await columnsOf(books, this.#driver());
     const version = recordVersion(columns, 'default');
+    if (this.#driver() === 'mysql') assertInterruptionReadable(columns, 'default');
     if (version === undefined) return [];
     const rows = (await books.selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute()) as {
       id: number;
@@ -921,6 +1168,65 @@ export class Migrator {
   async #lastBatch(): Promise<number> {
     const row = await this.#books().selectFrom(MIGRATIONS_TABLE).select(sql<number | null>`max(batch)`.as('batch')).executeTakeFirst();
     return row?.batch ?? 0;
+  }
+
+  /**
+   * The marker of a migration on MySQL, which commits DDL as it runs and so cannot be rolled back: `write` commits its row on the pinned
+   * connection `on` (autocommit, outside any transaction) right before the first statement; a migration of rows alone writes it as the first
+   * statement of its own transaction instead. `clear` deletes it inside the transaction that
+   * changes the record row, and a run never deletes it any other way (`migrate:fresh` drops the table). On another driver both do nothing: its migration rolls back whole.
+   */
+  #marker(file: MigrationFile, connection: string, direction: 'up' | 'down', batch: number, plan: readonly PlanStep[], retrying?: MigrateOptions['retrying']) {
+    // The row `retry` left is replaced by the one this migration writes, and deleted with its record: also when it writes none of its own.
+    const retried = direction === 'up' && retrying?.some((row) => row.name === file.name) === true;
+    let written = retried;
+    // A plan that sends MySQL no statement (raw steps with `mysql: null`, or none) changes nothing a marker could tell of.
+    const mysql = this.#driver(connection) === 'mysql' && !plan.every((step) => step.kind === 'raw' && step.statements.mysql === null);
+    return {
+      write: mysql
+        ? async (on: Kysely<any>) => {
+            // On `default` the pinned connection `on`; through the migrator's connection for another database, as the pool of `default` may have one connection only.
+            const values = { name: file.name, module: file.module, connection_name: connection, direction, batch, started_at: new Date().toISOString(), owner: this.#lockOptions.owner ?? ownerOf(process.pid) };
+            const insert = (connection === 'default' ? on : this.#books()).insertInto(INTERRUPTION_TABLE).values(values);
+            // One statement: the old row is never gone while the new one is not there yet.
+            await (retried ? insert.onDuplicateKeyUpdate(values) : insert).execute();
+            written = true;
+          }
+        : undefined,
+      clear: async (trx: Kysely<any>) => {
+        if (written) await trx.deleteFrom(INTERRUPTION_TABLE).where('name', '=', file.name).execute();
+      },
+      /** Whether the row is in the table now: a rolled-back transaction took it along, an implicit commit did not. Unknown (the read failed) counts as there. */
+      stays: async () => {
+        if (!written) return false;
+        try {
+          return (await this.#books().selectFrom(INTERRUPTION_TABLE).select('name').where('name', '=', file.name).executeTakeFirst()) !== undefined;
+        } catch {
+          return true;
+        }
+      },
+    };
+  }
+
+  /** Tells `onInterrupted` of a migration that failed with its marker in the table. What the callback throws never replaces the error of the migration. */
+  async #reportInterrupted(marker: { stays: () => Promise<boolean> }, report: MigrateOptions['onInterrupted'], left: InterruptedMigration): Promise<void> {
+    if (!report || !(await marker.stays())) return;
+    try {
+      await report(left);
+    } catch {
+      // The run's own error is the one to see.
+    }
+  }
+
+  /** A MySQL connection needs a MySQL `default`: only there is the table of interruptions, and only beside the record can its row be removed with the record's. */
+  #assertMarkable(connection: string, what: string, nothing = 'run'): void {
+    if (this.#driver(connection) !== 'mysql' || this.#driver() === 'mysql') return;
+    throw new UnsupportedDriverError(
+      withCode(
+        'D29',
+        `${what} on the MySQL connection "${connection}", and "default" is ${this.#driver()}: Marmeon marks a MySQL migration that stops halfway beside the record of migrations, which only a MySQL "default" holds. Put "default" on MySQL too. Nothing was ${nothing}. See docs/migrations.md#mysql.`,
+      ),
+    );
   }
 
   /**

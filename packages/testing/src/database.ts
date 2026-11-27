@@ -151,7 +151,7 @@ export async function emptyWorkerDatabase(database: EmptyingModule, app: Applica
   }
   // The tables the app's search path finds (Postgres: `current_schema()` can be an empty schema named like the role).
   const { types, extension } = await tableColumns(async (text) => (await sql.raw(text).execute(db)).rows as never[], driver);
-  const names = [...types.keys()].filter((name) => !extension.has(name) && !isMigratorTable(name) && !name.startsWith('sqlite_'));
+  const names = [...types.keys()].filter((name) => !extension.has(name) && !isMigratorTable(name, driver) && !name.startsWith('sqlite_'));
   // Security invariant: an app guards a table with a trigger (an append-only log) against its own role in production. The triggers are
   // off only inside this one transaction, on the worker's test database (the guards above), and on again before it commits — a failure
   // rolls them back with the rest (DDL is transactional). Not a setting the trigger reads (any session could set it), not a list of

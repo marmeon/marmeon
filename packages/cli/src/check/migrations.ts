@@ -98,9 +98,22 @@ export async function migrationsCheck(root: string, { status, boot }: Migrations
     for (const signal of INTERRUPTS) process.off(signal, stop);
   }
   if (!read.ok) return unrun('error', describeFailure(new Error(read.reason), redactor, root));
+  const left = read.interrupted;
   const problems: CheckProblem[] = [
+    // The interrupted migration is listed first, with the fix that works, and its entry as a pending migration is not listed a second time.
+    ...(left === null
+      ? []
+      : [
+          {
+            severity: 'error',
+            // No `fix`: the command depends on whether you undid or finished the migration, so the message names both.
+            message: redactor.text(`${left.name} (module ${left.module}) started its ${left.direction}() at ${left.startedAt} and has not finished (it may be running now); once it is not, run marmeon migrate --interrupted=retry after undoing it, or marmeon migrate --interrupted=done after finishing it`),
+            docs: 'docs/migrations.md#a-migration-that-stopped-halfway',
+            rule: 'marmeon(migrations)',
+          } satisfies CheckProblem,
+        ]),
     ...read.migrations
-      .filter((migration) => migration.status === 'pending')
+      .filter((migration) => migration.status === 'pending' && migration.name !== left?.name)
       .map((migration): CheckProblem => ({ severity: 'error', message: redactor.text(`${migration.name} (module ${migration.module}) has not run`), fix: 'marmeon migrate', docs: DOCS, rule: 'marmeon(migrations)' })),
     ...read.warnings.map((warning): CheckProblem => ({ severity: 'warning', message: redactor.text(warning), docs: DOCS, rule: 'marmeon(migrations)' })),
   ];

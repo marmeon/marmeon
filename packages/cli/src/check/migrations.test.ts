@@ -60,4 +60,26 @@ describe('migrationsCheck on the answer of migrate:status', () => {
     expect(report.status).toBe('failed');
     expect(report.problems).toMatchObject([{ severity: 'error', message: 'a (module m) has not run', fix: 'marmeon migrate' }, { severity: 'warning', message: 'b changed' }]);
   });
+  it('reports a migration that stopped halfway as an error with the way out, from the structured key and not from a warning', async () => {
+    const interrupted = { name: 'a', module: 'm', direction: 'down', startedAt: '2026-11-27T10:00:00.000Z' };
+    stand.run = () => Promise.resolve(answer({ document: { format: 1, migrations: [{ name: 'b', module: 'm', batch: 1, status: 'ran' }], warnings: [], interrupted } }));
+    const report = await check();
+    expect(report.status).toBe('failed');
+    expect(report.problems).toEqual([
+      expect.objectContaining({
+        severity: 'error',
+        message: 'a (module m) started its down() at 2026-11-27T10:00:00.000Z and has not finished (it may be running now); once it is not, run marmeon migrate --interrupted=retry after undoing it, or marmeon migrate --interrupted=done after finishing it',
+        docs: 'docs/migrations.md#a-migration-that-stopped-halfway',
+      }),
+    ]);
+    expect(report.problems[0]).not.toHaveProperty('fix');
+    // An up() is also pending: its entry gives way to the interruption, and another pending migration stays.
+    const up = { ...interrupted, direction: 'up' };
+    stand.run = () => Promise.resolve(answer({ document: { format: 1, migrations: [{ name: 'a', module: 'm', status: 'pending' }, { name: 'c', module: 'm', status: 'pending' }], warnings: [], interrupted: up } }));
+    expect((await check()).problems).toMatchObject([{ severity: 'error', message: expect.stringContaining('a (module m) started its up()') }, { severity: 'error', message: 'c (module m) has not run', fix: 'marmeon migrate' }]);
+    stand.run = () => Promise.resolve(answer({ document: { format: 1, migrations: [], warnings: [], interrupted: null } }));
+    expect((await check()).problems).toEqual([]);
+    stand.run = () => Promise.resolve(answer({ document: { format: 1, migrations: [], warnings: [], interrupted: { name: 'a' } } }));
+    expect(await check()).toMatchObject({ status: 'error', reason: expect.stringContaining('does not read') });
+  });
 });

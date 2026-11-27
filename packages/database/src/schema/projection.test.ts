@@ -777,8 +777,8 @@ const GROUPS: Record<string, string[]> = {
 };
 /** Directories loaded on Postgres only, next to their group (SQLite cannot do what they do). */
 const PGSQL_ONLY: Record<string, string[]> = { markers: ['markers-pgsql'], nullability: ['nullability-pgsql'], ddl: ['ddl/alter-pgsql', 'ddl/checks-pgsql'] };
-/** Directories no parity is asked of: they fail on purpose, write what the projection does not know, run on MySQL only, or are for the order a test runs them in. */
-const EXCLUDED = ['bad-down', 'broken', 'ddl/alter-mysql', 'ddl/checks-mysql', 'down-checked', 'down-order', 'mysql-data', 'mysql-data-ok', 'mysql-defaults', 'mysql-down-two', 'mysql-guard', 'mysql-limits', 'mysql-limits-plan', 'mysql-limits-rollback', 'mysql-limits-rollback-plan', 'mysql-raw', 'mysql-raw-down', 'mysql-raw-refused', 'order', 'order-independent', 'order-late', 'raw-add', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'routines', 'throws-on-import', 'views', 'writes-record'];
+/** Directories no parity is asked of: they fail on purpose, write what the projection does not know, run on MySQL only (or name the table the migrator keeps there), or are for the order a test runs them in. */
+const EXCLUDED = ['bad-down', 'broken', 'ddl/alter-mysql', 'ddl/checks-mysql', 'down-checked', 'down-order', 'interruption-counter', 'interruption-create', 'interruption-data-down', 'interruption-down', 'interruption-down-alter', 'interruption-down-drop', 'interruption-down-rename', 'interruption-drop', 'interruption-drop-if-exists-qualified', 'interruption-drop-qualified', 'interruption-drop-three-parts', 'interruption-early', 'interruption-flaky', 'interruption-halfway', 'interruption-implicit', 'interruption-later', 'interruption-multiply', 'interruption-name', 'interruption-name-data', 'interruption-name-raw', 'interruption-name-rename', 'interruption-paused', 'interruption-quiet', 'interruption-rawnull', 'interruption-system', 'interruption-system-fail', 'interruption-system-quiet', 'mysql-data', 'mysql-data-ok', 'mysql-defaults', 'mysql-down-two', 'mysql-guard', 'mysql-limits', 'mysql-limits-plan', 'mysql-limits-rollback', 'mysql-limits-rollback-plan', 'mysql-raw', 'mysql-raw-down', 'mysql-raw-refused', 'order', 'order-independent', 'order-late', 'raw-add', 'raw-alter', 'raw-rename-column', 'raw-rename-table', 'raw-table', 'routines', 'throws-on-import', 'views', 'writes-record'];
 
 const appMigrations = (app: string): ModuleDefinition[] => {
   const modules = new URL(`../../../../apps/${app}/modules/`, import.meta.url);
@@ -823,7 +823,7 @@ async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Pr
     const real = await introspect(run, driver);
     const all = await tableColumns(run, driver);
     const mine = factsOf(projection, driver);
-    const own = (name: string) => !isMigratorTable(name) && name !== 'sqlite_sequence';
+    const own = (name: string) => !isMigratorTable(name, undefined) && name !== 'sqlite_sequence';
     const tables = projection.tables;
 
     // Tables, columns and their order.

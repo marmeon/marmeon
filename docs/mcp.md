@@ -168,9 +168,9 @@ the record of what ran is in the `migrations` table of the `default` connection,
 
 The command and its arguments are fixed; the filters apply to its document, so no input ever reaches the command line.
 
-The document: `{ "format": 1, "database": true, "connections": [{ "name": "default", "ran": 2, "pending": 1 }], "migrations": […], "total": 3, "truncated": false, "warnings": [] }`.
+The document: `{ "format": 1, "database": true, "connections": [{ "name": "default", "ran": 2, "pending": 1 }], "migrations": […], "total": 3, "truncated": false, "warnings": [], "interrupted": null }`.
 Each migration has `name`, `module`, `connection` (the one it runs on, `null` when that is unknown, with a warning), `batch` (`null` while pending) and `status`. `connections` counts all
-migrations, whatever the filter, so what is pending on `default` is always visible; `total` counts those the filter kept, and `truncated` says that `limit` cut the list. A document of another `format` is an error that
+migrations, whatever the filter, so what is pending on `default` is always visible; `total` counts those the filter kept, and `truncated` says that `limit` cut the list. `interrupted` is `null`, or on MySQL the migration that [started and has not finished](migrations.md#a-migration-that-stopped-halfway) (also while it runs), with its `name`, `module`, `direction` and `startedAt`; an app without `@marmeon/database` has no such key. A document of another `format` is an error that
 says to update `marmeon`. When the command fails, for example because the database is unreachable, the error carries the end of its message (secrets masked) and says to run `marmeon migrate:status` in a terminal.
 The call is stopped after 120 seconds.
 

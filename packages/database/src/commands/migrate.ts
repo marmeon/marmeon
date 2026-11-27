@@ -52,11 +52,46 @@ function changedMigrations(output: CommandInput['output']): (changed: readonly C
   };
 }
 
+/** What a command says when a MySQL migration stopped after it was marked: the marker refuses every query and every later run until it is resolved. */
+function interrupted(output: CommandInput['output']): NonNullable<MigrateOptions['onInterrupted']> {
+  return ({ name, module, connection, direction }) =>
+    output.error(
+      `Migration ${printable(name)} (module "${printable(module)}") stopped during its ${direction}() on the database connection "${printable(connection)}" and is marked as not finished: ` +
+        'every query of a process that starts is refused, and `migrate` (without `--interrupted`), `migrate:rollback` and `migrate:reset` run no migration, until you resolve that: undo what it did and run "marmeon migrate --interrupted=retry", or finish it by hand and run "marmeon migrate --interrupted=done". See docs/migrations.md#a-migration-that-stopped-halfway.',
+    );
+}
+
+/**
+ * `migrate --interrupted`: resolves the marker and says what it did. The exit code when the command ends here: 1 without a marker (nothing was
+ * migrated), 0 after `done` and after a `down()` (running the pending migrations would run the one just rolled back). After `retry` of an
+ * `up()` it answers the rows to run again (every row of an `up()`): the command goes on to run the pending migrations, and each row stays until its migration starts.
+ */
+async function resolveInterrupted(migrator: Migrator, how: 'retry' | 'done', output: CommandInput['output']): Promise<{ exit: number } | { retry: NonNullable<MigrateOptions['retrying']> }> {
+  const found = await migrator.resolveInterruption(how);
+  if (found === undefined) {
+    output.error('Nothing to resolve: no migration of the database connection "default" stopped halfway (only MySQL marks one). Nothing was migrated.');
+    return { exit: 1 };
+  }
+  const migration = `${printable(found.name)} (${printable(found.module)})`;
+  if (found.direction === 'down') {
+    output.success(how === 'done' ? `Recorded ${migration} as rolled back.` : `${migration} counts as ran again; run migrate:rollback to roll it back.`);
+    return { exit: 0 };
+  }
+  if (how === 'done') {
+    output.success(`Recorded ${migration} as ran in batch ${found.batch}, with the checksum of its file as it is now. Run migrate for the migrations that are pending.`);
+    return { exit: 0 };
+  }
+  const rows = found.retrying ?? [{ name: found.name, startedAt: found.startedAt }];
+  output.info(`${rows.map((row) => printable(row.name)).join(', ')} ${rows.length === 1 ? 'is' : 'are'} run again if the checks pass; each row stays until its migration starts.`);
+  return { retry: rows };
+}
+
 /** What `migrate` says after a run: the tables 0.3 left, and what the database has that no migration made. */
 function notices(output: CommandInput['output']): MigrateOptions {
   return {
     onCarriedOver: carriedOver(output),
     onChanged: changedMigrations(output),
+    onInterrupted: interrupted(output),
     onLegacy: (connection, tables) =>
       output.info(`${printable(tables.join(', '))} on the connection "${connection}" are left in place for processes of Marmeon 0.3; drop them once none runs.`),
     onUnknown: (connection, { tables, columns }) => {
@@ -110,12 +145,15 @@ async function blockedByRelations(generator: TypeGenerator, { options, output }:
   return true;
 }
 
-/** Runs every pending migration of every module, in one batch, then updates the table types. */
+/**
+ * Runs every pending migration of every module, in one batch, then updates the table types. `--interrupted=retry|done` first resolves
+ * a MySQL migration that stopped halfway; only `retry` after an `up()` goes on to migrate. See docs/migrations.md#a-migration-that-stopped-halfway.
+ */
 export class MigrateCommand {
   static command = 'migrate';
   static description = 'Run the pending migrations';
-  static usage = '[--force] [--wait=<seconds>] [--no-types]';
-  static options = { ...wait, 'no-types': { type: 'boolean' } } as const;
+  static usage = '[--force] [--wait=<seconds>] [--no-types] [--interrupted=retry|done]';
+  static options = { ...wait, 'no-types': { type: 'boolean' }, interrupted: { type: 'string' } } as const;
 
   readonly #migrator: Migrator;
   readonly #types: TypeGenerator;
@@ -127,9 +165,19 @@ export class MigrateCommand {
   }
 
   async handle(input: CommandInput): Promise<number> {
-    if (!confirmed(input, 'migrate') || blockedByNewerTypes(this.#types, input) || (await blockedByRelations(this.#types, input))) return 1;
+    const how = input.options.interrupted;
+    if (how !== undefined && how !== 'retry' && how !== 'done') throw new CommandArgumentsError('--interrupted must be retry or done.');
+    if (!confirmed(input, how === undefined ? 'migrate' : 'resolve the interrupted migration')) return 1;
+    // `done` migrates nothing, so the types file does not matter to it.
+    if (how !== 'done' && (blockedByNewerTypes(this.#types, input) || (await blockedByRelations(this.#types, input)))) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.migrate({ onRun: report(input.output, 'Migrated'), ...notices(input.output) });
+      let retrying: MigrateOptions['retrying'];
+      if (how !== undefined) {
+        const resolved = await resolveInterrupted(this.#migrator, how, input.output);
+        if ('exit' in resolved) return resolved.exit;
+        retrying = resolved.retry;
+      }
+      const runs = await this.#migrator.migrate({ onRun: report(input.output, 'Migrated'), ...notices(input.output), ...(retrying === undefined ? {} : { retrying }) });
       if (runs.length === 0) input.output.info('Nothing to migrate.');
       await afterMigrating(this.#types, input, runs.length > 0 && input.options['no-types'] !== true);
       return 0;
@@ -156,7 +204,7 @@ export class MigrateRollbackCommand {
     }
     if (!confirmed(input, 'roll back')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.rollback({ steps: step, onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
+      const runs = await this.#migrator.rollback({ steps: step, onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output), onInterrupted: interrupted(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -178,7 +226,7 @@ export class MigrateResetCommand {
   async handle(input: CommandInput): Promise<number> {
     if (!confirmed(input, 'roll back every migration')) return 1;
     return underLock(this.#migrator, input, async () => {
-      const runs = await this.#migrator.reset({ onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output) });
+      const runs = await this.#migrator.reset({ onRun: report(input.output, 'Rolled back'), onCarriedOver: carriedOver(input.output), onChanged: changedMigrations(input.output), onInterrupted: interrupted(input.output) });
       if (runs.length === 0) input.output.info('Nothing to roll back.');
       return 0;
     });
@@ -239,6 +287,8 @@ export class MigrateStatusCommand {
         status: m.batch === undefined ? ('pending' as const) : ('ran' as const),
       });
     }
+    const left = await this.#migrator.interruption();
+    const interrupted = left === undefined ? null : { name: left.name, module: left.module, direction: left.direction, startedAt: left.startedAt };
     const changed = await this.#migrator.changed();
     // No error text: what an import throws can carry values of the app; `marmeon migrate` says why.
     const warnings = [
@@ -247,10 +297,14 @@ export class MigrateStatusCommand {
       ...migrations.filter((m) => m.connection === null).map((m) => `${m.name}: the connection it runs on is unknown — marmeon migrate says why`),
     ];
     if (options.json === true) {
-      output.json({ format: 1, migrations, warnings });
+      output.json({ format: 1, migrations, warnings, interrupted });
       return 0;
     }
     for (const warning of warnings) output.warn(printable(warning));
+    // Not in `warnings`: the document has `interrupted` for it, which a tool reads without matching text.
+    if (left !== undefined) {
+      output.warn(`${printable(left.name)} started its ${printable(left.direction)}() at ${printable(left.startedAt)} and has not finished — marmeon migrate --interrupted=retry|done resolves it once it is not running`);
+    }
     if (changed.length > 0) output.line(CHANGED_ADVICE);
     if (migrations.length === 0) {
       output.info('No migrations. Add a directory to a module: defineModule({ migrations: new URL(\'./migrations/\', import.meta.url) }).');

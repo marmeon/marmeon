@@ -10,7 +10,7 @@ import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollba
 import { Connections, MigrationLockLostError, MigrationLockTimeoutError, Migrator } from '../index.ts';
 import type { TypeGenerator } from '../types-gen/generator.ts';
 import { createMigrationsTable } from '../migration-state.ts';
-import { migratorConnection } from '../migrator-connection.ts';
+import { inspectionConnection, migratorConnection } from '../migrator-connection.ts';
 import { ADVISORY_KEY, LOCK_TABLE, MigrationLock, mysqlLockName, ownerOf, STALE_AFTER_MS, type LockOptions } from './lock.ts';
 import { PAUSE, type Pause } from '../__fixtures__/migrations/state-pause/2026_01_31_000000_create_paused_table.ts';
 import { tempDir } from '../../../../scripts/test/temp-dir.js';
@@ -575,7 +575,11 @@ withMysql('the MySQL lock', () => {
         await pause(300);
       };
       await expect(new Migrator({ modules: [lockLost], root: '/' } as unknown as Application, own.connections).migrate()).rejects.toBeInstanceOf(MigrationLockLostError);
-      expect((await sql<{ n: number }>`select count(*) as n from migrations`.execute(rows)).rows[0]?.n).toBe(0);
+      // The app's connection refuses every query while the migration is marked: look as the server has it.
+      const looked = inspectionConnection(own.connections);
+      expect((await sql<{ n: number }>`select count(*) as n from migrations`.execute(looked)).rows[0]?.n).toBe(0);
+      // What the migration made stays, and the marker says it stopped halfway.
+      expect((await sql<{ name: string }>`select name from migration_interruption`.execute(looked)).rows).toEqual([{ name: '2026_01_09_000000_create_doomed_table' }]);
       await foreign.heartbeat(); // the lock of the other database is still held
     } finally {
       delete (globalThis as { loseMigrationLock?: unknown }).loseMigrationLock;

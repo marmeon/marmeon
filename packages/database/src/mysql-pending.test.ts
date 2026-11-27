@@ -90,7 +90,7 @@ describe.each([
 });
 
 describe('what runs on MySQL', () => {
-  it('creates the record of migrations in the binary collation, with an auto-increment key', async () => {
+  it('creates the table of interruptions, then the record of migrations, in the binary collation, with an auto-increment key', async () => {
     const statements: string[] = [];
     const recording = new Kysely<any>({
       dialect: {
@@ -102,6 +102,7 @@ describe('what runs on MySQL', () => {
     });
     await createMigrationsTable(recording, 'mysql');
     expect(statements).toEqual([
+      'create table if not exists `migration_interruption` (`name` varchar(255) primary key, `module` varchar(255) not null, `connection_name` varchar(255) not null, `direction` varchar(4) not null, `batch` integer not null, `started_at` varchar(32) not null, `owner` varchar(255) not null) default character set utf8mb4 collate utf8mb4_0900_bin',
       'create table `migrations` (`id` bigint primary key auto_increment, `name` varchar(255) not null unique, `module` varchar(255) not null, `batch` integer not null, `checksum` varchar(80)) default character set utf8mb4 collate utf8mb4_0900_bin',
     ]);
   });

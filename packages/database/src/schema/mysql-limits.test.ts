@@ -732,13 +732,18 @@ withMysql('a run of the migrator on MySQL', () => {
         const own = migrator(connections, 'mysql-limits-rollback');
         await own.migrate();
         const { sent, stop } = watch(connections);
-        await expect(own.rollback({ steps: 2 })).rejects.toThrow(/\[marmeon:D18\] schema\.alter\('rb_posts'\) cannot drop the column "parent_id" on MySQL: the foreign key "rb_posts_parent_id_fkey" holds it/);
+        const interrupted: unknown[] = [];
+        await expect(own.rollback({ steps: 2, onInterrupted: (left) => interrupted.push(left) })).rejects.toThrow(/\[marmeon:D18\] schema\.alter\('rb_posts'\) cannot drop the column "parent_id" on MySQL: the foreign key "rb_posts_parent_id_fkey" holds it/);
         stop();
         expect(sent).toEqual(['drop table `rb_other`']);
         const present = await tables(connections);
         expect(present).not.toContain('rb_other');
         expect(await sql<{ n: number }>`select count(*) as n from information_schema.columns where table_schema = database() and table_name = 'rb_posts' and column_name = 'parent_id'`.execute(connections.get()).then((result) => Number(result.rows[0]!.n))).toBe(1);
         expect(await recorded(connections)).toEqual(['2026_03_03_000001_tables', '2026_03_03_000002_parent']);
+        expect(interrupted).toEqual([]);
+        // The first rollback ended with its record and took its marker along; the refused one wrote none, so the same call says D18 again, not D32.
+        expect((await sql<{ n: number }>`select count(*) as n from migration_interruption`.execute(connections.get())).rows[0]?.n).toBe(0);
+        await expect(own.rollback({ steps: 2 })).rejects.toThrow(/\[marmeon:D18\] schema\.alter\('rb_posts'\) cannot drop the column "parent_id"/);
       } finally {
         await close();
       }

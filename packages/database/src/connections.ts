@@ -322,7 +322,7 @@ export class Connections {
           },
           plugins,
         });
-      registerMigrator(this, name, unchecked([onlyMigratorTables()]));
+      registerMigrator(this, name, unchecked([onlyMigratorTables(options.driver)]));
       registerInspection(this, name, unchecked([]));
       instance = { db, driver, metadata, ...(options.driver === 'sqlite' && options.database !== ':memory:' ? { file: this.#sqlitePath(options.database) } : {}) };
       this.#instances.set(name, instance);

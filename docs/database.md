@@ -534,7 +534,7 @@ collation such as `utf8mb4_0900_ai_ci`, the default of MySQL 8, two values that 
 both in, and a lookup through it misses one; the collation of the column counts, not that of the connection), and views.
 
 The role must see every table. MySQL shows a role only the tables it has a privilege on, and a table it does not show does not exist
-as far as Marmeon can tell. That has three consequences:
+as far as Marmeon can tell. That has four consequences:
 
 - A migration's check after it ran counts the table as missing and fails the migration (on MySQL the steps that ran stay: every
   `create` and `alter` commits at once, so nothing is rolled back).
@@ -543,6 +543,8 @@ as far as Marmeon can tell. That has three consequences:
   of several columns is never read as a key of one. Grant a privilege on the whole table, not on single columns, or the relations are missing.
 - On a connection with `managed: false`, a role that does not see `migrations` is not told that Marmeon migrates the database (error D1),
   and no secret column is known. Give such a role `select` on every table of the database.
+- A role that sees `migrations` and not `migration_interruption` cannot say whether a migration has not finished, so every query of a
+  managed connection fails with error D32. Grant it `select` on both ([a migration that stopped halfway](migrations.md#a-migration-that-stopped-halfway)).
 
 `migrate:fresh` drops all tables with one `drop table`, with the foreign key checks on, and the views after them: the keys between the
 tables are no obstacle. A key from a table of another database is an obstacle: the server refuses (error 3730) and, on InnoDB, drops none
@@ -554,8 +556,8 @@ not see is not dropped, and a view of another database that reads a dropped tabl
 ## Readiness
 
 The app's readiness check, `/up/ready`, sends `select 1` to every configured connection. One that does not answer makes the
-instance "not ready" and is named in the answer, also when the database lacks migrations the code has (D2) or its record of migrations cannot be
-read (D1). The [health checks](health.md#liveness-and-readiness) page explains readiness.
+instance "not ready" and is named in the answer, also when the database lacks migrations the code has (D2), its record of migrations cannot be
+read (D1) or, on MySQL, a migration has not finished (D32). The [health checks](health.md#liveness-and-readiness) page explains readiness.
 
 ## Testing
 

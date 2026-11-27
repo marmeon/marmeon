@@ -40,7 +40,7 @@ export class DatabaseHealthCheck implements HealthCheck {
       const message = `The database connection${failed.length > 1 ? 's' : ''} ${failed.map((name) => `"${name}"`).join(', ')} failed: ${errors.map((error) => withoutCode(error instanceof Error ? error.message : String(error))).join('; ')}`;
       // A database that lacks migrations keeps its code: what to do about it is in the message.
       const state = errors.find((error): error is MigrationStateError => error instanceof MigrationStateError);
-      throw new AggregateError(errors, state === undefined ? message : state.reason === 'pending' ? withCode('D2', message) : withCode('D1', message));
+      throw new AggregateError(errors, state === undefined ? message : stateCoded(state, message));
     }
     let lacking = this.#unmet(required);
     let unmarked = this.#unmarked(required);
@@ -95,4 +95,11 @@ export class DatabaseHealthCheck implements HealthCheck {
     }
     return unmarked;
   }
+}
+
+/** The message of a failed readiness check with the code of the migration state that failed it. */
+function stateCoded(state: MigrationStateError, message: string): string {
+  if (state.reason === 'pending') return withCode('D2', message);
+  if (state.reason === 'interrupted') return withCode('D32', message);
+  return withCode('D1', message);
 }

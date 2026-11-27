@@ -46,7 +46,7 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
       expect(code).toBe(0);
       expect(stdout.endsWith('\n')).toBe(true);
       const document = JSON.parse(stdout) as { migrations: object[] };
-      expect(Object.keys(document)).toEqual(['format', 'migrations', 'warnings']);
+      expect(Object.keys(document)).toEqual(['format', 'migrations', 'warnings', 'interrupted']);
       expect(document).toMatchObject(fixture);
       expect(document.migrations.map((m) => Object.keys(m))).toEqual(Array(3).fill(['name', 'module', 'connection', 'batch', 'status']));
     } finally {
@@ -73,7 +73,7 @@ describe.each(drivers)('migrate:status --json (%s)', (driver) => {
     try {
       const { code, stdout } = await run(command, { json: true });
       expect(code).toBe(0);
-      expect(JSON.parse(stdout)).toEqual({ format: 1, migrations: [], warnings: [] });
+      expect(JSON.parse(stdout)).toEqual({ format: 1, migrations: [], warnings: [], interrupted: null });
     } finally {
       await close();
     }
@@ -189,7 +189,7 @@ describe.each(drivers)('migrate:status --json on another connection (%s)', (driv
   it('names the connection of each migration, the record being on default', async () => {
     const { code, stdout } = await run(new MigrateStatusCommand(on(auth, system, other)), { json: true });
     expect(code).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(connectionFixture);
+    expect(JSON.parse(stdout)).toEqual({ ...connectionFixture, interrupted: null });
   });
 
   it('shows the CONNECTION column when a migration does not run on default, and not otherwise', async () => {

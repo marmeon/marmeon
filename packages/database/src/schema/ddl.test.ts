@@ -38,9 +38,9 @@ async function record(driver: 'sqlite' | 'pgsql' | 'mysql'): Promise<Map<string,
     let statements: string[] = [];
     connections.onQuery((query) => {
       const text = query.sql.trim();
-      // Reads are not what a migration writes, and neither are the transaction, the record of migrations and the migration lock.
+      // Reads are not what a migration writes, and neither are the transaction, the record of migrations, its marker and the migration lock.
       if (/^(select|with|begin|commit|rollback|savepoint|release|pragma)\b/i.test(text)) return;
-      if (/\b(migration_lock|migrations)\b/i.test(text)) return;
+      if (/\b(migration_lock|migration_interruption|migrations)\b/i.test(text)) return;
       statements.push(query.parameters.length ? `${text};\n-- ${JSON.stringify(query.parameters)}` : `${text};`);
     });
     const written = new Map<string, string>();

@@ -304,7 +304,7 @@ export declare class MigrationLockTimeoutError extends Error {
 export declare class MigrationStateError extends Error {
     name: string;
     readonly connection: string;
-    readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged';
+    readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged' | 'interrupted';
     readonly missing: readonly string[];
     constructor(reason: MigrationStateError['reason'], connection: string, message: string, missing?: readonly string[]);
 }
@@ -954,8 +954,9 @@ marmeon db:show [--database=<connection>] [--json]
 marmeon db:types [--check]
 --check (boolean)
 // migrate
-marmeon migrate [--force] [--wait=<seconds>] [--no-types]
+marmeon migrate [--force] [--wait=<seconds>] [--no-types] [--interrupted=retry|done]
 --force (boolean)
+--interrupted (string)
 --no-types (boolean)
 --wait (string)
 // migrate:fresh

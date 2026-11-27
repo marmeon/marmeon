@@ -13,6 +13,7 @@ import { migrationChecksum } from './migrations/checksum.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
 import { LOCK_TABLE } from './migrations/lock.ts';
 import { Migrator } from './migrations/migrator.ts';
+import { createMigrationsTable } from './migration-state.ts';
 import { migratorConnection } from './migrator-connection.ts';
 import { createMysqlDialect } from './mysql.ts';
 import { factsOf, projectMigrations } from './schema/projection.ts';
@@ -223,12 +224,12 @@ withMysql('the catalog of MySQL', () => {
   });
 
   describe('migrate:status', () => {
-    // Guards the MySQL status path (`migrate` does not run on MySQL yet): the record is made and filled by hand.
+    // The record is made as `migrate` makes it, and filled by hand.
     it('lists the migrations that ran with their batch and those that are pending', async () => {
       const { connections, close } = await freshConnections('mysql', { record: false });
       try {
         const start = migrator(connections, 'auth', 'accounts');
-        await sql`create table migrations (id bigint primary key auto_increment, name varchar(255) not null unique, module varchar(255) not null, batch integer not null, checksum varchar(80)) default character set utf8mb4 collate utf8mb4_0900_bin`.execute(migratorConnection(connections));
+        await createMigrationsTable(migratorConnection(connections), 'mysql');
         const file = start.files().find((f) => f.module === 'auth')!;
         await sql`insert into migrations (name, module, batch, checksum) values (${file.name}, 'auth', 1, ${migrationChecksum(readFileSync(file.path))})`.execute(migratorConnection(connections));
         const stdout: string[] = [];
@@ -257,7 +258,8 @@ withMysql('the catalog of MySQL', () => {
     const tablesOf = async (connections: Connections) =>
       (await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by table_name`.execute(migratorConnection(connections))).rows.map((row) => row.name);
 
-    it('empties a database whose tables have keys between them: a parent before its child, a table to itself, two tables to each other, and a view', async () => {
+    // The tables, keys and the view are made one statement at a time; MySQL's DDL takes seconds while the other MySQL files run beside it.
+    it('empties a database whose tables have keys between them: a parent before its child, a table to itself, two tables to each other, and a view', { timeout: 30_000 }, async () => {
       const { connections, close } = await freshConnections('mysql', { record: false });
       const db = migratorConnection(connections);
       try {
@@ -402,8 +404,8 @@ withMysql('the catalog of MySQL', () => {
     });
 
     /** A fresh database and a role with the grants (`on` is the database name). Both are dropped when the test ends. */
-    async function withRole(grants: (database: string, user: string) => string[]) {
-      const database = await freshDatabase('mysql', { managed: false });
+    async function withRole(grants: (database: string, user: string) => string[], { managed = false }: { managed?: boolean } = {}) {
+      const database = await freshDatabase('mysql', { managed });
       const options = database.options as MysqlOptions;
       const name = nameOf(options);
       const owner = new Connections({ connections: { default: options }, root: '/', logger: silent });
@@ -430,6 +432,39 @@ withMysql('the catalog of MySQL', () => {
         },
       };
     }
+
+    // The migrator makes `migrations` and `migration_interruption` together, so a role that sees the first and not the second cannot say
+    // whether a migration stopped halfway: every query is refused rather than answered.
+    it('refuses every query of a role that sees the record of migrations and not the table of interruptions, with D32', async () => {
+      const { owner, grant } = await withRole((name, user) => [`grant select on ${'`' + name + '`'}.migrations to '${user}'@'%'`, `grant select on ${'`' + name + '`'}.things to '${user}'@'%'`], { managed: true });
+      await createMigrationsTable(migratorConnection(owner), 'mysql');
+      await sql`create table things (id int primary key)`.execute(owner.get());
+      const limited = await grant();
+      const error = await limited.get<any>().selectFrom('things').select('id').execute().then(() => undefined, (e: unknown) => e);
+      expect(error).toMatchObject({ name: 'MigrationStateError', reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] The database connection "default" has the record of migrations \(migrations\) but this role does not see migration_interruption/);
+    });
+
+    it('does not refuse a connection with `managed: false` for the table of interruptions it does not see', async () => {
+      const { owner, grant } = await withRole((name, user) => [`grant select on ${'`' + name + '`'}.things to '${user}'@'%'`]);
+      await createMigrationsTable(migratorConnection(owner), 'mysql');
+      await sql`create table things (id int primary key)`.execute(migratorConnection(owner));
+      const limited = await grant();
+      expect(await limited.get<any>().selectFrom('things').select('id').execute()).toEqual([]);
+    });
+
+    it('refuses a role that sees only some columns of the table of interruptions, with D1 for the columns', async () => {
+      const { owner, grant } = await withRole(
+        (name, user) => [`grant select on ${'`' + name + '`'}.migrations to '${user}'@'%'`, `grant select (name) on ${'`' + name + '`'}.migration_interruption to '${user}'@'%'`, `grant select on ${'`' + name + '`'}.things to '${user}'@'%'`],
+        { managed: true },
+      );
+      await createMigrationsTable(migratorConnection(owner), 'mysql');
+      await sql`create table things (id int primary key)`.execute(owner.get());
+      const limited = await grant();
+      const error = await limited.get<any>().selectFrom('things').select('id').execute().then(() => undefined, (e: unknown) => e);
+      expect(error).toMatchObject({ name: 'MigrationStateError', reason: 'newer' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D1\] The table of interrupted migrations \(migration_interruption\) of the database connection "default" has the columns name, not/);
+    });
 
     it('a table the role cannot see is missing from the reads of the catalog, with its keys', async () => {
       const { owner, grant } = await withRole((name, user) => [`grant select on ${'`' + name + '`'}.visible to '${user}'@'%'`]);

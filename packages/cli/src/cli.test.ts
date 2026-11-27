@@ -173,7 +173,7 @@ describe('marmeon (in the web app)', () => {
     const pending = marmeon(webApp, ['migrate:status', '--json'], env);
     expect(pending.code).toBe(0);
     const before = JSON.parse(pending.stdout) as { format: number; migrations: { name: string; batch: number | null; status: string }[]; warnings: string[] };
-    expect(Object.keys(before)).toEqual(['format', 'migrations', 'warnings']);
+    expect(Object.keys(before)).toEqual(['format', 'migrations', 'warnings', 'interrupted']);
     expect(before.migrations.length).toBeGreaterThan(2);
     expect(before.migrations.every((m) => m.batch === null && m.status === 'pending')).toBe(true);
 

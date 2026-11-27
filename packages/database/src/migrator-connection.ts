@@ -143,12 +143,15 @@ class WriteVisit extends OperationNodeTransformer {
   }
 }
 
-/** On the migrator's connection: a statement on any table but the migrator's (or the catalog) throws before it is sent. Raw SQL is not looked into. */
-export function onlyMigratorTables(): KyselyPlugin {
+/**
+ * On the migrator's connection: a statement on any table but the migrator's (or the catalog) throws before it is sent. Raw SQL is not looked into.
+ * `migration_interruption` is the migrator's on MySQL only; on SQLite and Postgres it is the app's table and refused here like any other.
+ */
+export function onlyMigratorTables(driver: Driver): KyselyPlugin {
   return new Plugin(DATA, (table) => {
     const name = lastSegment(table.table.identifier.name);
     const schema = table.table.schema?.name;
-    if (isMigratorTable(name) || CATALOG_TABLES.has(name) || (schema !== undefined && CATALOG.has(schema))) return;
+    if (isMigratorTable(name, driver) || CATALOG_TABLES.has(name) || (schema !== undefined && CATALOG.has(schema))) return;
     throw new Error(`The migrator's connection reads and writes the migrator's tables only; "${name}" is not one of them.`);
   });
 }
@@ -178,12 +181,12 @@ export function noMigratorWrites(driver: Driver): KyselyPlugin {
     transformQuery({ node }: PluginTransformQueryArgs): RootOperationNode {
       const visit = new WriteVisit((table) => {
         const name = lastSegment(table.table.identifier.name);
-        if (isMigratorTable(name)) refuse(name);
+        if (isMigratorTable(name, driver)) refuse(name);
       });
       visit.transformNode(node);
       // Raw SQL anywhere in the query: the whole text that is sent is read by its words (a read of the tables counts too, fail closed).
       if (visit.sawRaw) {
-        const named = statementWords(compilerOf(driver).compileQuery(node, createQueryId()).sql, driver).find(isMigratorTable);
+        const named = statementWords(compilerOf(driver).compileQuery(node, createQueryId()).sql, driver).find((word) => isMigratorTable(word, driver));
         if (named !== undefined) refuseRaw(named);
       }
       return node;

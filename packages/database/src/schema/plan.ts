@@ -76,6 +76,8 @@ export async function executePlan(
   listCheck?: ListCheck,
   /** The tables the migrations know before each step. Used for the types of columns that an earlier step of the plan makes, which the database does not have yet; the columns that exist, and those dropped, come from the database. */
   tablesAt?: TablesAt,
+  /** Called once, after every refusal that leaves the database untouched and right before the first step runs: the migrator commits its marker here. */
+  beforeFirst?: (db: Kysely<any>) => Promise<void>,
 ): Promise<void> {
   check(driver, steps);
   if (driver === 'pgsql') await assertNamesFitPgsql(db, pgsqlNames(steps, await pgsqlCuts(db, steps)));
@@ -85,6 +87,7 @@ export async function executePlan(
     // Nothing is read for a plan that needs nothing of the database (one that only creates tables, say).
     checkMysqlState(steps, tables.length ? await readMysqlState(db, tables) : NO_STATE, tablesAt);
   }
+  await beforeFirst?.(db);
   for (const [index, step] of steps.entries()) {
     if (step.kind === 'data' && aroundData) await aroundData(index, () => run(db, driver, step));
     else await run(db, driver, step, listCheck && ((table, column) => listCheck(index, table, column)));

@@ -10,6 +10,7 @@ import { inspectionConnection, migratorConnection } from './migrator-connection.
 import type { ConnectionOptions } from './config.ts';
 import { Connections, DatabaseHealthCheck, MigrationStateError, Migrator, Repository } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
+import { checkMigrationState, INTERRUPTION_COLUMNS, MIGRATIONS_COLUMNS } from './migration-state.ts';
 import { databaseSolutions } from './solutions.ts';
 import { SchemaRequirements } from './schema-requirements.ts';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
@@ -265,5 +266,31 @@ describe.each(drivers)('what the app does when the database lacks migrations, on
     expect(Object.keys(row!)).toContain('email');
     await expect(started.get<any>().selectFrom('accounts').select('password').execute()).rejects.toThrow(/\[marmeon:D9\]/);
     expect([...started.metadata().softDeletes]).toEqual(['users']);
+  });
+});
+
+// No server: the answers of MySQL's catalog are made up, so that the order of the reads can be seen.
+describe('the order in which the state of a MySQL database is read', () => {
+  const MARKER = { batch: 2, connection_name: 'default', direction: 'up', module: 'accounts', name: '2026_01_05_000000_create_accounts_table', owner: 'web-1:4242', started_at: '2026-11-27T10:00:00.000Z' };
+  const catalog = [...MIGRATIONS_COLUMNS.map((column) => ({ table_name: 'migrations', column_name: column })), ...INTERRUPTION_COLUMNS.map((column) => ({ table_name: 'migration_interruption', column_name: column }))].map((row) => ({ ...row, type: 'text', nullable: 0 }));
+
+  it('sees a marker that appears right after the record was read, and refuses with D32 and not with the pending migration', async () => {
+    let recordRead = false;
+    const asked: string[] = [];
+    const run = (async (text: string) => {
+      asked.push(text.split(' ').slice(0, 4).join(' '));
+      if (text.includes('information_schema.columns')) return catalog;
+      if (text.startsWith('select name from migrations')) {
+        recordRead = true;
+        return [{ name: '2026_01_01_000000_create_users_table' }];
+      }
+      if (text.includes('"migration_interruption"')) return recordRead ? [MARKER] : [];
+      throw new Error(`unexpected query: ${text}`);
+    }) as never;
+    const error = await checkMigrationState(run, 'mysql', 'default', ['2026_01_01_000000_create_users_table', MARKER.name]).then(() => undefined, (caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MigrationStateError);
+    expect(error).toMatchObject({ reason: 'interrupted' });
+    expect((error as Error).message).toMatch(/^\[marmeon:D32\] Migration 2026_01_05_000000_create_accounts_table /);
+    expect(asked.findIndex((text) => text.startsWith('select name from'))).toBeLessThan(asked.findIndex((text) => text.startsWith('select "batch"')));
   });
 });
