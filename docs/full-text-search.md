@@ -170,8 +170,13 @@ The driver decides how a change reaches its index:
 
 In every mode, a rollback leaves nothing in the index. A driver that writes through the queue needs `@marmeon/queue`, and without it
 the start stops with [Q9](errors.md#server-error-codes). The job reads its rows when it runs and writes the state they have then, so of
-two jobs of one row that run one after the other, the later one wins even when it was queued first. Two jobs of one row that run
-at the same moment can finish in either order; the next change of the row, or a rebuild, sets it right. An error of the driver fails the attempt, and
+two jobs of one row that run one after the other, the later one wins even when it was queued first. After it wrote, the job reads its
+rows again and writes once more while they changed, up to three writes. So when two jobs of one row run at the same moment, the job
+whose write lands last finds the newest state and writes it. A row that changes again after each of the three writes fails the attempt.
+The job also stops, and the attempt fails, when another write would outlast its 60-second timeout; the next attempt reads the rows again.
+The job compares the documents of both reads, so `toDocument()` must return the same document for the same row: a document that
+holds the current time, for example, makes every attempt fail.
+An error of the driver fails the attempt, and
 the job tries again, up to five attempts in all. A row whose document breaks one of the checks above is removed from the index by
 the job, the other rows of its batch are written, and the attempt fails with the keys of the rows that broke. A key of the other
 type whose row still exists fails the attempt the same way, and that row's document is removed too. A job whose index no class declares any more fails for good, and stays in the failed jobs.
@@ -312,6 +317,49 @@ Postgres.
 
 The `meilisearch` driver keeps each index on a Meilisearch server and talks to it through `@marmeon/fetch`, while a queued job brings
 changed rows over.
+
+```sh title=".env"
+SEARCH_DRIVER=meilisearch
+SEARCH_MEILISEARCH_URL=http://meilisearch.internal:7700
+SEARCH_MEILISEARCH_API_KEY=your-key
+```
+
+The driver needs Meilisearch 1.34 or later, `@marmeon/fetch` with its `HttpClient` registered, and `@marmeon/queue`. Without them,
+without the address or without the key, the start stops with [Q9](errors.md#server-error-codes). The address is `http` or `https` with a host and an
+optional port. A user name, a password, a query, a fragment or a path in it stops the start too. The key is printable ASCII without
+line breaks, and no message names its value.
+
+Give the app a key with only the actions it uses, not the master key. Writes and searches need `search`, `documents.add`,
+`documents.delete`, `indexes.get` and `tasks.get`. A rebuild needs `indexes.create`, `settings.update`, `indexes.swap` and
+`indexes.delete` in addition. Meilisearch answers a missing action like a wrong key, so the driver's warning names both.
+
+Your Meilisearch server usually has a private address, which the [HTTP client](http-client.md#reaching-your-own-network) refuses.
+The driver allows that address for itself, under three rules:
+
+- It allows only the addresses that the host of `SEARCH_MEILISEARCH_URL` resolves to, resolved again for every request.
+- It allows them only for its own requests to that host. Every other request of your app, and `FETCH_ALLOWED_ADDRESSES`, stay as
+  they are.
+- It follows no redirect. A redirect fails the request, so the key never reaches another address.
+
+Changes reach Meilisearch through the job `marmeon.search.sync`, so a [worker](queues.md#running-workers) must run. The job waits up to 8 seconds
+for Meilisearch to apply each write. A write that Meilisearch rejects, or that it has not applied by then, fails the attempt, and the
+job tries again. A write first checks that its index exists, so it does
+not create one. Only an index that is deleted while a write runs can come back with the default settings of Meilisearch. Create each index, with
+its settings, with `marmeon search:rebuild <index>` (see [Rebuilding and flushing](#rebuilding-and-flushing)). Until then, a job of
+that index fails with that command in its message, and a search returns the `missing-index` failure.
+
+The driver stores each filter value as a hash, so filters compare exactly: Meilisearch alone would treat `Alice` and `alice`, or
+`7` and `"7"`, as one value. The `f_` attributes in Meilisearch therefore hold hashes. A field is stored as
+`s_<field>`, and a document's id is a hash of its key.
+
+A search sends only the words of the term, so no quote or `-` that a user types is search syntax. Every word must match. Meilisearch
+always matches the last word as the start of a word too, so `prefix: false` changes nothing on this driver. Every other failure
+returns the `unavailable` failure: an outage, a host that does not resolve, a timeout, an answer of 5xx, a refused key, a search that
+Meilisearch rejects and an answer it cannot read. A refused key and a rejected search also log a warning.
+
+Meilisearch picks the words that a typo or a prefix may stand for from the whole index, and it stops after a limited number of
+them. So which documents a search finds, and their order, can depend on other documents of the index, those that a filter leaves
+out included. Tenants that must learn nothing about each other need separate indexes, or the `database` driver on Postgres.
 
 ## Rebuilding and flushing
 

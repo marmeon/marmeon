@@ -1,4 +1,5 @@
 import { createApplication, defineModule, type Application } from '@marmeon/core';
+import { TestClock } from '@marmeon/core/testing';
 import { Connections, DatabaseServiceProvider, sql, type Connection, type Database } from '@marmeon/database';
 import type { JobContext } from '@marmeon/queue';
 import { Queue, QueueServiceProvider } from '@marmeon/queue';
@@ -6,12 +7,14 @@ import { QueueFake } from '@marmeon/queue/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SearchDriver } from './driver.ts';
 import { SearchServiceProvider } from './provider.ts';
-import { Search } from './search.ts';
+import { SearchIndexes } from './registry.ts';
+import { IndexReader, Search } from './search.ts';
 import { SearchIndex, type SearchDocument } from './search-index.ts';
 import { SyncSearchDocuments } from './sync-job.ts';
 import { MemoryDriver } from './test-helpers/memory-driver.ts';
 
-// The job reads its rows when it runs, so two jobs of one row that run in swapped order still end with the newest state.
+// The job reads its rows when it runs, and again after it wrote them, so jobs of one row that run in swapped order or overlap
+// still end with the newest state.
 
 interface PageRow {
   id: number;
@@ -61,7 +64,7 @@ async function start() {
   return { app, connections, queue: holder.queue!, search: app.container.make(Search), driver: app.container.make(SearchDriver) as MemoryDriver };
 }
 
-function context(): JobContext & { failed: unknown[] } {
+function context(signal = new AbortController().signal): JobContext & { failed: unknown[] } {
   const failed: unknown[] = [];
   return {
     failed,
@@ -71,7 +74,7 @@ function context(): JobContext & { failed: unknown[] } {
     tries: SyncSearchDocuments.tries,
     queue: 'default',
     connection: 'sync',
-    signal: new AbortController().signal,
+    signal,
     discard: () => undefined,
     release: () => undefined,
     fail: (reason) => void failed.push(reason),
@@ -93,6 +96,89 @@ describe('the job marmeon.search.sync', () => {
     await job.handle(newer!, context());
     await job.handle(older!, context());
     expect((await driver.documents('pages')).map((document) => document.fields)).toEqual([{ title: 'New title' }]);
+  });
+
+  it('ends with the newest state when two jobs overlap and the one that read the old state writes last', async () => {
+    const { app, connections, driver } = await start();
+    await sql`insert into pages (id, title) values (1, 'Old title')`.execute(connections.get());
+    const job = app.container.make(SyncSearchDocuments);
+    const store = driver.upsert.bind(driver);
+    let overlapped = false;
+    // Job A has read "Old title"; before its write lands, the row changes and job B reads, writes and finishes. Then A's old write lands.
+    driver.upsert = async (index, documents) => {
+      if (!overlapped) {
+        overlapped = true;
+        await sql`update pages set title = 'New title' where id = 1`.execute(connections.get());
+        await job.handle({ index: 'pages', keys: [1] }, context());
+      }
+      await store(index, documents);
+    };
+    await job.handle({ index: 'pages', keys: [1] }, context());
+    expect((await driver.documents('pages')).map((document) => document.fields)).toEqual([{ title: 'New title' }]);
+    expect(driver.calls.filter((call) => call.method === 'upsert')).toHaveLength(3);
+  });
+
+  it('ends without the document when a job that read the row overlaps its deletion and writes last', async () => {
+    const { app, connections, driver } = await start();
+    await sql`insert into pages (id, title) values (1, 'Title')`.execute(connections.get());
+    const job = app.container.make(SyncSearchDocuments);
+    const store = driver.upsert.bind(driver);
+    let overlapped = false;
+    driver.upsert = async (index, documents) => {
+      if (!overlapped) {
+        overlapped = true;
+        await sql`delete from pages where id = 1`.execute(connections.get());
+        await job.handle({ index: 'pages', keys: [1] }, context());
+      }
+      await store(index, documents);
+    };
+    await job.handle({ index: 'pages', keys: [1] }, context());
+    expect(await driver.documents('pages')).toEqual([]);
+  });
+
+  it('fails the attempt after three writes when the rows change every time, and leaves the newest write', async () => {
+    const { app, connections, driver } = await start();
+    await sql`insert into pages (id, title) values (1, 'Title 0')`.execute(connections.get());
+    const store = driver.upsert.bind(driver);
+    let writes = 0;
+    driver.upsert = async (index, documents) => {
+      await store(index, documents);
+      writes++;
+      await sql`update pages set title = ${`Title ${writes}`} where id = 1`.execute(connections.get());
+    };
+    await expect(app.container.make(SyncSearchDocuments).handle({ index: 'pages', keys: [1] }, context())).rejects.toThrow(
+      'The rows of "pages" changed each of the 3 times this job wrote them; the attempt fails, and the job tries again.',
+    );
+    expect(writes).toBe(3);
+    expect((await driver.documents('pages')).map((document) => document.fields)).toEqual([{ title: 'Title 2' }]);
+  });
+
+  it('stops after a write once the job ran out of time, rather than read and write again', async () => {
+    const { app, connections, driver } = await start();
+    await sql`insert into pages (id, title) values (1, 'Title')`.execute(connections.get());
+    const timeout = new AbortController();
+    timeout.abort();
+    await expect(app.container.make(SyncSearchDocuments).handle({ index: 'pages', keys: [1] }, context(timeout.signal))).rejects.toThrow(
+      'The job for "pages" ran out of time after writing its rows; it tries again.',
+    );
+    expect(driver.calls.map((call) => call.method)).toEqual(['upsert']);
+  });
+
+  it('starts no further write that would outlast the job timeout', async () => {
+    const { app, connections, driver } = await start();
+    await sql`insert into pages (id, title) values (1, 'Title 0')`.execute(connections.get());
+    const clock = new TestClock();
+    clock.freeze();
+    const store = driver.upsert.bind(driver);
+    driver.upsert = async (index, documents) => {
+      await store(index, documents);
+      // Each write takes 35 seconds and the row changes meanwhile: a second write would end past the 60 seconds.
+      clock.travel(35);
+      await sql`update pages set title = 'Title 1' where id = 1`.execute(connections.get());
+    };
+    const job = new SyncSearchDocuments(app.container.make(SearchIndexes), app.container.make(IndexReader), driver, clock);
+    await expect(job.handle({ index: 'pages', keys: [1] }, context())).rejects.toThrow('The job for "pages" ran out of time after writing its rows; it tries again.');
+    expect(driver.calls.map((call) => call.method)).toEqual(['upsert']);
   });
 
   it('removes the document of a row that is gone by the time the job runs', async () => {

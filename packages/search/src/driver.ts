@@ -19,7 +19,7 @@ export interface StoredDocument {
 /**
  * One search as a driver runs it, checked by `Search`. `tokens` holds at least one token and no syntax; `term` is the user's text,
  * normalized and cut but with its web-search syntax, so a driver only ever binds it as a parameter. `filters` names only filters every index declares, each with a value or a non-empty list of values of which a
- * document must carry one. `locale` is canonical (`pt-BR`). The driver returns the hits from `offset` on, at most `limit`.
+ * document must carry one. `locale` is canonical (`pt-BR`). The driver returns the hits from `offset` on, at most `limit`; `offset` is a whole multiple of `limit`.
  */
 export interface DriverQuery {
   readonly indexes: readonly IndexInfo[];

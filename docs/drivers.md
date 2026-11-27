@@ -464,7 +464,7 @@ Search checks what it hands to the driver, and what the driver hands back:
 - `delete(index, keys)` gets at most 500 keys.
 - `query(request)` gets at least one token, and the tokens hold no syntax. `term` is the text the user typed, normalized and cut,
   but with its web-search syntax: bind it as a parameter and never put it into a query string. The filters are declared by every
-  index of the search, each with a value or a non-empty list of values. `offset` plus `limit` is at most 1000.
+  index of the search, each with a value or a non-empty list of values. `offset` is a whole multiple of `limit`, and `offset` plus `limit` is at most 1000.
 - A hit carries a valid key and a finite score.
 - An outage or a missing index comes back from `query()` as an `err` with the `kind` `unavailable` or `missing-index`, never as a
   throw. Its `message` names no secret.
