@@ -28,3 +28,17 @@ describe('MailConfig: switches', () => {
     await expect(resolve({ MAIL_REQUIRE_TLS: 'no' })).rejects.toThrow(/MAIL_REQUIRE_TLS/);
   });
 });
+
+describe('MailConfig: Resend', () => {
+  it('reads MAIL_RESEND_API_KEY, empty by default', async () => {
+    expect((await resolve({})).resend).toEqual({ apiKey: '' });
+    expect((await resolve({ MAIL_DRIVER: 'resend', MAIL_RESEND_API_KEY: 'abc' })).resend).toEqual({ apiKey: 'abc' });
+  });
+});
+
+describe('MailConfig: Postmark', () => {
+  it('reads MAIL_POSTMARK_TOKEN, empty by default', async () => {
+    expect((await resolve({})).postmark).toEqual({ token: '' });
+    expect((await resolve({ MAIL_DRIVER: 'postmark', MAIL_POSTMARK_TOKEN: 'abc' })).postmark).toEqual({ token: 'abc' });
+  });
+});

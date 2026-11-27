@@ -264,34 +264,57 @@ it, the command says the entries expire on their own. A store that expires entri
 
 A mail transport implements `MailTransport` and is a `MailDriverFactory`: it gets the `name` it was registered under, the
 `container` and a `logger` of the `mail` channel, and returns the transport. `MAIL_DRIVER` selects it by name,
-like the built-in `log`, `array` and `smtp`:
+like the built-in `log`, `array`, `smtp`, `postmark` and `resend`. These five names are taken: a provider that brings a driver with one of them stops the start.
 
-```ts title="src/PostmarkServiceProvider.ts"
+```ts title="src/MailgunServiceProvider.ts"
 import type { MailDriverFactory } from '@marmeon/mail';
 
-const postmark: MailDriverFactory = ({ container }) => new PostmarkTransport(container.make(PostmarkConfig));
+const mailgun: MailDriverFactory = ({ container }) => new MailgunTransport(container.make(MailgunConfig));
 
-export class PostmarkServiceProvider {
-  static config = [PostmarkConfig];
-  static mailDrivers = { postmark };
+export class MailgunServiceProvider {
+  static config = [MailgunConfig];
+  static mailDrivers = { mailgun };
 }
 ```
 
 ```sh title=".env"
-MAIL_DRIVER=postmark
+MAIL_DRIVER=mailgun
 ```
 
 `send()` resolves with `{ messageId }`, the id the provider gave the mail, or `{ messageId: undefined }` when it gave none.
 `mailer.send()` hands it on as the `messageId` of the sent mail; it is what a delivery report from the provider refers to:
 
 ```ts
-class PostmarkTransport implements MailTransport {
-  async send(message: MailMessage): Promise<MailReceipt> {
-    const response = await this.#client.post('/email', toPostmark(message));
-    return { messageId: response.MessageID };
+import { MailDeliveryError, type MailMessage, type MailReceipt, type MailSendOptions, type MailTransport } from '@marmeon/mail';
+
+class MailgunTransport implements MailTransport {
+  async send(message: MailMessage, options?: MailSendOptions): Promise<MailReceipt> {
+    const reply = await this.#client.post('/messages', toMailgun(message), { signal: options?.signal });
+    if (reply.status === 422) throw new MailDeliveryError('rejected', 'Mailgun rejected the mail.', { status: 422 });
+    return { messageId: reply.body.id };
   }
 }
 ```
+
+`send()` gets an optional second parameter, `options`. `mailer.send()` passes an empty object, and a caller outside the framework may pass
+none, so read it with `?.`. When a worker sends a queued mail, `options` holds two values:
+
+- `signal` aborts when the job's time is over or the worker must stop. Pass it on to the request.
+- `idempotencyKey` is the same for every attempt of one queued mail, also for `marmeon queue:retry` of a failed one. Pass it on when the provider takes one, so that a retry after a lost answer does not send the mail twice.
+
+A transport may ignore both, and one that leaves the parameter out is valid too.
+
+When the provider does not take a mail, throw a `MailDeliveryError(reason, message, { status?, providerCode?, retryAfterSeconds? })`
+instead of an error of your own. The `reason` tells the queue what to do:
+
+- `refused`: you refused the mail before any request. The job fails at once.
+- `rejected`: the provider refused the mail. The job fails at once.
+- `unauthorized`: the credentials are wrong. The job fails at once.
+- `throttled` and `unavailable`: the job waits `retryAfterSeconds` when your error sets it, or the job's own backoff for that try (10, 60, then 300 seconds), whichever is longer, rounded up and at most an hour. Each wait uses one of the five tries, and the last try fails the job with your error.
+- `throttled` and `unavailable` without `retryAfterSeconds`, a `retryAfterSeconds` that is not a finite number of at least 0, and any other error: the job tries again with its usual backoff.
+
+Keep the provider's response text, your credentials and any cause out of the message: the error takes no `cause`, and the response can echo addresses and content.
+On the `sync` queue connection, no job runs a second time, so a `throttled` or `unavailable` mail with `retryAfterSeconds` reaches the caller of `mailer.queue()` as a `QueueError`, not as your `MailDeliveryError`.
 
 The transport is built at the start when `MAIL_DRIVER` selects it, so a factory that throws, or returns something without a
 `send()`, stops the start. A `MAIL_DRIVER` nobody brought stops it too, with the names there are. A transport may have a `close()`: the framework calls it at

@@ -7,7 +7,9 @@
     "mail",
     "email",
     "mjml",
-    "smtp"
+    "smtp",
+    "postmark",
+    "resend"
   ],
   "homepage": "https://marmeon.com/docs/mail",
   "bugs": {
@@ -76,11 +78,15 @@
     "valibot": "^1.5.0"
   },
   "peerDependencies": {
+    "@marmeon/fetch": "workspace:*",
     "@marmeon/queue": "workspace:*",
     "@marmeon/router": "workspace:*",
     "mjml": "^5.4.1"
   },
   "peerDependenciesMeta": {
+    "@marmeon/fetch": {
+      "optional": true
+    },
     "mjml": {
       "optional": true
     },
@@ -93,6 +99,7 @@
   },
   "devDependencies": {
     "@marmeon/encryption": "workspace:*",
+    "@marmeon/fetch": "workspace:*",
     "@marmeon/queue": "workspace:*",
     "@marmeon/router": "workspace:*",
     "mjml": "^5.4.1"

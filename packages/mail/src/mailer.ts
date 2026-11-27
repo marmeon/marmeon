@@ -52,6 +52,35 @@ export class MailSetupError extends MailError {
   override name = 'MailSetupError';
 }
 
+/** Why a provider did not take a mail. Retrying helps for `throttled` and `unavailable` only. */
+export type MailDeliveryReason = 'refused' | 'rejected' | 'unauthorized' | 'throttled' | 'unavailable';
+
+/**
+ * Thrown by a transport when the provider did not take a mail. A queued mail is retried for `throttled` and `unavailable`
+ * only (after `retryAfterSeconds` when given) and fails at once otherwise (see `permanent`). It takes no `cause` and its
+ * message must not hold the provider's response text, which can echo addresses and content. See `docs/drivers.md#mail-transports`.
+ */
+export class MailDeliveryError extends MailError {
+  readonly reason: MailDeliveryReason;
+  declare readonly status?: number;
+  declare readonly providerCode?: string;
+  declare readonly retryAfterSeconds?: number;
+
+  constructor(reason: MailDeliveryReason, message: string, options?: { status?: number; providerCode?: string; retryAfterSeconds?: number }) {
+    super(message);
+    this.name = 'MailDeliveryError';
+    this.reason = reason;
+    if (options?.status !== undefined) this.status = options.status;
+    if (options?.providerCode !== undefined) this.providerCode = options.providerCode;
+    if (options?.retryAfterSeconds !== undefined) this.retryAfterSeconds = options.retryAfterSeconds;
+  }
+
+  /** True when sending the same mail again cannot succeed: `refused`, `rejected` and `unauthorized`. */
+  get permanent(): boolean {
+    return this.reason === 'refused' || this.reason === 'rejected' || this.reason === 'unauthorized';
+  }
+}
+
 /** A message from a mailable: addresses normalized and checked, the default sender filled in. */
 export async function compose(mailable: Mailable, defaultFrom: Address): Promise<MailMessage> {
   const envelope = await mailable.envelope();
@@ -101,7 +130,7 @@ export class TransportMailer implements Mailer {
     return traceMail(this.#app, mailable.constructor.name, 'send', async () => {
       const message = await compose(mailable, this.#from);
       // After delivery nothing may throw: a retry would send the mail twice. A transport that resolves with nothing has no id.
-      const receipt = (await this.#transport().send(message)) as MailReceipt | undefined;
+      const receipt = (await this.#transport().send(message, {})) as MailReceipt | undefined;
       return { ...message, messageId: typeof receipt?.messageId === 'string' ? receipt.messageId : undefined };
     });
   }

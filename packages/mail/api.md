@@ -67,6 +67,12 @@ export declare const MailConfig: import("@marmeon/core").ConfigDefinition<{
         username: string;
         password: string;
     };
+    postmark: {
+        token: string;
+    };
+    resend: {
+        apiKey: string;
+    };
     previews: boolean;
     previewHosts: ReadonlySet<string>;
     protected: boolean;
@@ -77,6 +83,21 @@ export interface MailContent {
     readonly html: string;
     readonly text: string;
 }
+// MailDeliveryError
+export declare class MailDeliveryError extends MailError {
+    readonly reason: MailDeliveryReason;
+    readonly status?: number;
+    readonly providerCode?: string;
+    readonly retryAfterSeconds?: number;
+    constructor(reason: MailDeliveryReason, message: string, options?: {
+        status?: number;
+        providerCode?: string;
+        retryAfterSeconds?: number;
+    });
+    get permanent(): boolean;
+}
+// MailDeliveryReason
+export type MailDeliveryReason = 'refused' | 'rejected' | 'unauthorized' | 'throttled' | 'unavailable';
 // MailDriverContext
 export interface MailDriverContext {
     readonly name: string;
@@ -126,6 +147,11 @@ export interface MailPreviewContext {
 export interface MailReceipt {
     readonly messageId: string | undefined;
 }
+// MailSendOptions
+export interface MailSendOptions {
+    readonly signal?: AbortSignal;
+    readonly idempotencyKey?: string;
+}
 // MailServiceProvider
 export declare class MailServiceProvider implements ServiceProvider {
     #private;
@@ -144,6 +170,12 @@ export declare class MailServiceProvider implements ServiceProvider {
             username: string;
             password: string;
         };
+        postmark: {
+            token: string;
+        };
+        resend: {
+            apiKey: string;
+        };
         previews: boolean;
         previewHosts: ReadonlySet<string>;
         protected: boolean;
@@ -158,7 +190,7 @@ export declare class MailSetupError extends MailError {
 }
 // MailTransport
 export interface MailTransport {
-    send(message: MailMessage): Promise<MailReceipt>;
+    send(message: MailMessage, options?: MailSendOptions): Promise<MailReceipt>;
     close?(): Promise<void>;
 }
 export declare const MailTransport: import("@marmeon/core").Token<MailTransport>;
@@ -352,8 +384,12 @@ export interface SentMail extends MailMessage {
 `MAIL_PASSWORD` = `""`
 // MAIL_PORT
 `MAIL_PORT` = `587`
+// MAIL_POSTMARK_TOKEN
+`MAIL_POSTMARK_TOKEN` = `""`
 // MAIL_REQUIRE_TLS
 `MAIL_REQUIRE_TLS` = `true`
+// MAIL_RESEND_API_KEY
+`MAIL_RESEND_API_KEY` = `""`
 // MAIL_SECURE
 `MAIL_SECURE` = `false`
 // MAIL_USERNAME

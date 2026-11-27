@@ -7,7 +7,7 @@ previews in development.
 
 Part of every new Marmeon app: `pnpm create marmeon` installs it.
 
-SMTP needs nothing more: `nodemailer` is a dependency of this package. MJML templates need `mjml`, an optional peer a new app has;
+SMTP needs nothing more: `nodemailer` is a dependency of this package. `MAIL_DRIVER=postmark` and `MAIL_DRIVER=resend` send through the provider's API and need `@marmeon/fetch`. MJML templates need `mjml`, an optional peer a new app has;
 another app installs it with `pnpm add mjml@^5`. Without it, the first MJML mail names that command.
 
 ## A first mail

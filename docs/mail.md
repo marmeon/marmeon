@@ -3,7 +3,7 @@
 ## Introduction
 
 A mail is a class, like a controller: its data comes through the constructor, and `envelope()` and `content()` say who gets it
-and what it says. `@marmeon/mail`, which every new app has, sends it over SMTP or writes it to the log in development:
+and what it says. `@marmeon/mail`, which every new app has, sends it over SMTP or through the Postmark or Resend API, or writes it to the log in development:
 
 ```ts title="modules/notes/mail/NoteSharedMail.ts"
 import type { Translator } from '@marmeon/i18n';
@@ -51,7 +51,7 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `array` keeps it in memory. A package can bring more (see [Mail transports](drivers.md#mail-transports)); a name nobody brought stops the start. |
+| `MAIL_DRIVER` | `log` | `log` writes every mail to the log and sends nothing, `smtp` sends it, `postmark` sends it through the Postmark API (see [Postmark](#postmark)), `resend` through the Resend API (see [Resend](#resend)), `array` keeps it in memory. A package can bring more (see [Mail transports](drivers.md#mail-transports)); a name nobody brought stops the start. |
 | `MAIL_FROM_ADDRESS` | optional, falls back to `hello@example.com` | The sender of every mail that names none. Set it to an address of your domain; see [The sender address](#the-sender-address). |
 | `MAIL_FROM_NAME` | empty | The sender's name. Empty, the address goes alone. |
 | `MAIL_HOST` | `127.0.0.1` | The SMTP server. |
@@ -59,6 +59,8 @@ await this.#mailer.queue(new NoteSharedMail(recipient, note.title, url, this.#tr
 | `MAIL_SECURE` | `false` | A switch (`true`, `false`, `1` or `0`). `true` speaks TLS from the first byte, for port 465. |
 | `MAIL_REQUIRE_TLS` | `true` | A switch like `MAIL_SECURE`. Without `MAIL_SECURE`, the connection must be upgraded with STARTTLS. |
 | `MAIL_USERNAME`, `MAIL_PASSWORD` | empty | The SMTP credentials. |
+| `MAIL_POSTMARK_TOKEN` | empty | The Postmark server API token. `MAIL_DRIVER=postmark` stops the start without it. |
+| `MAIL_RESEND_API_KEY` | empty | The Resend API key. `MAIL_DRIVER=resend` stops the start without it. |
 
 `smtp` needs nothing more: the package brings its SMTP client. A new app's `.env.test` sets `MAIL_DRIVER=array`.
 
@@ -71,10 +73,10 @@ out (it can hold password reset and sign-in links, and whoever reads the log may
 sent in a queue worker too:
 
 ```text
-MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD.
+MAIL_DRIVER=log outside development and tests: no mail is sent — only each mail's recipients and subject are written to the log, its text is left out. Set MAIL_DRIVER=smtp and MAIL_HOST, MAIL_USERNAME, MAIL_PASSWORD; MAIL_DRIVER=postmark and MAIL_POSTMARK_TOKEN; or MAIL_DRIVER=resend and MAIL_RESEND_API_KEY.
 ```
 
-It is a warning and not an error. Set `MAIL_DRIVER=smtp` in production. A deployment that wants its mails in a log or a file
+It is a warning and not an error. Set `MAIL_DRIVER=smtp`, `postmark` or `resend` in production. A deployment that wants its mails in a log or a file
 on purpose writes its own transport ([Mail transports](drivers.md#mail-transports)).
 
 ### The sender address
@@ -97,6 +99,79 @@ credentials and no mail, and the send fails instead of going out in plain text. 
 `MAIL_REQUIRE_TLS=false` turns the requirement off, for a local server without TLS such as Mailpit, or a relay on the same
 machine. With it, credentials and mails go in plain text whenever the server offers no STARTTLS, so never use it over a network you
 do not control. Prefer port 465 with `MAIL_SECURE=true` where your provider offers it.
+
+### Postmark
+
+`MAIL_DRIVER=postmark` sends every mail through the Postmark API instead of SMTP. It needs `@marmeon/fetch`, which sends the
+request (`marmeon add fetch`, or `pnpm add -E @marmeon/fetch@<version of your app>`), and `MAIL_POSTMARK_TOKEN`:
+
+```sh title=".env"
+MAIL_DRIVER=postmark
+MAIL_POSTMARK_TOKEN=<the token of your Postmark server>
+MAIL_FROM_ADDRESS=hello@your-domain.example
+```
+
+Take the token from "API Tokens" of your Postmark server, and confirm the sender signature or the domain of `MAIL_FROM_ADDRESS` in
+Postmark, which refuses other senders. The token `POSTMARK_API_TEST` makes Postmark accept every request and deliver no mail, which suits a test run or a staging
+environment that must not send. The boot of a protected app (production, or no `NODE_ENV`) warns when it runs on that token, because
+every send then succeeds and nobody gets a mail. The start stops with a message that names the missing token, the missing package or the missing `HttpClient`. It stops as well when the token holds a space or a character outside visible ASCII: no Postmark token does, so the value is wrong.
+
+The driver always sends to `https://api.postmarkapp.com/email`; no variable changes the address, and the request goes through your
+`HttpClient`, so a `FETCH_DRIVER` of your own applies. The token goes into one request header and never into an error, a log line or
+a `cause`. A redirect from Postmark is not followed.
+
+- **`messageId`** of the sent mail is Postmark's `MessageID`. A mail that was accepted but whose answer cannot be read has none.
+- **Headers** that address or shape the mail (`From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Sender`, `Subject`, `Date`, `Message-ID`,
+  `Return-Path`, `MIME-Version`, `Content-Type`, `Content-Transfer-Encoding`) cannot be set in `envelope().headers`: the mail is
+  refused before any request, with a `MailDeliveryError` whose `reason` is `refused`. Other headers, such as `List-Unsubscribe`, go
+  through.
+- **Names** of recipients are quoted, or encoded when they are not ASCII, so a name with a comma is never an extra recipient. An attachment whose filename or content type holds a line break is refused as well.
+- **Failures** are a `MailDeliveryError`, and its `reason` says what a retry can do:
+  - `unauthorized`: Postmark refuses the token (401, 403 with an `ErrorCode`). A 401 or 403 without one, as a proxy or firewall in front of Postmark sends it, is `unavailable`.
+  - `rejected`: any other answer Postmark gives, such as 422 for an inactive recipient, and a redirect, which is not followed.
+  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, an address the HTTP client blocks (it checks again on every try), 408, 409, 425 and every 5xx.
+  - `refused`: before any request, for a reserved header, an address that is not a plain `local@host` or an attachment whose filename or content type has a line break, or a subject with one.
+
+  `providerCode` holds Postmark's `ErrorCode` on any error answer that has a plain one. The message names the status and the code, never Postmark's text. A queued mail retries for `throttled` and `unavailable`
+  and fails at once for the others, as described in [Sending mails](#sending-mails).
+- **No idempotency**: Postmark has no key to deduplicate a mail, so a retry after a lost answer can send it twice.
+
+### Resend
+
+`MAIL_DRIVER=resend` sends every mail through the Resend API. It needs `@marmeon/fetch`, which sends the request
+(`marmeon add fetch`, or `pnpm add -E @marmeon/fetch@<version of your app>`), and `MAIL_RESEND_API_KEY`:
+
+```sh title=".env"
+MAIL_DRIVER=resend
+MAIL_RESEND_API_KEY=<an API key of your Resend account>
+MAIL_FROM_ADDRESS=hello@your-domain.example
+```
+
+Create the key under "API Keys" in Resend with the permission "Sending access", which can send mail and nothing else. Verify the
+domain of `MAIL_FROM_ADDRESS` in Resend, which refuses other senders. The start stops with a message that names the missing key, the missing package or the missing `HttpClient`. It stops as well when the key holds a space or a character outside visible ASCII: no Resend key does, so the value is wrong.
+
+The driver always sends to `https://api.resend.com/emails`; no variable changes the address, and the request goes through your
+`HttpClient`, so a `FETCH_DRIVER` of your own applies. The key goes into one request header and never into an error, a log line or
+a `cause`. A redirect from Resend is not followed.
+
+- **`messageId`** of the sent mail is Resend's `id`. A mail that was accepted but whose answer cannot be read has none.
+- **Headers** that address or shape the mail (`From`, `To`, `Cc`, `Bcc`, `Reply-To`, `Sender`, `Subject`, `Date`, `Message-ID`,
+  `Return-Path`, `MIME-Version`, `Content-Type`, `Content-Transfer-Encoding`) cannot be set in `envelope().headers`: the mail is
+  refused before any request, with a `MailDeliveryError` whose `reason` is `refused`. Other headers, such as `List-Unsubscribe`, go
+  through.
+- **Names** of recipients are quoted, or encoded when they are not ASCII, so a name with a comma is never an extra recipient. An attachment whose filename or content type holds a line break is refused as well.
+- **Idempotency**: a queued mail goes out with an `Idempotency-Key` that is the same for every attempt of the job. When an attempt
+  times out and the retry reaches Resend, Resend answers the retry with the result of the first request instead of sending a
+  second mail. Resend answers 409 while the first request is still being processed; every 409 counts as `unavailable` and is
+  retried, except `invalid_idempotent_request` (the same key with another mail), which is `rejected`. Resend remembers a key for 24 hours. `mailer.send()` sends no key.
+- **Failures** are a `MailDeliveryError`, and its `reason` says what a retry can do:
+  - `unauthorized`: Resend refuses the key (401, 403 with an error `name`). A 401 or 403 without one, as a proxy or firewall in front of Resend sends it, is `unavailable`.
+  - `rejected`: any other answer Resend gives, such as 422 for an invalid address, and a redirect, which is not followed.
+  - `throttled`: 429. `unavailable`: a timeout, a connection that fails, an address the HTTP client blocks (it checks again on every try), 408, 409 (except `invalid_idempotent_request`, which is `rejected`), 425 and every 5xx.
+  - `refused`: before any request, for a reserved header, an address that is not a plain `local@host`, an attachment whose filename or content type has a line break, a subject with one, or an idempotency key Resend cannot take.
+
+  `providerCode` holds the `name` of Resend's error on any error answer that has a plain one. A daily or monthly quota answer from Resend is a 429 as well and goes through the normal tries. The message names the status and the code, never Resend's text. A queued mail retries for `throttled` and `unavailable`
+  and fails at once for the others, as described in [Sending mails](#sending-mails).
 
 ## Writing mails
 
@@ -334,7 +409,7 @@ change an app has to follow. [Releases](releases.md#libraries-the-framework-buil
 | `mailer.queue(mail, { queue?, delay?, connection? })` | Composes the mail now and queues it. A worker sends it. `delay` is seconds, or a [`Duration`](time.md#spans-of-time). The `sync` queue connection sends without it and logs one warning for all queued mails. |
 | `mailer.send(mail)` | Composes the mail and sends it now. Resolves with the message and the `messageId` the provider gave it. |
 
-`messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends. It is `undefined` with `log`
+`messageId` is the id the transport got from the mail server, such as the `Message-ID` that `smtp` sends, for `postmark` Postmark's `MessageID`, or for `resend` Resend's `id`. It is `undefined` with `log`
 and `array`, where no provider takes part, and with a provider that gives none. `mailer.queue()` has no id to return: the worker
 sends the mail later.
 
@@ -353,6 +428,11 @@ Queue a mail whenever a request sends it:
 - **The job is encrypted** with `APP_KEY`, since a mail carries what only its recipient may see, such as a reset link. The jobs
   tables hold ciphertext only. Attachments travel inside it, so keep them small.
 - **Inside a transaction**, a queued mail goes out only once the transaction commits. A registration that rolls back sends nothing.
+- **A refusal is not retried.** A transport that throws a `MailDeliveryError` for a mail the provider rejected, or for credentials
+  that are wrong, puts the job among the failed jobs at once, instead of trying five times. A provider that is busy or down and says
+  how long to wait is waited for: the job runs again after that many seconds, rounded up, or after its own backoff for that try (10 seconds, a minute, five minutes), whichever is longer, and at most an hour. Each wait uses one of the five tries,
+  and the last try fails the job with the delivery error. On the `sync` queue connection a mail with such a wait reaches the caller of `mailer.queue()` as a `QueueError`,
+  because nothing runs a job again there. See [mail transports](drivers.md#mail-transports).
 - **A worker can send it twice**: one that dies after the mail server took the mail and before it marked the job done runs it
   again.
 

@@ -4,6 +4,7 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   fromHtml,
   html,
+  MailDeliveryError,
   MailError,
   mjml,
   MjmlError,
@@ -400,7 +401,7 @@ describe('mail drivers a provider brings', () => {
 
   it('stops the start for a name nobody brought, and lists the known ones', async () => {
     const error = await boot([plugin('SesProvider', { ses })], { MAIL_DRIVER: 'nope' }).catch((caught: unknown) => caught);
-    expect(String(error)).toContain('[marmeon:Q8] MAIL_DRIVER=nope is not a mail driver. Known: log, array, smtp, ses.');
+    expect(String(error)).toContain('[marmeon:Q8] MAIL_DRIVER=nope is not a mail driver. Known: log, array, smtp, postmark, resend, ses.');
   });
 
   it('stops the start for a malformed name', async () => {
@@ -439,6 +440,50 @@ describe('mail drivers a provider brings', () => {
       throw new Error('no credentials for the provider');
     };
     await expect(boot([plugin('DownProvider', { down })], { MAIL_DRIVER: 'down' })).rejects.toThrow('no credentials for the provider');
+  });
+});
+
+describe('MailDeliveryError', () => {
+  it.each([
+    ['refused', true],
+    ['rejected', true],
+    ['unauthorized', true],
+    ['throttled', false],
+    ['unavailable', false],
+  ] as const)('%s is permanent: %s', (reason, permanent) => {
+    const error = new MailDeliveryError(reason, 'text', { status: 429, providerCode: '300', retryAfterSeconds: 3 });
+    expect(error).toBeInstanceOf(MailError);
+    expect({ name: error.name, permanent, actual: error.permanent, status: error.status, providerCode: error.providerCode, retryAfterSeconds: error.retryAfterSeconds }).toEqual({
+      name: 'MailDeliveryError', permanent, actual: permanent, status: 429, providerCode: '300', retryAfterSeconds: 3,
+    });
+  });
+
+  it('has exactly the fields it was given, and none for the rest', () => {
+    expect(Object.keys(new MailDeliveryError('rejected', 'text'))).toEqual(['name', 'reason']);
+    expect(Object.keys(new MailDeliveryError('throttled', 'text', { retryAfterSeconds: 3 }))).toEqual(['name', 'reason', 'retryAfterSeconds']);
+    expect(Object.keys(new MailDeliveryError('rejected', 'text', { status: 422, providerCode: '406' }))).toEqual(['name', 'reason', 'status', 'providerCode']);
+  });
+});
+
+describe('mailer.send() and transport options', () => {
+  it('hands the transport an empty options object as the second argument', async () => {
+    const calls: unknown[][] = [];
+    const transport: MailTransport = { send: async (...args) => (calls.push(args), { messageId: 'id-1' }) };
+    const { TransportMailer } = await import('./mailer.ts');
+    await new TransportMailer(() => transport, 'hello@app.test', undefined, undefined).send(new WelcomeMail('Ada'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([expect.objectContaining({ subject: 'Welcome, Ada' }), {}]);
+  });
+
+  it('serves a transport that reads options.signal without ?.', async () => {
+    const transport: MailTransport = {
+      async send(_message, options) {
+        return { messageId: options!.signal === undefined ? 'no-signal' : 'signal' };
+      },
+    };
+    const { TransportMailer } = await import('./mailer.ts');
+    const sent = await new TransportMailer(() => transport, 'hello@app.test', undefined, undefined).send(new WelcomeMail('Ada'));
+    expect(sent.messageId).toBe('no-signal');
   });
 });
 
