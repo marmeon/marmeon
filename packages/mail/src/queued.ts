@@ -3,6 +3,7 @@ import type { JobContext } from '@marmeon/queue';
 import * as v from 'valibot';
 import type { Attachment, MailMessage } from './message.ts';
 import { traceMail } from './trace.ts';
+import { MailDeliveryError } from './mailer.ts';
 import type { MailTransport } from './transports.ts';
 
 const address = v.object({ address: v.string(), name: v.optional(v.string()) });
@@ -49,6 +50,9 @@ export interface QueuedMailPayload {
 /** @internal The validation behind `SendQueuedMail.schema`; the type tests compare its output with `QueuedMailPayload`. */
 export const queuedMailSchema = v.object({ mailable: v.string(), message });
 
+/** The longest a provider's Retry-After holds a queued mail back: an hour. */
+const MAX_RELEASE_SECONDS = 3600;
+
 /**
  * The framework job behind `mailer.queue(mail)`: hands the message composed where it was queued to the transport.
  * **Encrypted** (APP_KEY): a queued mail carries what only its recipient may see, such as a reset link, so `jobs` and
@@ -70,12 +74,26 @@ export class SendQueuedMail {
     this.#app = app;
   }
 
-  async handle(payload: QueuedMailPayload, _job: JobContext): Promise<void> {
-    await traceMail(this.#app, payload.mailable, 'worker', async () => {
-      const message = fromQueued(payload.message);
-      await this.#transport.send(message);
-      return message;
-    });
+  async handle(payload: QueuedMailPayload, job: JobContext): Promise<void> {
+    try {
+      await traceMail(this.#app, payload.mailable, 'worker', async () => {
+        const message = fromQueued(payload.message);
+        // The job id stays over retries, so every attempt of one mail carries the same key.
+        await this.#transport.send(message, { signal: job.signal, idempotencyKey: `marmeon-mail-${job.id}` });
+        return message;
+      });
+    } catch (error) {
+      if (error instanceof MailDeliveryError) {
+        // A transport parses the provider's Retry-After, so this is the first framework code to see the number: it is checked
+        // and clamped here, and a wait is only worth a try while one is left (a release on the last attempt would hide the delivery error).
+        const seconds = error.retryAfterSeconds;
+        if ((error.reason === 'throttled' || error.reason === 'unavailable') && seconds !== undefined && Number.isFinite(seconds) && seconds >= 0 && job.attempt < job.tries) {
+          return job.release(Math.min(MAX_RELEASE_SECONDS, Math.max(1, Math.ceil(seconds))));
+        }
+        if (error.permanent) return job.fail(error);
+      }
+      throw error;
+    }
   }
 }
 

@@ -11,13 +11,13 @@ export { fromHtml, Html, html, raw } from './html.ts';
 export { fromMjml, Mjml, mjml, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
 export { MailConfig } from './config.ts';
-export { MailError, Mailer, MailSetupError } from './mailer.ts';
-export type { QueueMailOptions, SentMail } from './mailer.ts';
+export { MailDeliveryError, MailError, Mailer, MailSetupError } from './mailer.ts';
+export type { MailDeliveryReason, QueueMailOptions, SentMail } from './mailer.ts';
 export { calendarEvent } from './ics.ts';
 export type { CalendarEvent } from './ics.ts';
 export type { MailPreviewContext } from './preview.ts';
 export { MailTransport } from './transports.ts';
-export type { MailDriverContext, MailDriverFactory, MailReceipt } from './transports.ts';
+export type { MailDriverContext, MailDriverFactory, MailReceipt, MailSendOptions } from './transports.ts';
 
 declare module '@marmeon/core' {
   interface ServiceProviderClass {

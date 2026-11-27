@@ -353,6 +353,11 @@ Queue a mail whenever a request sends it:
 - **The job is encrypted** with `APP_KEY`, since a mail carries what only its recipient may see, such as a reset link. The jobs
   tables hold ciphertext only. Attachments travel inside it, so keep them small.
 - **Inside a transaction**, a queued mail goes out only once the transaction commits. A registration that rolls back sends nothing.
+- **A refusal is not retried.** A transport that throws a `MailDeliveryError` for a mail the provider rejected, or for credentials
+  that are wrong, puts the job among the failed jobs at once, instead of trying five times. A provider that is busy or down and says
+  how long to wait is waited for: the job runs again after that many seconds, rounded up, at least 1 and at most an hour. Each wait uses one of the five tries,
+  and the last try fails the job with the delivery error. On the `sync` queue connection a mail with such a wait reaches the caller of `mailer.queue()` as a `QueueError`,
+  because nothing runs a job again there. See [mail transports](drivers.md#mail-transports).
 - **A worker can send it twice**: one that dies after the mail server took the mail and before it marked the job done runs it
   again.
 

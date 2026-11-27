@@ -4,19 +4,23 @@ import { Clock, createApplication, Logger, providerJobs, type Application, type 
 import { channels } from '@marmeon/core/diagnostics';
 import { TestClock } from '@marmeon/core/testing';
 import { EncryptionServiceProvider } from '@marmeon/encryption';
-import { Queue, QueueServiceProvider } from '@marmeon/queue';
+import { Queue, QueueError, QueueServiceProvider } from '@marmeon/queue';
 import { QueueFake } from '@marmeon/queue/testing';
 import { Router } from '@marmeon/router';
+import type { JobContext } from '@marmeon/queue';
 import { describe, expect, it } from 'vitest';
 import {
   calendarEvent,
   fromHtml,
   html,
+  MailDeliveryError,
   MailError,
   Mailer,
   MailServiceProvider,
   MailTransport,
+  type MailDeliveryReason,
   type MailReceipt,
+  type MailSendOptions,
   type Mailable,
   type MailMessage,
 } from './index.ts';
@@ -371,3 +375,214 @@ describe('the payload of marmeon.mail as the queue keeps it', () => {
 export function queuedTypes(payload: QueuedMailPayload): void {
   void payload.message.attachments[0]?.encoding;
 }
+
+describe('SendQueuedMail delivery errors', () => {
+  const payload = async (): Promise<QueuedMailPayload> => {
+    const { toQueued } = await import('./queued.ts');
+    const { compose } = await import('./mailer.ts');
+    return { mailable: 'ResetMail', message: toQueued(await compose(new ResetMail('https://app.test/reset'), 'hello@app.test')) };
+  };
+
+  function context(id = 'job-7') {
+    const calls = { released: [] as unknown[], failed: [] as unknown[] };
+    const controller = new AbortController();
+    const job: JobContext = {
+      id,
+      name: 'marmeon.mail',
+      attempt: 1,
+      tries: 5,
+      queue: 'default',
+      connection: 'sync',
+      signal: controller.signal,
+      discard: () => undefined,
+      release: (delay) => void calls.released.push(delay),
+      fail: (reason) => void calls.failed.push(reason),
+      once: async () => true,
+    };
+    return { job, calls };
+  }
+
+  /** Throws what it is told to and counts the calls. */
+  function failing(error: Error) {
+    const seen: (MailSendOptions | undefined)[] = [];
+    const transport: MailTransport = {
+      async send(_message, options) {
+        seen.push(options);
+        throw error;
+      },
+    };
+    return { transport, seen };
+  }
+
+  it('hands the transport the job signal and a key that stays the same over the attempts of one job', async () => {
+    const seen: (MailSendOptions | undefined)[] = [];
+    const transport: MailTransport = {
+      async send(_message, options) {
+        seen.push(options);
+        return { messageId: undefined };
+      },
+    };
+    const first = context('job-7');
+    const second = context('job-7');
+    const other = context('job-8');
+    const job = new SendQueuedMail(transport);
+    await job.handle(await payload(), first.job);
+    await job.handle(await payload(), second.job);
+    await job.handle(await payload(), other.job);
+    expect(seen[0]?.signal).toBe(first.job.signal);
+    expect(seen.map((options) => options?.idempotencyKey)).toEqual(['marmeon-mail-job-7', 'marmeon-mail-job-7', 'marmeon-mail-job-8']);
+  });
+
+  it.each<MailDeliveryReason>(['rejected', 'unauthorized', 'refused'])('fails the job at once after one transport call for %s', async (reason) => {
+    const error = new MailDeliveryError(reason, 'no');
+    const { transport, seen } = failing(error);
+    const { job: ctx, calls } = context();
+    await new SendQueuedMail(transport).handle(await payload(), ctx);
+    expect(seen).toHaveLength(1);
+    expect(calls).toEqual({ released: [], failed: [error] });
+  });
+
+  it.each<MailDeliveryReason>(['throttled', 'unavailable'])('releases the job for the seconds the provider named when it is %s', async (reason) => {
+    const { transport } = failing(new MailDeliveryError(reason, 'later', { retryAfterSeconds: 7 }));
+    const { job: ctx, calls } = context();
+    await new SendQueuedMail(transport).handle(await payload(), ctx);
+    expect(calls).toEqual({ released: [7], failed: [] });
+  });
+
+  it('rethrows unavailable without seconds, for the job\'s own retries', async () => {
+    const error = new MailDeliveryError('unavailable', 'down');
+    const { transport } = failing(error);
+    const { job: ctx, calls } = context();
+    await expect(new SendQueuedMail(transport).handle(await payload(), ctx)).rejects.toBe(error);
+    expect(calls).toEqual({ released: [], failed: [] });
+  });
+
+  it('rethrows any other error unchanged', async () => {
+    const error = new Error('connect ECONNREFUSED 127.0.0.1:587');
+    const { transport } = failing(error);
+    const { job: ctx, calls } = context();
+    await expect(new SendQueuedMail(transport).handle(await payload(), ctx)).rejects.toBe(error);
+    expect(calls).toEqual({ released: [], failed: [] });
+  });
+});
+
+describe('a queued mail whose transport throws a MailDeliveryError, through the worker', () => {
+  /** Throws what `error()` returns for the call, counting calls and keeping the options. */
+  function counting(error: () => Error) {
+    const keys: (string | undefined)[] = [];
+    const transport: MailTransport = {
+      async send(_message, options) {
+        keys.push(options?.idempotencyKey);
+        throw error();
+      },
+    };
+    return { transport, keys };
+  }
+
+  async function queued(error: () => Error) {
+    const { transport, keys } = counting(error);
+    const application = await app({}, transport);
+    await application.container.make(Mailer).queue(new ResetMail('https://app.test/reset'));
+    const queue = application.container.make(Queue) as QueueFake;
+    const clock = application.container.make(Clock) as TestClock;
+    clock.freeze();
+    return { queue, clock, keys };
+  }
+
+  const delivery = (reason: MailDeliveryReason, retryAfterSeconds?: number) => () =>
+    new MailDeliveryError(reason, `Provider said ${reason}.`, retryAfterSeconds === undefined ? undefined : { retryAfterSeconds });
+
+  it.each<MailDeliveryReason>(['rejected', 'unauthorized', 'refused'])('fails the job after one transport call for %s, its payload still encrypted', async (reason) => {
+    const { queue, keys } = await queued(delivery(reason));
+    expect(await queue.work()).toMatchObject({ released: 0, failed: 1 });
+    expect(keys).toHaveLength(1);
+    expect(queue.pending()).toEqual([]);
+    const [failed] = await queue.failed();
+    expect(failed!.exception).toContain(`Provider said ${reason}.`);
+    expect(failed!.payload).not.toContain('ada@example.com');
+  });
+
+  it('releases a throttled mail for the seconds the provider named, not 10', async () => {
+    const { queue, clock } = await queued(delivery('throttled', 90));
+    expect(await queue.work()).toMatchObject({ released: 1 });
+    clock.travel({ seconds: 89 });
+    expect(await queue.work()).toMatchObject({ processed: 0 });
+    clock.travel({ seconds: 1 });
+    expect(await queue.work()).toMatchObject({ processed: 1 });
+  });
+
+  it('retries throttled without seconds after the ordinary 10 s backoff', async () => {
+    const { queue, clock } = await queued(delivery('throttled'));
+    expect(await queue.work()).toMatchObject({ released: 1 });
+    clock.travel({ seconds: 9 });
+    expect(await queue.work()).toMatchObject({ processed: 0 });
+    clock.travel({ seconds: 1 });
+    expect(await queue.work()).toMatchObject({ processed: 1 });
+  });
+
+  it.each([
+    [0, 1],
+    [1.5, 2],
+    [86_400, 3600],
+  ])('holds a wait of %s s back for %s s (rounded up, at least 1 s, at most an hour)', async (seconds, expected) => {
+    const { queue, clock } = await queued(delivery('unavailable', seconds));
+    expect(await queue.work()).toMatchObject({ released: 1 });
+    clock.travel({ milliseconds: (expected - 0.25) * 1000 });
+    expect(await queue.work()).toMatchObject({ processed: 0 });
+    clock.travel({ milliseconds: 250 });
+    expect(await queue.work()).toMatchObject({ processed: 1 });
+  });
+
+  it.each([Number.NaN, -1, Number.POSITIVE_INFINITY])('keeps the delivery error and the 10 s backoff for a wait of %s', async (seconds) => {
+    const { queue, clock } = await queued(delivery('throttled', seconds));
+    expect(await queue.work()).toMatchObject({ released: 1 });
+    clock.travel({ seconds: 9 });
+    expect(await queue.work()).toMatchObject({ processed: 0 });
+    clock.travel({ seconds: 1 });
+    expect(await queue.work()).toMatchObject({ processed: 1 });
+    // not a QueueError for a release the job never made: the failure of the last try names the delivery
+    for (const wait of [60, 300, 300]) {
+      clock.travel({ seconds: wait });
+      await queue.work();
+    }
+    const [failed] = await queue.failed();
+    expect(failed!.exception).toContain('Provider said throttled.');
+  });
+
+  it.each<MailDeliveryReason>(['throttled', 'unavailable'])('fails the last attempt of a %s mail with the delivery error, after four waits and one key', async (reason) => {
+    const { queue, clock, keys } = await queued(delivery(reason, 7));
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      expect(await queue.work()).toMatchObject({ released: 1, failed: 0 });
+      clock.travel({ seconds: 7 });
+    }
+    expect(await queue.work()).toMatchObject({ released: 0, failed: 1 });
+    expect(keys).toHaveLength(5);
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toMatch(/^marmeon-mail-./);
+    const [failed] = await queue.failed();
+    expect(failed!.exception).toContain(`Provider said ${reason}.`);
+    expect(failed!.exception).not.toContain('released on its last attempt');
+  });
+
+  it('reaches the caller of mailer.queue() as a QueueError on the sync connection, which runs a job once', async () => {
+    const { transport } = counting(delivery('throttled', 30));
+    const application = await createApplication({
+      root: import.meta.dirname,
+      discover: false,
+      providers: [EncryptionServiceProvider, QueueServiceProvider, MailServiceProvider],
+    }, {
+      env: { LOG_LEVEL: 'silent', APP_KEY: KEY, NODE_ENV: 'test', QUEUE_DRIVER: 'sync', QUEUE_FAILED_DRIVER: 'null' },
+      override: (c) => {
+        c.instance(Clock, new TestClock());
+        c.instance(MailTransport, transport);
+      },
+    });
+    try {
+      const error = await application.container.make(Mailer).queue(new ResetMail('https://app.test/reset')).then(() => undefined, (caught: unknown) => caught);
+      expect(error).toBeInstanceOf(QueueError);
+      expect(error).not.toBeInstanceOf(MailDeliveryError);
+    } finally {
+      await application.shutdown();
+    }
+  });
+});

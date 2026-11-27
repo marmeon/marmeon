@@ -7,12 +7,21 @@ export interface MailReceipt {
   readonly messageId: string | undefined;
 }
 
+/** What the framework hands a transport besides the message. A transport may ignore both; `mailer.send()` hands it an empty object, a caller outside the framework may hand none. */
+export interface MailSendOptions {
+  /** Aborts when the job that sends the mail runs out of time or the worker must stop; pass it on to the request. Not set for `mailer.send()`. */
+  readonly signal?: AbortSignal;
+  /** Names the mail for the provider's duplicate protection; the same for every attempt of one queued mail. Not set for `mailer.send()`, which never retries. */
+  readonly idempotencyKey?: string;
+}
+
 /**
  * Delivers messages — the one thing a transport does — and returns the provider's message id. A transport a package brings
  * (`static mailDrivers`) is responsible for its own route to the provider, TLS included. See `docs/drivers.md#mail-transports`.
  */
 export interface MailTransport {
-  send(message: MailMessage): Promise<MailReceipt>;
+  /** Throw a `MailDeliveryError` when the provider does not take the mail: the queue retries what a retry can save and fails the rest at once. */
+  send(message: MailMessage, options?: MailSendOptions): Promise<MailReceipt>;
   /** Closes connections the transport holds; the framework calls it at shutdown, when the transport was built. */
   close?(): Promise<void>;
 }
