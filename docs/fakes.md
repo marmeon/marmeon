@@ -76,6 +76,9 @@ its composed message and, for a queued one, its queue options:
 its message says the mail was queued. The fake does not put queued mails on the queue: with `mail: 'real'` they go through the
 queue and its `marmeon.mail` job like in production. The [mail](mail.md) page covers writing mails.
 
+The fake dispatches no `MailSent`: no transport takes its mails. A listener of that event is tested with `mail: 'real'` and `MAIL_DRIVER=array`, or
+by building the event with `new MailSent({ … })` ([mail](mail.md#knowing-when-a-mail-went-out)).
+
 `send()` resolves with a made-up message id (`<fake-1@marmeon.test>`), different for every mail. `failNext(error, times)` makes
 the next send fail, to test what the app does when the provider is down: `app.mail.failNext(new Error('smtp down'))` fails the
 next `send()` with that error, shows the failure on the `mail.send` channel, and records nothing for it. Without an error it

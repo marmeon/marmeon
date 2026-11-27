@@ -1,10 +1,11 @@
-import { Application, Clock, Logger, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
+import { Application, Clock, EventDispatcher, Logger, Redactor, type Container, type Resolver, type ServiceProvider } from '@marmeon/core';
 import { collectDrivers, withCode } from '@marmeon/core/internal';
 import { devOnly } from '@marmeon/core/dev';
 import type { HttpClient } from '@marmeon/fetch';
 import { BUILT_IN_MAIL_DRIVERS, fromDefaultWarning, LOG_MAILER_WARNING, MailConfig, POSTMARK_TEST_TOKEN, POSTMARK_TEST_TOKEN_WARNING } from './config.ts';
 import { MailError, Mailer, MailSetupError, TransportMailer, type MailQueue } from './mailer.ts';
 import { importFetch, type FetchModule } from './drivers/api.ts';
+import { mailSentReporter } from './events.ts';
 import { MailPreviews } from './preview.ts';
 import { SendQueuedMail } from './queued.ts';
 import { PostmarkTransport } from './drivers/postmark.ts';
@@ -15,6 +16,7 @@ export { fromHtml, Html, html, raw } from './html.ts';
 export { fromMjml, Mjml, mjml, MjmlError } from './mjml.ts';
 export type { Address, Attachment, Envelope, Mailable, MailContent, MailMessage } from './message.ts';
 export { MailConfig } from './config.ts';
+export { MailSent } from './events.ts';
 export { MailDeliveryError, MailError, Mailer, MailSetupError } from './mailer.ts';
 export type { MailDeliveryReason, QueueMailOptions, SentMail } from './mailer.ts';
 export { calendarEvent } from './ics.ts';
@@ -104,8 +106,10 @@ export class MailServiceProvider implements ServiceProvider {
       }
       return container.make(module.Queue).dispatch(SendQueuedMail, payload, options);
     };
-    container.singleton(Mailer, (c) => new TransportMailer(() => c.make(MailTransport), config.from, queue, c.make(Application)));
-    container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport), c.make(Application)));
+    // Listeners of MailSent are built from the root container on both paths, like the queue's job events.
+    const reporter = mailSentReporter(config.driver, () => container.make(EventDispatcher), () => container.make(Logger).child({ channel: 'mail' }), () => container.make(Redactor));
+    container.singleton(Mailer, (c) => new TransportMailer(() => c.make(MailTransport), config.from, queue, c.make(Application), reporter));
+    container.bind(SendQueuedMail, (c) => new SendQueuedMail(c.make(MailTransport), c.make(Application), reporter));
   }
 
   /** The transport of an API driver; the `HttpClient` is resolved for every request, so `app.http` of a test app is the one used. */

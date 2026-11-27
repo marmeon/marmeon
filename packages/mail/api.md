@@ -152,6 +152,28 @@ export interface MailSendOptions {
     readonly signal?: AbortSignal;
     readonly idempotencyKey?: string;
 }
+// MailSent
+export declare class MailSent {
+    #private;
+    readonly mailable: string;
+    readonly driver: string;
+    readonly messageId: string | undefined;
+    readonly to: readonly string[];
+    readonly cc: readonly string[];
+    readonly bcc: readonly string[];
+    readonly subject: string;
+    readonly queued: boolean;
+    constructor(data: {
+        mailable: string;
+        driver: string;
+        messageId?: string | undefined;
+        to: readonly string[];
+        cc?: readonly string[];
+        bcc?: readonly string[];
+        subject: string;
+        queued: boolean;
+    });
+}
 // MailServiceProvider
 export declare class MailServiceProvider implements ServiceProvider {
     #private;
