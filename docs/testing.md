@@ -5,7 +5,7 @@
 A feature test boots your real application and sends requests through its real HTTP kernel: the middleware, the session, the
 controller and the page all run as they do for a browser, without a server and without a port. `@marmeon/testing` builds that test
 app, gives it a fresh database for every test that asks for one, puts fakes in place of mail, the queue, notifications, chat
-messages, outgoing requests and storage, and adds assertions for pages, redirects, validation and flash messages. The tests run under
+messages, search, outgoing requests and storage, and adds assertions for pages, redirects, validation and flash messages. The tests run under
 [Vitest](https://vitest.dev).
 
 ```ts title="modules/notes/notes.test.ts"
@@ -403,6 +403,6 @@ calls it right after `goto()`.
 
 - [HTTP tests](http-tests.md): requests, sessions, signing in and every assertion.
 - [Database testing](database-testing.md): the refreshed database, factories and database assertions.
-- [Fakes](fakes.md): mail, the queue, notifications, chat messages, outgoing requests, storage, events, live hints and the schedule.
+- [Fakes](fakes.md): mail, the queue, notifications, chat messages, search, outgoing requests, storage, events, live hints and the schedule.
 - [Time](time.md): moving the app's clock.
 - [Testing pages](testing-pages.md): pages, islands, layers and server rendering.

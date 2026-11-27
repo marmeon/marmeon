@@ -263,4 +263,14 @@ describe('the optional peers of createTestApp()', () => {
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) expect(specifier === '@marmeon/chat-notifications' || specifier.startsWith('@marmeon/chat-notifications/')).toBe(true);
   });
+
+  it('has importSearch answer through importOptional alone, and load only the search package', () => {
+    const search = readFileSync(new URL('./import-search.ts', import.meta.url), 'utf8');
+    const body = search.match(/async function importSearch\([^)]*\)[^{]*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+    expect(body.trim()).toBe("return importOptional('@marmeon/search', load);");
+    const loader = search.match(/const loadSearch = [^\n]*/)?.[0] ?? '';
+    const specifiers = [...loader.matchAll(/import\('([^']+)'\)/g)].map((match) => match[1]!);
+    expect(specifiers.length).toBeGreaterThan(0);
+    for (const specifier of specifiers) expect(specifier === '@marmeon/search' || specifier.startsWith('@marmeon/search/')).toBe(true);
+  });
 });

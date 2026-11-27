@@ -55,6 +55,9 @@
       "path": "../storage"
     },
     {
+      "path": "../search"
+    },
+    {
       "path": "../live"
     },
     {

@@ -100,7 +100,7 @@ it('lets the author edit a note and refuses anyone else', async () => {
 ## Fakes
 
 Six fakes are on by default as soon as the app has the package: `app.mail`, `app.queue`, `app.notifications`, `app.chat`,
-`app.http` and `app.storage` (`docs/fakes.md`). Those services never send, post, request, queue for real or write to disk.
+`app.http` and `app.storage` (`docs/fakes.md`), and `app.search` unless the app selects `SEARCH_DRIVER=database`. Those services never send, post, request, queue for real or write to disk.
 Nothing else is replaced: an HTTP client other than the `HttpClient` of `@marmeon/fetch`, or another provider SDK, still reaches the real service, so replace it in the test with
 `override` (`docs/testing.md#replacing-services`), and a Postgres test still needs its database server.
 `app.events` is not a fake: it records every event, and the listeners still run. `app.schedule` runs the real schedule on the test's
@@ -112,6 +112,7 @@ clock and needs `@marmeon/scheduler`.
 - Files: the storage fake keeps every disk in memory, so a test never makes a temporary folder. `app.storage.disk('local').assertExists(key)`,
   `assertMissing(key)`, `assertCount(n, directory)`. `app.upload(routeName, field, file)` sends a file through the route's real
   upload target (`docs/fakes.md#storage`, `docs/http-tests.md#uploads`). `storage: 'real'` writes to real disks; do not use it.
+- Search: on any driver but `database` (the default), or with `search: 'fake'`, `app.search.assertIndexed(PageIndex, page.id)`; on `database` the test searches its database (`docs/fakes.md#search`).
 - Events: `app.events.assertDispatched(Event)`; `events: [Event]` holds back the listeners of that event (`docs/fakes.md#events`).
 - Time: `app.freeze(Date.parse('2026-10-04T12:00:00Z'))`, `app.travel({ minutes: 5 })`, `app.travelTo(date)`. Never `Date.now()` or a sleep
   in a test (`docs/time.md#moving-the-clock`). `app.schedule.run(time)` runs the tasks due at a time (`docs/fakes.md#the-schedule`).

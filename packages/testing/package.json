@@ -73,6 +73,7 @@
     "@marmeon/notifications": "workspace:*",
     "@marmeon/queue": "workspace:*",
     "@marmeon/scheduler": "workspace:*",
+    "@marmeon/search": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/storage": "workspace:*",
     "marmeon": "workspace:*",
@@ -109,6 +110,9 @@
     "@marmeon/scheduler": {
       "optional": true
     },
+    "@marmeon/search": {
+      "optional": true
+    },
     "@marmeon/session": {
       "optional": true
     },
@@ -134,6 +138,7 @@
     "@marmeon/notifications": "workspace:*",
     "@marmeon/queue": "workspace:*",
     "@marmeon/scheduler": "workspace:*",
+    "@marmeon/search": "workspace:*",
     "@marmeon/session": "workspace:*",
     "@marmeon/storage": "workspace:*",
     "marmeon": "workspace:*"

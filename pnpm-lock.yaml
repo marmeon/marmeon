@@ -1416,6 +1416,9 @@ importers:
       '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../scheduler
+      '@marmeon/search':
+        specifier: workspace:*
+        version: link:../search
       '@marmeon/session':
         specifier: workspace:*
         version: link:../session

@@ -422,6 +422,14 @@ A rebuild fills an index again from all of its rows, and a flush empties it.
 
 Your tests search through a fake that keeps its documents in memory, unless they run on the `database` driver.
 
+`createTestApp()` replaces the search driver with the fake as soon as your app has `@marmeon/search`, except when the app selects
+`SEARCH_DRIVER=database`, the default. That driver searches the test database, which your test has already, so the test runs on the
+real text search. Pass `search: 'fake'` to put the fake in place on every driver, and `search: 'real'` to keep the configured one.
+
+The fake keeps `Search` in front of it, so your index classes read their rows and build their documents as in production.
+`app.search.assertIndexed(PageIndex, page.id)` asserts what reached the index. [Fakes](fakes.md#search) lists every assertion and
+how the fake searches.
+
 ## Writing a driver
 
 A provider can bring a search driver of its own under a name that `SEARCH_DRIVER` selects; [search drivers](drivers.md#search-drivers)

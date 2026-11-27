@@ -12,6 +12,7 @@ default, as soon as the app has the package:
 | `app.queue` | The `Queue`. Records jobs, and `work()` runs them. | `queue: 'real'` |
 | `app.notifications` | `Notifications`. Records notifications, and `deliver()` delivers them. | `notifications: 'real'` |
 | `app.chat` | The `ChatNotifier`. Records chat messages instead of posting them. | `chat: 'real'` |
+| `app.search` | The search driver. Keeps every index in memory and records every write. Off by default with `SEARCH_DRIVER=database`. | `search: 'real'` |
 | `app.http` | The `HttpClient`. Answers outgoing requests from replies you register, and refuses private addresses as the real client does. | `http: 'real'` |
 | `app.storage` | `Storage`. Every disk lives in memory. | `storage: 'real'` |
 | `app.events` | Nothing. Records every event; listeners still run unless you hold them back. | `events: 'real'`, the default |
@@ -26,8 +27,8 @@ A getter whose package the app lacks, or whose fake the test turned off, says so
 app.queue needs @marmeon/queue in the app (and not createTestApp(…, { queue: 'real' })).
 ```
 
-A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, chat, storage, HTTP client and schedule fakes (`MailFake`,
-`QueueFake`, `NotificationFake`, `ChatFake`, `StorageFake`, `HttpClientFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
+A test reaches the fakes through `app`. The classes behind the mail, queue, notifications, chat, search, storage, HTTP client and schedule fakes (`MailFake`,
+`QueueFake`, `NotificationFake`, `ChatFake`, `SearchFake`, `StorageFake`, `HttpClientFake`, `ScheduleTester`) are in the `/testing` subpath of their package, for the one who types a
 variable with them: `import type { QueueFake } from '@marmeon/queue/testing'`. The same holds for `BroadcastTester` and `LiveStreamReader` (`@marmeon/live/testing`) and for `DevtoolsTester` (`import type { DevtoolsTester } from '@marmeon/devtools/testing'`). A `*Tester` drives or reads the real
 service: `ScheduleTester`, `BroadcastTester` and `DevtoolsTester`. `createTestApp()` makes every fake: a test does not construct
 `MailFake` itself, its constructor is not part of the API.
@@ -263,6 +264,58 @@ A failed assertion names a destination by its name or host, never by its address
 
 With `chat: 'real'` the configured driver posts and `app.chat` throws. `app.http` answers the request the driver makes, and
 `app.queue.work()` runs a queued message. The [chat notifications](chat-notifications.md#testing) page covers the package.
+
+## Search
+
+The search fake of `@marmeon/search` takes the place of the search driver. The real `Search` stays in front of it, so `index()`
+reads the rows through `source()`, `includes()` and `toDocument()` run, and every input is checked as in production. The fake keeps
+the documents in memory, records every write and answers searches from what it holds.
+
+The `database` driver needs nothing but the test database, so a test app keeps it when the app selects `SEARCH_DRIVER=database`,
+the default. Any other driver is replaced by the fake. `search: 'fake'` puts the fake in place on every driver, and
+`search: 'real'` keeps the configured one:
+
+```ts title="modules/pages/page-publishing.test.ts"
+import { Search } from '@marmeon/search';
+import { createTestApp } from '@marmeon/testing';
+import { expect, it } from 'vitest';
+import application from '../../bootstrap/app.ts';
+import { PageFactory } from './factories/PageFactory.ts';
+import { PageIndex } from './PageIndex.ts';
+import { PagePublishing } from './PagePublishing.ts';
+
+it('brings a published page into the search index', async () => {
+  const app = await createTestApp(application, { database: 'refresh', search: 'fake' });
+  const page = await app.factory(PageFactory).create({ published_at: null });
+
+  await app.make(PagePublishing).publish(page.id);
+
+  app.search.assertIndexed(PageIndex, page.id);
+  const result = await app.make(Search).query({ in: PageIndex, term: page.title });
+  expect(result.ok && result.value.data[0]?.key).toBe(page.id);
+});
+```
+
+| Assertion | Passes when |
+| --- | --- |
+| `assertIndexed(Index, key)` | The index holds the document of `key` now. Given a function of the document instead of a key, it passes when the function returns `true` for one document. |
+| `assertRemoved(Index, key)` | A removal of `key` was written, by `remove()`, by an `index()` whose row is gone or that `includes()` refused, or by a flush of the index, and the index does not hold `key` now. |
+| `assertNothingIndexed()` | No document was written to any index. Removals do not count. |
+
+`documents(Index)` returns the documents an index holds, each with its `key`, `locale`, `fields` and `filters` as the driver got
+them. `written` returns every write in order, each with its `method` (`upsert`, `delete` or `flush`), the `index`, the `keys` and,
+for an `upsert`, the `documents`.
+
+The fake writes after the commit, so a write inside a transaction that rolls back records nothing.
+
+A search finds a document that holds every word of the term in its fields, compared without case and diacritics, so `hauser` finds
+`Häuser`. With `prefix`, the last word also matches the start of a word. The score adds up the weights of the fields that matched,
+4 for `A` down to 1 for `D`, and the best hits come first. Filters, the locale and the cap of 1000 hits follow the rules of
+[searching](full-text-search.md#searching), and the fake compares a filter value with its type, so `1` does not match `true`. An excerpt shows the best field that matched, with the matching words marked.
+
+`failNext(kind, times)` makes the next searches return an `err`, of the kind `unavailable` by default or `missing-index`.
+
+With `search: 'real'`, on the `database` driver without `search: 'fake'`, or when your `override` binds a search driver of its own, `app.search` throws. The [search](full-text-search.md#testing) page covers the package.
 
 ## Storage
 
