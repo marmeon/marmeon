@@ -1,4 +1,4 @@
-import { ConsoleLogger, createApplication, defineModule, type Application, type Logger } from '@marmeon/core';
+import { ConsoleLogger, createApplication, defineModule, type Application, type ConfigDefinition, type Logger } from '@marmeon/core';
 import { Connections, DatabaseServiceProvider, Migrator, sql } from '@marmeon/database';
 import { SearchServiceProvider } from '../provider.ts';
 import type { SearchIndexClass } from '../search-index.ts';
@@ -16,9 +16,9 @@ const PAGE_MIGRATIONS = new URL('./migrations/', import.meta.url);
 
 /**
  * An app on a fresh database with `SEARCH_DRIVER=database`, the given indexes registered and every migration run: the `pages` table and
- * the stub migration of the package, `migrate` passed to the run. `close()` shuts the app down and drops the Postgres database.
+ * the stub migration of the package, `migrate` passed to the run, and `config` listed in the app's config (such as a `defineSearch()`). `close()` shuts the app down and drops the Postgres database.
  */
-export async function migratedApp(driver: 'sqlite' | 'pgsql', indexes: readonly SearchIndexClass[], migrate: Parameters<Migrator['migrate']>[0] = {}): Promise<{ app: Application; close: () => Promise<void> }> {
+export async function migratedApp(driver: 'sqlite' | 'pgsql', indexes: readonly SearchIndexClass[], migrate: Parameters<Migrator['migrate']>[0] = {}, config: readonly ConfigDefinition<unknown>[] = []): Promise<{ app: Application; close: () => Promise<void> }> {
   let env: Record<string, string> = { DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:' };
   let drop = async () => {};
   if (driver === 'pgsql') {
@@ -40,6 +40,7 @@ export async function migratedApp(driver: 'sqlite' | 'pgsql', indexes: readonly 
         // The migrations come from the repository: a root inside the workspace, as an app's would be.
         root: workspaceTempDir('marmeon-search-'),
         discover: false,
+        config: [...config],
         providers: [DatabaseServiceProvider, SearchServiceProvider],
         // Pages first: the stub's module runs after it, as a published stub runs after the app's own tables.
         modules: [defineModule({ name: 'pages', migrations: PAGE_MIGRATIONS, searchIndexes: [...indexes] }), defineModule({ name: 'system', migrations: STUB_MIGRATIONS })],

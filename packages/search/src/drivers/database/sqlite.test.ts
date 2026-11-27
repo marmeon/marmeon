@@ -1,7 +1,8 @@
-import type { Application, Resolver } from '@marmeon/core';
+import { Application, type Resolver } from '@marmeon/core';
 import { Connections, DatabaseHealthCheck, sql, type Connection, type Database } from '@marmeon/database';
 import { afterEach, describe, expect, it } from 'vitest';
 import { migratedApp } from '../../__fixtures__/databases.ts';
+import { defineSearch } from '../../config.ts';
 import { SearchDriver, type SearchDriverContext } from '../../driver.ts';
 import { SearchSetupError } from '../../errors.ts';
 import { MAX_LOCALE_LENGTH, Search, type SearchRequest } from '../../search.ts';
@@ -427,6 +428,18 @@ describe('the database driver on SQLite: several indexes, pages and excerpts', (
     expect(statements).toEqual([]);
   });
 
+  it('refuses filters that are no plain object in the driver itself, so no filter drops out', async () => {
+    const started = await start();
+    const page = await insertPage(started.db, { title: 'whale', tenant: 1 });
+    await started.search.index(PageIndex, page.id);
+    const info = started.app.container.make(SearchIndexes).info(PageIndex);
+    const inherited = Object.create({ tenant: 2 }) as object;
+    const hidden = Object.defineProperty({}, 'tenant', { value: 2, enumerable: false });
+    for (const filters of [new Map([['tenant', 2]]), inherited, hidden, { [Symbol('tenant')]: 2 }, null]) {
+      await expect(querySqlite(started.db, { indexes: [info], tokens: ['whale'], term: 'whale', filters: filters as never, prefix: false, excerpts: false, offset: 0, limit: 10 })).rejects.toThrow(TypeError);
+    }
+  });
+
   it('counts a total below the cap exactly, also on a page after the first', async () => {
     const started = await start();
     const ids: number[] = [];
@@ -545,6 +558,33 @@ describe('the database driver on SQLite: writes', () => {
     await integrity(started.db);
   });
 
+  it('stores the last document of a key that one write names twice, and keeps the FTS index whole', async () => {
+    const started = await start();
+    const info = started.app.container.make(SearchIndexes).info(PostIndex);
+    await started.app.container.make(SearchDriver).upsert(info, [
+      { key: 'twice', locale: null, fields: { title: 'whale' }, filters: {} },
+      { key: 'twice', locale: null, fields: { title: 'orca' }, filters: {} },
+    ]);
+    expect(keysOf(await search(started, { in: PostIndex, term: 'orca' }))).toEqual(['twice']);
+    expect(keysOf(await search(started, { in: PostIndex, term: 'whale' }))).toEqual([]);
+    expect(await rowCounts(started.db)).toEqual({ documents: 1, indexed: 1 });
+    const revision = (await sql<{ revision: number }>`select revision from search_documents where key = '"twice"'`.execute(started.db)).rows[0]!.revision;
+    expect(Number(revision)).toBe(1);
+    await integrity(started.db);
+  });
+
+  it('does not start with two defineSearch() in its config, on SQLite too (Q9)', async () => {
+    const error = await migratedApp('sqlite', INDEXES, {}, [defineSearch({}), defineSearch({})]).then(
+      ({ close }) => {
+        running.push(close);
+        return undefined;
+      },
+      (e: unknown) => e as Error,
+    );
+    expect(error).toBeInstanceOf(SearchSetupError);
+    expect(error!.message).toBe('[marmeon:Q9] The app has more than one defineSearch(…) in its config; keep one.');
+  });
+
   it('keeps one index apart from another under the same key', async () => {
     const started = await start();
     const page = await insertPage(started.db, { title: 'whale' });
@@ -585,11 +625,20 @@ describe('the database driver at the start', () => {
     expect(requirements).toEqual([]);
   });
 
-  it('stops on a Postgres connection with Q9 until its SQL is built, and requires nothing', async () => {
+  it('starts on a Postgres connection without connecting to it, and requires the table', async () => {
     const requirements: unknown[] = [];
-    const error = await driverOn('pgsql').boot!(fakeApp(requirements)).then(() => undefined, (e: unknown) => e as Error);
+    const app = { container: { make: (token: unknown) => (token === Application ? { definition: { config: [] }, modules: [], providers: [] } : { require: (r: unknown) => requirements.push(r) }) } } as unknown as Application;
+    await driverOn('pgsql').boot!(app);
+    expect(requirements).toEqual([
+      { connection: 'default', table: 'search_documents', columns: ['id', 'index_name', 'key', 'locale', 'config', 'filters', 'a', 'b', 'c', 'd', 'revision'], secrets: ['a', 'b', 'c', 'd'] },
+    ]);
+  });
+
+  it('stops on a database driver it has no SQL for with Q9, and requires nothing', async () => {
+    const requirements: unknown[] = [];
+    const error = await driverOn('oracle').boot!(fakeApp(requirements)).then(() => undefined, (e: unknown) => e as Error);
     expect(error).toBeInstanceOf(SearchSetupError);
-    expect(error!.message).toBe('[marmeon:Q9] SEARCH_DRIVER=database on "pgsql" is not built in this version of @marmeon/search. Use SQLite, or select another driver.');
+    expect(error!.message).toBe('[marmeon:Q9] SEARCH_DRIVER=database has no SQL for the database driver "oracle". Use SQLite or Postgres, or select another driver.');
     expect(requirements).toEqual([]);
   });
 

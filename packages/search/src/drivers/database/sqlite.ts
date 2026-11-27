@@ -20,6 +20,12 @@ function filterPath(name: string): string {
 
 /** The conditions every search shares, for the page and for the count: the match, the indexes, the locale and the filters. */
 function conditions(request: DriverQuery) {
+  const filters: unknown = request.filters;
+  // Only own enumerable string keys are read: a filter held anywhere else would drop out of the search, so anything else is refused.
+  const prototype: unknown = typeof filters === 'object' && filters !== null ? Object.getPrototypeOf(filters) : undefined;
+  if ((prototype !== Object.prototype && prototype !== null) || Reflect.ownKeys(filters as object).length !== Object.keys(filters as object).length) {
+    throw new TypeError('The search filters must be a plain object with enumerable string keys.');
+  }
   const parts = [
     sql`search_documents_fts match ${fts5Match(request.tokens, request.prefix)}`,
     sql`d.index_name in (${sql.join(request.indexes.map((index) => index.name))})`,

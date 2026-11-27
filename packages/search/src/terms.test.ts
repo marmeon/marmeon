@@ -136,7 +136,7 @@ describe('searchText()', () => {
     }
   });
 
-  it('drops NUL and the markers, and keeps everything else for websearch_to_tsquery', () => {
+  it('drops NUL and the markers, and keeps everything else for DriverQuery.term', () => {
     expect(searchText(`a${NUL}b${MARK_START}c${MARK_END}`)).toBe('abc');
     expect(searchText('"foo bar" -baz or qux')).toBe('"foo bar" -baz or qux');
   });

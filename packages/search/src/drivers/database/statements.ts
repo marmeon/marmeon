@@ -34,19 +34,40 @@ export function weightedTexts(index: IndexInfo, document: StoredDocument): reado
   return [texts[0]!, texts[1]!, texts[2]!, texts[3]!];
 }
 
+/** The last document of each key, in the order the keys first came: one statement must not touch a row twice. */
+function lastOfEachKey(documents: readonly StoredDocument[]): StoredDocument[] {
+  const byKey = new Map<string, StoredDocument>();
+  for (const document of documents) byKey.set(keyId(document.key), document);
+  return [...byKey.values()];
+}
+
 /**
  * Stores documents of an index, replacing those with the same keys: one statement per 100 documents, every value bound. A replaced
- * row counts its revision up, so a rebuild can tell a row that changed while it ran.
+ * row counts its revision up, so a rebuild can tell a row that changed while it ran. On SQLite the triggers of the stub keep the
+ * FTS5 table in step. On Postgres, `configuration` gives each document's text search configuration (by its locale), stored in
+ * `config`, and the statement writes `vector`: the text of each weight read with that configuration and weighted A to D.
  */
-export async function upsertDocuments(db: Connection<any>, index: IndexInfo, documents: readonly StoredDocument[]): Promise<void> {
-  for (const chunk of chunks(documents, UPSERT_CHUNK)) {
+export async function upsertDocuments(db: Connection<any>, index: IndexInfo, documents: readonly StoredDocument[], configuration?: (locale: string | null) => string): Promise<void> {
+  for (const chunk of chunks(lastOfEachKey(documents), UPSERT_CHUNK)) {
     const rows = chunk.map((document) => {
       const [a, b, c, d] = weightedTexts(index, document);
-      return sql`(${index.name}, ${keyId(document.key)}, ${document.locale}, ${null}, ${JSON.stringify(document.filters)}, ${a}, ${b}, ${c}, ${d})`;
+      const config = configuration ? configuration(document.locale) : null;
+      return sql`(${index.name}, ${keyId(document.key)}, ${document.locale}, ${config}, ${JSON.stringify(document.filters)}, ${a}, ${b}, ${c}, ${d})`;
     });
-    await sql`insert into search_documents (index_name, key, locale, config, filters, a, b, c, d) values ${sql.join(rows)}
-      on conflict (index_name, key) do update set locale = excluded.locale, config = excluded.config, filters = excluded.filters,
-      a = excluded.a, b = excluded.b, c = excluded.c, d = excluded.d, revision = search_documents.revision + 1`.execute(db);
+    const update = sql`on conflict (index_name, key) do update set locale = excluded.locale, config = excluded.config, filters = excluded.filters,
+      a = excluded.a, b = excluded.b, c = excluded.c, d = excluded.d`;
+    if (configuration === undefined) {
+      await sql`insert into search_documents (index_name, key, locale, config, filters, a, b, c, d) values ${sql.join(rows)}
+        ${update}, revision = search_documents.revision + 1`.execute(db);
+    } else {
+      // The configuration is a bound name, cast to regconfig: a name the database does not know fails the statement, never runs.
+      await sql`insert into search_documents (index_name, key, locale, config, filters, a, b, c, d, vector)
+        select v.index_name, v.key, v.locale, v.config, v.filters::jsonb, v.a, v.b, v.c, v.d,
+          setweight(to_tsvector(v.config::regconfig, v.a), 'A') || setweight(to_tsvector(v.config::regconfig, v.b), 'B') ||
+          setweight(to_tsvector(v.config::regconfig, v.c), 'C') || setweight(to_tsvector(v.config::regconfig, v.d), 'D')
+        from (values ${sql.join(rows)}) as v (index_name, key, locale, config, filters, a, b, c, d)
+        ${update}, vector = excluded.vector, revision = search_documents.revision + 1`.execute(db);
+    }
   }
 }
 

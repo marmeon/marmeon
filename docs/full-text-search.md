@@ -329,7 +329,8 @@ Once you have published it, `marmeon check` reports a migration that a newer ver
 it does for [every package that ships migrations](migrations.md#publishing-the-migrations-of-a-package).
 
 The migration makes two tables on the default connection. `search_documents` holds one row per document: the name of its index,
-its key, its locale, its filters and the text of its fields in the columns `a` to `d`, one column per weight. `search_rebuilds` holds the
+its key, its locale, on Postgres the text search configuration that read it, its filters and the text of its fields in the columns
+`a` to `d`, one column per weight. `search_rebuilds` holds the
 state of a running rebuild. The text columns are [secret](migrations.md#secret-columns), so `selectAll()`, `marmeon db:query` and the
 database MCP never show indexed text. What the schema builder cannot write is part of the migration as raw SQL, and `migrate` does
 not name those objects as unknown.
@@ -361,6 +362,83 @@ delete.
 
 `marmeon db:query` and the database MCP cannot read the FTS5 table or its shadow tables, like
 [any virtual table that raw SQL made](database.md#querying-a-connection).
+
+### Postgres
+
+On Postgres the driver searches with the text search built into Postgres, and needs no extension. The migration adds a column
+`vector` of the type `tsvector` to `search_documents`, with a GIN index, and a GIN index on the filters. When the driver stores a
+document, it reads the text of each weight with the text search configuration of the document's locale (see
+[Languages](#languages)) and writes the words, reduced to their stems, into `vector`, each marked with its weight.
+
+- **Words and stems.** A search finds the forms of a word that the configuration reduces to the same stem: in a German
+  document, `Haus` finds "Häuser", and in an English one, `house` finds "houses". Case does not count. Diacritics do count unless the
+  stemmer of the language folds them: in a document without a locale, `see` does not find "Sée".
+- **Every word counts.** A hit holds every word of the term. The term carries no syntax: quotes, a leading `-` and `or` are not
+  operators, so `"cat dog"`, `cat -dog` and `cat dog` find the same documents. A stop word of the document's language, such as
+  "the" or "or" in English, drops out of the term: in English documents, `cat or dog` finds those with both other words, and a term
+  of stop words alone finds nothing. `simple`, which reads documents without a locale (see [Languages](#languages)), has no stop
+  words, so there "or" and "the" are words a document must hold.
+- **Prefixes.** With `prefix: true`, the last word of the term also matches the start of a word: `häu` finds "Häuser". Use it for
+  search as you type.
+- **Ranking.** A hit's score comes from `ts_rank_cd`, which reads the document and the term alone: how often and how close
+  together the words of the term occur, each occurrence weighed by its field, `A` ten times `D`, `B` four times and `C` twice. The
+  score lies between 0 and 1.
+- **Excerpts.** `ts_headline` makes the excerpt of a hit from the text of its declared fields. It runs only for the hits of the
+  page, after the page is cut, so asking for excerpts costs no more for a search that matches many documents.
+- **Filters.** A filter value is compared with its type, as on SQLite: the filter `true` does not match a document that carries
+  `1`, and `"1"` does not match `1`.
+- **No typo tolerance.** Postgres finds a word only as it is written, or one of its forms. `hosue` does not find "house". If your
+  users need search that forgives typos, Meilisearch does that better.
+
+Like the text columns, `vector` is a column the migration makes with raw SQL, and `marmeon db:query` and the database MCP treat it as
+secret.
+
+### Languages
+
+Postgres reads the text of a document with a text search configuration, which knows the stems and the stop words of one language.
+The driver picks it by the document's locale, and searches each document with the configuration that wrote it. A search with a
+`locale` finds the documents of that locale and those without one; a search without one finds the documents of every locale.
+
+These languages, by their two-letter code, use a configuration every Postgres has:
+
+| Code | Configuration | Code | Configuration |
+| --- | --- | --- | --- |
+| `da` | `danish` | `nl` | `dutch` |
+| `de` | `german` | `no`, `nb`, `nn` | `norwegian` |
+| `en` | `english` | `pt` | `portuguese` |
+| `es` | `spanish` | `ro` | `romanian` |
+| `fi` | `finnish` | `ru` | `russian` |
+| `fr` | `french` | `sv` | `swedish` |
+| `hu` | `hungarian` | `tr` | `turkish` |
+| `it` | `italian` | | |
+
+The driver looks a locale up as it is, then by its language: `de-AT` reads with `german`. A locale it finds in neither way, and a
+document without a locale, are read with `simple`, which lowercases words and neither stems them nor drops stop words.
+
+Map locales of your own with `defineSearch()`, a configuration you list in the app's `config`:
+
+```ts title="config/search.ts"
+import { defineSearch } from '@marmeon/search';
+
+export const AppSearch = defineSearch({
+  languages: { 'de-CH': 'german', ga: 'irish' },
+});
+```
+
+List it in `bootstrap/app.ts`, beside the app's other configuration: `config: [AppConfig, AppSearch]`. An app has one
+`defineSearch()`. Your entries come before the built-in ones, and an entry for a whole locale such as `de-CH` comes before the one for
+its language. A locale that is no language tag, or a name that is not one of a configuration (lowercase letters, digits and
+underscores, without a schema), stops the start with [Q9](errors.md#server-error-codes). So do a second `defineSearch()`, whatever
+the driver, an option other than `languages`, options or a `languages` value that are no plain object, and one locale spelled twice. Recent versions of Postgres bring
+more configurations than the table names, such as `irish` above or `greek`, and a configuration of your own must exist in the
+database before it is used; create it in a migration. The driver asks the database for the
+configurations once, at the first search or write, and stops it with Q9 naming each configuration the database lacks. SQLite and
+Meilisearch do not read the map.
+
+A document keeps the configuration it was written with, in the column `config`. After you change the map,
+[rebuild the index](#rebuilding-and-flushing) so that every document reads with its new configuration. Until then, a search with a
+`locale` does not find a document of that locale that was written with another configuration than the one the map now gives, and
+no search finds a document whose configuration the map no longer gives for any locale.
 
 ## Meilisearch
 

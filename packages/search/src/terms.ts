@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 
 /*
- * Turns what a user types into values a driver binds: a term for `websearch_to_tsquery`, a token-only string for `to_tsquery`, an
- * FTS5 `MATCH` of quoted phrases and a Meilisearch filter. Tokens, the `to_tsquery` text, the FTS5 `MATCH` and the filter hold no
- * syntax from the input; the term for `websearch_to_tsquery` keeps its web-search syntax, which that function never rejects. No
- * IO. Internal: `index.ts` exports only the type `ExcerptSegment`.
+ * Turns what a user types into values a driver binds: the tokens (which the built-in drivers search, Postgres through
+ * `plainto_tsquery`), a token-only string for `to_tsquery`, an FTS5 `MATCH` of quoted phrases and a Meilisearch filter. Tokens, the
+ * `to_tsquery` text, the FTS5 `MATCH` and the filter hold no syntax from the input. `searchText()` gives the cleaned text with its
+ * syntax, as `DriverQuery.term` hands it to a driver of a package; no built-in driver reads it. No IO. Internal: `index.ts`
+ * exports only the type `ExcerptSegment`.
  */
 
 /** The most characters (code points) of a term that are read; the rest is cut off. */
@@ -49,7 +50,7 @@ function cut(text: string, max: number): string {
 }
 
 /**
- * The term as `websearch_to_tsquery` gets it, always bound: NFKC, at most {@link MAX_TERM_LENGTH} characters, cleaned by
+ * The user's text as `DriverQuery.term` carries it, for a driver to bind, never to splice: NFKC, at most {@link MAX_TERM_LENGTH} characters, cleaned by
  * {@link cleanText} (so `ab` NUL `cd` reads `abcd`, as the indexed text does).
  */
 export function searchText(term: string): string {
