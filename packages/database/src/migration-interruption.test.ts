@@ -1,20 +1,24 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { printable } from '@marmeon/core/internal';
 
 import { sql } from 'kysely';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { appOf as fakeApp, drivers, freshConnections, freshDatabase, silent, withMysql } from './__fixtures__/databases.ts';
 import type { ConnectionOptions } from './config.ts';
-import { Connections, DatabaseHealthCheck, MigrationLockLostError, MigrationStateError, Migrator } from './index.ts';
+import { Connections, DatabaseHealthCheck, MigrationLockLostError, MigrationLockTimeoutError, MigrationStateError, Migrator } from './index.ts';
 import { tableColumns } from './introspection.ts';
 import { INTERRUPTION_COLUMNS, createMigrationsTable, readInterruption } from './migration-state.ts';
 import { inspectionConnection, migratorConnection } from './migrator-connection.ts';
 import { SchemaRequirements } from './schema-requirements.ts';
+import { SchemaError } from './schema/schema.ts';
 import { UnsupportedDriverError } from './supported-driver.ts';
+import { CommandArgumentsError } from '@marmeon/core';
 import type { CommandInput } from 'marmeon';
 import type { TypeGenerator } from './types-gen/generator.ts';
-import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand } from './commands/migrate.ts';
+import { MigrateCommand, MigrateFreshCommand, MigrateResetCommand, MigrateRollbackCommand, MigrateStatusCommand } from './commands/migrate.ts';
+import { migrationChecksum } from './migrations/checksum.ts';
 import { PAUSE, type Pause } from './__fixtures__/migrations/state-pause/2026_01_31_000000_create_paused_table.ts';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -88,6 +92,23 @@ describe.each(drivers)('a table of the app named migration_interruption on %s', 
       await process.destroy();
       await drop();
     }
+  });
+
+  it('runs a plain migrate when `retrying` names a row that is not there: no marker table is touched, no interruption reported', async () => {
+    const left: unknown[] = [];
+    const runs = await migratorOn(connections, auth).migrate({ retrying: [{ name: '2026_01_01_000000_create_users_table', startedAt: '2026-11-27T10:00:00.000Z' }], onInterrupted: (found) => left.push(found) });
+    expect(runs.map((entry) => entry.name)).toEqual(['2026_01_01_000000_create_users_table']);
+    expect(left).toEqual([]);
+    expect(await tables()).toContain('users');
+  });
+
+  it.each(['retry', 'done'])('has nothing to resolve for migrate --interrupted=%s: exit 1, and nothing is migrated', async (how) => {
+    const printed: string[] = [];
+    const output = { line() {}, info() {}, success() {}, warn() {}, error: (text: string) => void printed.push(text), table() {} };
+    const input = { options: { interrupted: how }, output, root: '/' } as unknown as CommandInput;
+    expect(await new MigrateCommand(migratorOn(connections, auth), {} as TypeGenerator).handle(input)).toBe(1);
+    expect(printed).toEqual(['Nothing to resolve: no migration of the database connection "default" stopped halfway (only MySQL marks one). Nothing was migrated.']);
+    expect(await tables()).not.toContain('users');
   });
 
   it('is not made by a migration of the migrator’s own tables: migrate creates no migration_interruption', async () => {
@@ -172,7 +193,7 @@ withMysql('a migration that did not finish, on MySQL', () => {
       expect(error, name).toBeInstanceOf(MigrationStateError);
       expect(error, name).toMatchObject({ reason: 'interrupted' });
       expect((error as Error).message, name).toMatch(/^\[marmeon:D32\] Migration 2026_01_06_000000_add_recovery_code_to_accounts_table \(module "accounts"\) started its down\(\)/);
-      expect((error as Error).message, name).toContain('does not start until that is resolved.');
+      expect((error as Error).message, name).toContain('runs no migration until that is resolved.');
     }
     expect({ tables: await catalog(connectionsOf([])), rows: await recorded(connectionsOf([])) }).toEqual(before);
     expect(await markerRows(connectionsOf([]))).toBe(1);
@@ -603,7 +624,7 @@ withMysql('a migration that did not finish, on MySQL', () => {
       const migrate = say();
       await expect(new MigrateCommand(migratorOf([counter, halfway]).migrator, {} as TypeGenerator).handle(migrate.input)).rejects.toThrow(/Duplicate column name/);
       expect(migrate.printed.filter((line) => line.startsWith('error:'))).toEqual([
-        'error: Migration 2026_05_02_000000_multiply_then_fail (module "halfway") stopped during its up() on the database connection "default" and is marked as not finished: every query of a process that starts, and `migrate`, `migrate:rollback` and `migrate:reset`, are refused until you resolve that. See docs/migrations.md#a-migration-that-stopped-halfway.',
+        'error: Migration 2026_05_02_000000_multiply_then_fail (module "halfway") stopped during its up() on the database connection "default" and is marked as not finished: every query of a process that starts is refused, and `migrate` (without `--interrupted`), `migrate:rollback` and `migrate:reset` run no migration, until you resolve that: undo what it did and run "marmeon migrate --interrupted=retry", or finish it by hand and run "marmeon migrate --interrupted=done". See docs/migrations.md#a-migration-that-stopped-halfway.',
       ]);
     });
 
@@ -625,6 +646,520 @@ withMysql('a migration that did not finish, on MySQL', () => {
       const input = { options: { force: true }, output, root: '/' } as unknown as CommandInput;
       await expect(new Command(migratorOf([gadgets]).migrator).handle(input)).rejects.toThrow(/no_such_table/);
       expect(printed).toEqual([expect.stringMatching(/^Migration 2026_05_03_000000_create_gadgets_table \(module "down"\) stopped during its down\(\) on the database connection "default" and is marked/)]);
+    });
+  });
+
+  describe('migrate --interrupted', () => {
+    const counter = moduleOf('counter');
+    const flaky = moduleOf('flaky');
+    const widgets = moduleOf('create');
+    const later = moduleOf('later');
+    const early = moduleOf('early');
+    const quiet = moduleOf('quiet');
+    const halfway = moduleOf('halfway');
+    const gadgets = moduleOf('down');
+    const FLAKY = '2026_05_12_000000_multiply_then_maybe_fail';
+    const GADGETS = '2026_05_03_000000_create_gadgets_table';
+    const look = (connections: Connections) => inspectionConnection(connections);
+    const hasTable = async (connections: Connections, table: string) => (await catalog(connections)).includes(table);
+    const counterN = async (connections: Connections) => (await sql<{ n: number }>`select n from counter`.execute(look(connections))).rows.map((row) => Number(row.n));
+    const markers = (connections: Connections) => migratorConnection(connections).selectFrom('migration_interruption').selectAll().execute();
+    const migratorOf = (modules: ModuleDefinition[]) => {
+      const connections = connectionsOf(modules);
+      return { connections, migrator: new Migrator(appOf(modules), connections) };
+    };
+    const failing = (on: boolean) => {
+      (globalThis as { interruptionFails?: boolean }).interruptionFails = on;
+      onTestFinished(() => void delete (globalThis as { interruptionFails?: boolean }).interruptionFails);
+    };
+    /** What a command prints, and the input that makes it print there. */
+    const inputOf = (options: Record<string, unknown>) => {
+      const printed: string[] = [];
+      const line = (kind: string) => (text: string) => void printed.push(`${kind}: ${text}`);
+      const output = { line: line('line'), info: line('info'), success: line('success'), warn: line('warn'), error: line('error'), table: () => {}, json: (value: unknown) => void printed.push(`json: ${JSON.stringify(value)}`) };
+      return { printed, input: { options, output, root: '/' } as unknown as CommandInput };
+    };
+    const run = (migrator: Migrator, options: Record<string, unknown>) => {
+      const { printed, input } = inputOf(options);
+      return new MigrateCommand(migrator, {} as TypeGenerator).handle(input).then((exit) => ({ exit, printed }));
+    };
+
+    /** The state a failed `up()` leaves: n at 100, the marker of the flaky migration (batch 2), the migration not recorded. */
+    async function failedUp() {
+      await migrateWith([counter]).migrate();
+      failing(true);
+      await expect(migratorOf([counter, flaky]).migrator.migrate()).rejects.toThrow(/no_such_table/);
+      failing(false);
+    }
+    /** The state a failed `down()` leaves: `gizmos` dropped, `gadgets` there, the marker of direction down, the record row still in place. */
+    async function failedDown() {
+      await migrateWith([gadgets]).migrate();
+      await expect(migratorOf([gadgets]).migrator.rollback()).rejects.toThrow(/no_such_table/);
+    }
+
+    it('retries an up(): the marker is gone, the migration ran again once and is recorded, and the rows are changed once', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      expect(await counterN(connections)).toEqual([100]);
+      // Undone by hand: the data step of the failed run committed its rows.
+      await sql`update counter set n = 1`.execute(look(connections));
+      const { exit, printed } = await run(migrator, { interrupted: 'retry' });
+      expect(exit).toBe(0);
+      expect(printed).toContain(`info: ${FLAKY} is run again if the checks pass; each row stays until its migration starts.`);
+      expect(printed.some((line) => line.startsWith(`success: Migrated ${FLAKY} (flaky)`))).toBe(true);
+      expect(await markers(connections)).toEqual([]);
+      expect((await migrator.status()).map((entry) => [entry.name, entry.batch])).toEqual([['2026_05_01_000000_create_counter_table', 1], [FLAKY, 2]]);
+      expect(await counterN(connections)).toEqual([100]);
+    });
+
+    it('marks an up() as done: the record has the batch of the marker and the checksum of the file as it is now, in the same transaction as the marker, and the pending migrations wait', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky, auth]);
+      const file = migrator.files().find((entry) => entry.name === FLAKY)!;
+      const { exit, printed } = await run(migrator, { interrupted: 'done' });
+      expect(exit).toBe(0);
+      expect(printed.filter((line) => line.startsWith('success:'))).toEqual([`success: Recorded ${FLAKY} (flaky) as ran in batch 2, with the checksum of its file as it is now. Run migrate for the migrations that are pending.`]);
+      expect(await markers(connections)).toEqual([]);
+      const row = await migratorConnection(connections).selectFrom('migrations').selectAll().where('name', '=', FLAKY).executeTakeFirstOrThrow();
+      expect(row).toMatchObject({ module: 'flaky', batch: 2, checksum: migrationChecksum(readFileSync(file.path)) });
+      expect(await counterN(connections)).toEqual([100]);
+      expect(await hasTable(connections, 'users')).toBe(false);
+      expect((await migrator.status()).find((entry) => entry.name === FLAKY)!.batch).toBe(2);
+    });
+
+    it('records nothing when the marker cannot be deleted: `done` is one transaction', async () => {
+      await failedUp();
+      const books = migratorConnection(connectionsOf([]));
+      await sql`create trigger refuse_clear before delete on migration_interruption for each row signal sqlstate '45000' set message_text = 'clear refused'`.execute(books);
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await expect(run(migrator, { interrupted: 'done' })).rejects.toThrow(/clear refused/);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+      expect(await markers(connections)).toHaveLength(1);
+    });
+
+    it('resolves a down() as done: the record row and the marker are gone, and the pending migrations of other modules did not run', async () => {
+      await failedDown();
+      const { connections, migrator } = migratorOf([gadgets, auth]);
+      await sql`drop table gadgets`.execute(look(connections));
+      const { exit, printed } = await run(migrator, { interrupted: 'done' });
+      expect(exit).toBe(0);
+      expect(printed.filter((line) => line.startsWith('success:'))).toEqual([`success: Recorded ${GADGETS} (down) as rolled back.`]);
+      expect(await markers(connections)).toEqual([]);
+      expect(await recorded(connections)).toEqual([]);
+      expect(await hasTable(connections, 'users')).toBe(false);
+      expect(await hasTable(connections, 'gadgets')).toBe(false);
+    });
+
+    it('keeps the record row when the marker cannot be deleted after a down(): `done` is one transaction there too', async () => {
+      await failedDown();
+      const books = migratorConnection(connectionsOf([]));
+      await sql`create trigger refuse_clear before delete on migration_interruption for each row signal sqlstate '45000' set message_text = 'clear refused'`.execute(books);
+      const { connections, migrator } = migratorOf([gadgets]);
+      await expect(run(migrator, { interrupted: 'done' })).rejects.toThrow(/clear refused/);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual([GADGETS]);
+      expect(await markers(connections)).toHaveLength(1);
+    });
+
+    it('resolves a down() as retry: the marker is gone, the record row stays, and nothing else ran', async () => {
+      await failedDown();
+      const { connections, migrator } = migratorOf([gadgets, auth]);
+      await sql`create table gizmos (id bigint primary key)`.execute(look(connections));
+      const { exit, printed } = await run(migrator, { interrupted: 'retry' });
+      expect(exit).toBe(0);
+      expect(printed.filter((line) => line.startsWith('success:'))).toEqual([`success: ${GADGETS} (down) counts as ran again; run migrate:rollback to roll it back.`]);
+      expect(await markers(connections)).toEqual([]);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual([GADGETS]);
+      expect(await hasTable(connections, 'users')).toBe(false);
+      // The rollback is allowed again: it reaches the down() (which fails by design) instead of being refused.
+      expect((await failure(() => migrator.rollback())) as Error).toMatchObject({ message: expect.stringMatching(/no_such_table/) });
+    });
+
+    it('takes the migration lock: a resolution that finds it held waits, gives up and changes nothing', async () => {
+      await failedUp();
+      const holder = migratorOf([counter, flaky]).migrator;
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await holder.locked(async () => {
+        migrator.lockWith({ waitSeconds: 0 });
+        expect(await failure(() => migrator.resolveInterruption('done'))).toBeInstanceOf(MigrationLockTimeoutError);
+      });
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+    });
+
+    it('refuses a value that is not retry or done before it reads anything, and leaves the marker', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await expect(run(migrator, { interrupted: 'maybe' })).rejects.toBeInstanceOf(CommandArgumentsError);
+      await expect(run(migrator, { interrupted: 'maybe' })).rejects.toThrow('--interrupted must be retry or done.');
+      expect(await markers(connections)).toHaveLength(1);
+    });
+
+    it('says there is nothing to resolve without a marker, exits 1 and migrates nothing', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, auth]);
+      for (const how of ['retry', 'done']) {
+        const { exit, printed } = await run(migrator, { interrupted: how });
+        expect(exit).toBe(1);
+        expect(printed).toContain('error: Nothing to resolve: no migration of the database connection "default" stopped halfway (only MySQL marks one). Nothing was migrated.');
+      }
+      expect(await hasTable(connections, 'users')).toBe(false);
+    });
+
+    it('asks for --force in a protected environment, like the other destructive flags, and leaves the marker', async () => {
+      await failedUp();
+      vi.stubEnv('NODE_ENV', 'production');
+      onTestFinished(() => void vi.unstubAllEnvs());
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      const refused = await run(migrator, { interrupted: 'done' });
+      expect(refused.exit).toBe(1);
+      expect(refused.printed.some((line) => line.startsWith('error: The application is protected') && line.includes('Pass --force to resolve the interrupted migration'))).toBe(true);
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await run(migrator, { interrupted: 'done', force: true })).exit).toBe(0);
+      expect(await markers(connections)).toEqual([]);
+    });
+
+    it('refuses a direction this release does not know with D1 and changes nothing', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await mark(connections, { name: FLAKY, module: 'flaky', direction: 'side' });
+      for (const how of ['retry', 'done'] as const) {
+        const error = await failure(() => migrator.resolveInterruption(how));
+        expect(error).toBeInstanceOf(MigrationStateError);
+        expect(error).toMatchObject({ reason: 'newer' });
+        expect((error as Error).message).toMatch(/^\[marmeon:D1\] The marker of migration 2026_05_12_000000_multiply_then_maybe_fail names the direction "side"/);
+      }
+      expect(await markers(connections)).toHaveLength(1);
+    });
+
+    it('refuses `done` and `retry` after an up() whose file is gone with D32, and keeps the marker', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter]);
+      await mark(connections, { name: FLAKY, module: 'flaky' });
+      const error = await failure(() => migrator.resolveInterruption('done'));
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] Migration 2026_05_12_000000_multiply_then_maybe_fail \(module "flaky"\) has no file in any module/);
+      expect(await markers(connections)).toHaveLength(1);
+      expect(await recorded(connections)).toHaveLength(1);
+      const retried = await failure(() => migrator.resolveInterruption('retry'));
+      expect(retried).toMatchObject({ reason: 'interrupted' });
+      expect((retried as Error).message).toMatch(/has no file in any module/);
+      expect(await markers(connections)).toHaveLength(1);
+      // With the file, `retry` of an up() deletes nothing: the row goes when the migration starts again.
+      expect(await migratorOf([counter, flaky]).migrator.resolveInterruption('retry')).toMatchObject({ name: FLAKY });
+      expect(await markers(connections)).toHaveLength(1);
+    });
+
+    it('lets a process that starts afterwards query again once the marker is resolved', async () => {
+      await failedUp();
+      const { migrator } = migratorOf([counter, flaky]);
+      expect(await failure(() => select(connectionsOf([counter, flaky]), 'counter'))).toMatchObject({ reason: 'interrupted' });
+      await migrator.resolveInterruption('done');
+      expect(await select(connectionsOf([counter, flaky]), 'counter')).toHaveLength(1);
+    });
+
+    it('records the batch the marker names, not a batch of its own', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await mark(connections, { name: FLAKY, module: 'flaky', batch: 7 });
+      expect((await run(migrator, { interrupted: 'done' })).exit).toBe(0);
+      expect(await recorded(connections)).toEqual([expect.objectContaining({ batch: 1 }), { name: FLAKY, batch: 7 }]);
+    });
+
+    it('refuses `done` while the schema the migration makes is not there, and records it once it is', async () => {
+      await migrateWith([counter]).migrate();
+      failing(false);
+      const { connections, migrator } = migratorOf([counter, halfway]);
+      await expect(migrator.migrate()).rejects.toThrow(/Duplicate column name 'note'/);
+      // Undone by hand, although `done` says it was finished.
+      await sql`alter table counter drop column note`.execute(look(connections));
+      const error = await failure(() => migrator.resolveInterruption('done'));
+      expect(error).toBeInstanceOf(SchemaError);
+      expect((error as Error).message).toMatch(/^\[marmeon:D3\] Migration 2026_05_02_000000_multiply_then_fail \(module "halfway"\) is not done: the database connection "default" lacks the column counter\.note/);
+      expect((error as Error).message).toContain('Nothing was changed.');
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+      await sql`alter table counter add column note varchar(10)`.execute(look(connections));
+      expect(await migrator.resolveInterruption('done')).toMatchObject({ name: '2026_05_02_000000_multiply_then_fail' });
+      expect(await markers(connections)).toEqual([]);
+    });
+
+    it('refuses `done` after a down() while a table that must remain is gone', async () => {
+      await migrateWith([counter, gadgets]).migrate();
+      await expect(migratorOf([counter, gadgets]).migrator.rollback()).rejects.toThrow(/no_such_table/);
+      const { connections, migrator } = migratorOf([counter, gadgets]);
+      await sql`drop table gadgets`.execute(look(connections));
+      await sql`drop table counter`.execute(look(connections));
+      const error = await failure(() => migrator.resolveInterruption('done'));
+      expect(error).toBeInstanceOf(SchemaError);
+      expect((error as Error).message).toContain('lacks the table counter');
+      expect(await markers(connections)).toHaveLength(1);
+      expect(await recorded(connections)).toHaveLength(2);
+    });
+
+    it('refuses a record with other columns with D1, for retry and for done, and changes nothing', async () => {
+      await failedUp();
+      await sql`alter table migrations add column extra integer`.execute(migratorConnection(connectionsOf([])));
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      for (const how of ['retry', 'done'] as const) {
+        const error = await failure(() => migrator.resolveInterruption(how));
+        expect(error, how).toMatchObject({ reason: 'newer' });
+        expect((error as Error).message, how).toMatch(/^\[marmeon:D1\] /);
+      }
+      expect(await markers(connections)).toHaveLength(1);
+    });
+
+    it('keeps the row of a retried up() while a table the migration creates is still there, and replaces it when the run starts', async () => {
+      await migrateWith([counter]).migrate();
+      failing(true);
+      await expect(migratorOf([counter, widgets]).migrator.migrate()).rejects.toThrow(/no_such_table/);
+      failing(false);
+      const { connections, migrator } = migratorOf([counter, widgets]);
+      expect(await hasTable(connections, 'widgets')).toBe(true);
+      const refused = await run(migrator, { interrupted: 'retry' }).then(() => undefined, (error: unknown) => error);
+      expect(refused).toBeInstanceOf(SchemaError);
+      expect((refused as Error).message).toMatch(/^\[marmeon:D3\] The database connection "default" already has the table widgets/);
+      expect(await markers(connections)).toHaveLength(1);
+      expect(await recorded(connections)).toHaveLength(1);
+      await sql`drop table widgets`.execute(look(connections));
+      const { exit } = await run(migratorOf([counter, widgets]).migrator, { interrupted: 'retry' });
+      expect(exit).toBe(0);
+      expect(await markers(connections)).toEqual([]);
+      expect(await hasTable(connections, 'widgets')).toBe(true);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table', '2026_05_13_000000_create_widgets_then_maybe_fail']);
+    });
+
+    it('runs the other pending migrations around the retried one in the order of their names, and the row survives until its own turn', async () => {
+      await failedUp();
+      await sql`update counter set n = 1`.execute(look(connectionsOf([])));
+      const { connections, migrator } = migratorOf([counter, auth, flaky, later]);
+      const { exit, printed } = await run(migrator, { interrupted: 'retry' });
+      expect(exit).toBe(0);
+      expect(printed.filter((line) => line.startsWith('success: Migrated')).map((line) => line.split(' ')[2])).toEqual(['2026_01_01_000000_create_users_table', FLAKY, '2026_05_20_000000_create_later_table']);
+      expect(await markers(connections)).toEqual([]);
+    });
+
+    it('refuses `retry` with D32 when the retried migration is recorded already, and runs nothing', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky, auth]);
+      await migratorConnection(connections).insertInto('migrations').values({ name: FLAKY, module: 'flaky', batch: 2, checksum: null }).execute();
+      const error = await run(migrator, { interrupted: 'retry' }).then(() => undefined, (caught: unknown) => caught);
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] Migration 2026_05_12_000000_multiply_then_maybe_fail \(module "flaky"\) is recorded as ran/);
+      expect(await markers(connections)).toHaveLength(1);
+      expect(await hasTable(connections, 'users')).toBe(false);
+    });
+
+    it('refuses a run with D32 and runs nothing when a migration it is to retry is not pending, whatever else is pending', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky, auth]);
+      const row = (await markers(connections))[0]!;
+      await migratorConnection(connections).insertInto('migrations').values({ name: FLAKY, module: 'flaky', batch: 2, checksum: null }).execute();
+      const error = await failure(() => migrator.migrate({ retrying: [{ name: row.name, startedAt: row.started_at }] }));
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] Migration 2026_05_12_000000_multiply_then_maybe_fail is not pending .* Nothing was run\./);
+      expect(await markers(connections)).toHaveLength(1);
+      expect(await hasTable(connections, 'users')).toBe(false);
+    });
+
+    const COUNTER = '2026_05_01_000000_create_counter_table';
+    it.each([
+      ['a row of a down()', { name: COUNTER, module: 'counter', direction: 'down' }, /^\[marmeon:D32\] Migration 2026_05_01_000000_create_counter_table \(module "counter"\) stopped during its down\(\)/],
+      ['a row of a migration that is recorded', { name: COUNTER, module: 'counter', direction: 'up' }, /^\[marmeon:D32\] Migration 2026_05_01_000000_create_counter_table \(module "counter"\) is recorded as ran/],
+    ])('refuses `retry` beside %s, even when the retried row is the oldest, and keeps both rows', async (_name, other, message) => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, flaky, auth]);
+      await mark(connections, { name: FLAKY, module: 'flaky', started_at: '2026-11-27T10:00:00.000Z' });
+      await mark(connections, { ...other, started_at: '2026-11-27T11:00:00.000Z' });
+      const error = await run(migrator, { interrupted: 'retry' }).then(() => undefined, (caught: unknown) => caught);
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(message);
+      expect((await markers(connections)).map((row) => row.name).sort()).toEqual([COUNTER, FLAKY].sort());
+      expect(await hasTable(connections, 'users')).toBe(false);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual([COUNTER]);
+    });
+
+    it('refuses a run that retries only some of the rows: the run takes the list it was given and no more', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, flaky, auth]);
+      await mark(connections, { name: FLAKY, module: 'flaky', started_at: '2026-11-27T10:00:00.000Z' });
+      await mark(connections, { name: ACCOUNTS, module: 'accounts', started_at: '2026-11-27T11:00:00.000Z' });
+      const error = await failure(() => migrator.migrate({ retrying: [{ name: FLAKY, startedAt: '2026-11-27T10:00:00.000Z' }] }));
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] Migration 2026_01_05_000000_create_accounts_table /);
+      expect(await markers(connections)).toHaveLength(2);
+      expect(await hasTable(connections, 'users')).toBe(false);
+    });
+
+    it('lets a second retry take both rows when a migration that sorts first stopped during the first one', async () => {
+      await migrateWith([counter]).migrate();
+      failing(true);
+      await expect(migratorOf([counter, flaky]).migrator.migrate()).rejects.toThrow(/no_such_table/);
+      // The retry starts `early` first, which sorts before the flaky migration and stops too: its row joins the first one.
+      await expect(run(migratorOf([counter, early, flaky]).migrator, { interrupted: 'retry' })).rejects.toThrow(/no_such_table/);
+      const { connections, migrator } = migratorOf([counter, early, flaky]);
+      expect((await markers(connections)).map((row) => row.name).sort()).toEqual(['2026_05_11_000000_create_early_then_maybe_fail', FLAKY]);
+      // Both undone by hand.
+      await sql`drop table early`.execute(look(connections));
+      await sql`update counter set n = 1`.execute(look(connections));
+      failing(false);
+      const { exit, printed } = await run(migrator, { interrupted: 'retry' });
+      expect(exit).toBe(0);
+      expect(printed.filter((line) => line.startsWith('success: Migrated')).map((line) => line.split(' ')[2])).toEqual(['2026_05_11_000000_create_early_then_maybe_fail', FLAKY]);
+      expect(await markers(connections)).toEqual([]);
+      expect(await counterN(connections)).toEqual([100]);
+    });
+
+    it('judges the record before the marker for rollback and reset: other columns and no table of interruptions is D1, not D32', async () => {
+      await migrateWith([counter]).migrate();
+      const books = migratorConnection(connectionsOf([]));
+      await sql`alter table migrations add column extra integer`.execute(books);
+      await sql`drop table migration_interruption`.execute(books);
+      for (const command of ['rollback', 'reset'] as const) {
+        const error = await failure(() => migratorOf([counter]).migrator[command]());
+        expect(error, command).toMatchObject({ reason: 'newer' });
+        expect((error as Error).message, command).toMatch(/^\[marmeon:D1\] /);
+      }
+    });
+
+    it('refuses an argument that is neither retry nor done, and leaves the marker', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await expect(migrator.resolveInterruption('maybe' as never)).rejects.toBeInstanceOf(TypeError);
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual([COUNTER]);
+    });
+
+    it('takes the row only as it was read: the same name started at another time refuses the run', async () => {
+      await failedUp();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      const read = (await migrator.resolveInterruption('retry'))!;
+      await migratorConnection(connections).deleteFrom('migration_interruption').execute();
+      await mark(connections, { name: FLAKY, module: 'flaky', started_at: '2026-11-27T12:00:00.000Z' });
+      const error = await failure(() => migrator.migrate({ retrying: read.retrying }));
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+    });
+
+    it('ignores a `retrying` whose row is gone: a plain migrate, with nothing pending and no refusal', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter]);
+      expect(await migrator.migrate({ retrying: [{ name: '2026_05_01_000000_create_counter_table', startedAt: '2026-11-27T10:00:00.000Z' }] })).toEqual([]);
+      expect(await markers(connections)).toEqual([]);
+    });
+
+    it('deletes the row of a retried migration that sends MySQL no statement, with its record', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, quiet]);
+      await mark(connections, { name: '2026_05_14_000000_say_nothing', module: 'quiet', batch: 2 });
+      expect((await run(migrator, { interrupted: 'retry' })).exit).toBe(0);
+      expect(await markers(connections)).toEqual([]);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table', '2026_05_14_000000_say_nothing']);
+    });
+
+    it('refuses `retry` after a down() while what it dropped is still gone, and resolves it once that is back', async () => {
+      await failedDown();
+      const { connections, migrator } = migratorOf([gadgets]);
+      const error = await failure(() => migrator.resolveInterruption('retry'));
+      expect(error).toBeInstanceOf(SchemaError);
+      expect((error as Error).message).toMatch(/^\[marmeon:D3\] Migration 2026_05_03_000000_create_gadgets_table \(module "down"\) is not undone: the database connection "default" lacks the table gizmos/);
+      expect((error as Error).message).toContain('Nothing was changed.');
+      expect(await markers(connections)).toHaveLength(1);
+      await sql`create table gizmos (id bigint primary key)`.execute(look(connections));
+      expect(await migrator.resolveInterruption('retry')).toMatchObject({ direction: 'down' });
+      expect(await markers(connections)).toEqual([]);
+      expect(await recorded(connections)).toHaveLength(1);
+    });
+
+    it.each([
+      ['retry', 'up'],
+      ['retry', 'down'],
+      ['done', 'up'],
+      ['done', 'down'],
+    ] as const)('refuses `%s` after an %s() when the file runs on another connection than the row says, and changes nothing', async (how, direction) => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await mark(connections, { name: FLAKY, module: 'flaky', connection_name: 'system', direction });
+      const error = await failure(() => migrator.resolveInterruption(how));
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] The row of migration 2026_05_12_000000_multiply_then_maybe_fail \(module "flaky"\) says it ran on the database connection "system", and its file runs on "default" now/);
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+    });
+
+    it('resolves one row per call, the one that started first, and leaves the other', async () => {
+      await migrateWith([counter]).migrate();
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      await mark(connections, { name: FLAKY, module: 'flaky', started_at: '2026-11-27T10:00:00.000Z' });
+      await mark(connections, { name: '2026_05_01_000000_create_counter_table', module: 'counter', direction: 'down', started_at: '2026-11-27T11:00:00.000Z' });
+      expect(await migrator.resolveInterruption('done')).toMatchObject({ name: FLAKY });
+      expect((await markers(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+      expect(await migrator.resolveInterruption('retry')).toMatchObject({ name: '2026_05_01_000000_create_counter_table', direction: 'down' });
+      expect(await markers(connections)).toEqual([]);
+    });
+
+    it('changes nothing when the lock is lost before the resolution: no record, the marker stays', async () => {
+      await failedUp();
+      const killer = connectionsOf([]);
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      const error = await failure(() =>
+        migrator.locked(async () => {
+          const [killed] = (
+            await sql<{ id: string }>`select a.processlist_id as id from performance_schema.session_connect_attrs a join information_schema.processlist p on p.id = a.processlist_id where a.attr_name = 'program_name' and a.attr_value like 'marmeon-migrate:%' and p.db = database() and a.processlist_id <> connection_id()`.execute(look(killer))
+          ).rows;
+          await sql.raw(`kill ${killed!.id}`).execute(look(killer));
+          await pause(300);
+          return migrator.resolveInterruption('done');
+        }),
+      );
+      expect(error).toBeInstanceOf(MigrationLockLostError);
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await recorded(connections)).map((row) => row.name)).toEqual(['2026_05_01_000000_create_counter_table']);
+    });
+
+    it('does not resolve while the types file is of a newer Marmeon for retry, which migrates, and resolves for done, which does not', async () => {
+      await failedUp();
+      vi.stubEnv('NODE_ENV', 'development');
+      onTestFinished(() => void vi.unstubAllEnvs());
+      const { connections, migrator } = migratorOf([counter, flaky]);
+      const generator = { fileFormat: () => 'newer', path: '/app/bootstrap/database.d.ts', relationsRefusal: async () => undefined } as unknown as TypeGenerator;
+      const go = (options: Record<string, unknown>) => {
+        const { printed, input } = inputOf({ ...options, 'no-types': false });
+        return new MigrateCommand(migrator, generator).handle(input).then((exit) => ({ exit, printed }));
+      };
+      const retried = await go({ interrupted: 'retry' });
+      expect(retried.exit).toBe(1);
+      expect(retried.printed.some((line) => line.includes('[marmeon:D7]'))).toBe(true);
+      expect(await markers(connections)).toHaveLength(1);
+      expect((await go({ interrupted: 'done' })).exit).toBe(0);
+      expect(await markers(connections)).toEqual([]);
+    });
+
+    it('fails migrate:status with D32 when the role sees the record and not migration_interruption', async () => {
+      await migrateWith([counter]).migrate();
+      await sql`drop table migration_interruption`.execute(migratorConnection(connectionsOf([])));
+      const { input } = inputOf({ json: true });
+      const error = await failure(() => new MigrateStatusCommand(migratorOf([counter]).migrator).handle(input));
+      expect(error).toMatchObject({ reason: 'interrupted' });
+      expect((error as Error).message).toMatch(/^\[marmeon:D32\] The database connection "default" has the record of migrations/);
+    });
+
+    it('shows the marker in migrate:status: the key `interrupted` in the document, null without one, and a warning in the text', async () => {
+      await migrateWith([counter]).migrate();
+      const status = async (migrator: Migrator, options: Record<string, unknown>) => {
+        const { printed, input } = inputOf(options);
+        await new MigrateStatusCommand(migrator).handle(input);
+        return printed;
+      };
+      const quiet = migratorOf([counter, flaky]).migrator;
+      expect(JSON.parse((await status(quiet, { json: true }))[0]!.slice('json: '.length))).toMatchObject({ format: 1, interrupted: null });
+      failing(true);
+      await expect(migratorOf([counter, flaky]).migrator.migrate()).rejects.toThrow(/no_such_table/);
+      const left = migratorOf([counter, flaky]).migrator;
+      const document = JSON.parse((await status(left, { json: true }))[0]!.slice('json: '.length));
+      expect(document).toMatchObject({ format: 1, warnings: [], interrupted: { name: FLAKY, module: 'flaky', direction: 'up', startedAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/) } });
+      expect(Object.keys(document.interrupted).sort()).toEqual(['direction', 'module', 'name', 'startedAt']);
+      expect((await status(left, {})).some((line) => line.startsWith(`warn: ${FLAKY} started its up() at `) && line.includes('--interrupted=retry|done'))).toBe(true);
     });
   });
 

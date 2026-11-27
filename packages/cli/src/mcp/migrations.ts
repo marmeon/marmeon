@@ -11,7 +11,7 @@ const NO_DATABASE: ToolDocument = { format: 1, database: false, connections: [],
 /** The migrations that ran and the ones that are pending, as `marmeon migrate:status --json` prints them, filtered and cut. */
 export const MIGRATIONS_TOOL: McpTool = {
   name: 'migrations',
-  description: `List the migrations of the app, each with its module, the connection it runs on, its batch and whether it ran or is pending, and per connection how many ran and how many are pending. Needs the database; the record is on the default connection. Starts the app once. ${DATA_NOTICE}`,
+  description: `List the migrations of the app, each with its module, the connection it runs on, its batch and whether it ran or is pending, and per connection how many ran and how many are pending, and the key interrupted: the MySQL migration that started and has not finished (also while it runs), or null. Needs the database; the record is on the default connection. Starts the app once. ${DATA_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -54,5 +54,6 @@ async function migrations(input: Readonly<Record<string, unknown>>, { root, sign
     total: matching.length,
     truncated: matching.length > limit,
     warnings: read.warnings,
+    interrupted: read.interrupted,
   };
 }

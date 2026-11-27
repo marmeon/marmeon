@@ -954,8 +954,9 @@ marmeon db:show [--database=<connection>] [--json]
 marmeon db:types [--check]
 --check (boolean)
 // migrate
-marmeon migrate [--force] [--wait=<seconds>] [--no-types]
+marmeon migrate [--force] [--wait=<seconds>] [--no-types] [--interrupted=retry|done]
 --force (boolean)
+--interrupted (string)
 --no-types (boolean)
 --wait (string)
 // migrate:fresh

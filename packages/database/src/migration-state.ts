@@ -232,14 +232,14 @@ export function interruptedError(found: Interruption, connection: string, refuse
   const after =
     refused === 'queries'
       ? `Every query on the connection "${printable(connection)}" is refused until that is resolved.`
-      : `${refused === 'migrate' ? 'marmeon migrate' : 'marmeon migrate:rollback (migrate:reset)'} does not start until that is resolved.`;
+      : `${refused === 'migrate' ? 'marmeon migrate without --interrupted' : 'marmeon migrate:rollback (migrate:reset)'} runs no migration until that is resolved.`;
   return new MigrationStateError(
     'interrupted',
     connection,
     withCode(
       'D32',
       `Migration ${printable(found.name)} (module "${printable(found.module)}") started its ${printable(found.direction)}() on the database connection "${printable(found.connection)}" at ${printable(found.startedAt)} (${printable(found.owner)}) and has not finished (${INTERRUPTION_TABLE} holds its row). ${after} ` +
-        'How to resolve it: docs/migrations.md#a-migration-that-stopped-halfway.',
+        'Once it is not running, undo what it did and run "marmeon migrate --interrupted=retry", or finish it by hand and run "marmeon migrate --interrupted=done". See docs/migrations.md#a-migration-that-stopped-halfway.',
     ),
   );
 }

@@ -304,6 +304,7 @@ A table the projection does not know passes through the query builder unguarded,
 | Command | What it does |
 | --- | --- |
 | `marmeon migrate` | Runs every pending migration, in one new batch. |
+| `marmeon migrate --interrupted=retry\|done` | MySQL only. Ends the refusal of [a migration that stopped halfway](#a-migration-that-stopped-halfway) after you undid (`retry`) or finished (`done`) it by hand. |
 | `marmeon migrate:status [--json]` | Lists every migration, with its batch or `Pending`. See [status](#status). |
 | `marmeon migrate:rollback` | Undoes the last batch. `--step=3` undoes the last three migrations instead, whatever their batch. |
 | `marmeon migrate:reset` | Undoes every migration. |
@@ -404,7 +405,7 @@ a migration that changes the schema has no transaction around it and nothing to 
 #### A migration that stopped halfway
 
 On MySQL, `migration_interruption` is a table that `migrate` creates beside `migrations`. A row in it means a migration started and has
-not finished.
+not finished. That includes a migration that is running now.
 
 `migrate`, `migrate:rollback` and `migrate:reset` write the row before the first statement of every migration or `down()` that sends a statement, except one whose steps
 only change rows (`schema.data()`, or `schema.raw()` with `mysql: null`) and that runs on `default`. They remove it in the transaction that records the
@@ -414,14 +415,40 @@ that names the migration, and the error of the migration follows. The row names 
 the batch, the connection the migration runs on in `connection_name`, the time it started and the process that runs it. A statement the
 server refuses before it changes anything still leaves the row, because a marker cannot tell; a check that refuses the migration before its first
 statement leaves none. While the row is there, every query of a process that starts or is not ready yet fails with a `MigrationStateError` (D32).
-The message names the migration, its `up()` or `down()`, the connection and the time. `migrate`, `migrate:rollback` and `migrate:reset` do not start.
+The message names the migration, its `up()` or `down()`, the connection, the time and the process (`owner`). `migrate` without `--interrupted`, `migrate:rollback` and `migrate:reset` run no migration.
 A process that was ready before the row appeared keeps answering until it restarts.
 
-Two ways lead out. You finish or undo by hand what the migration did, then delete its row from `migration_interruption`.
+Check first that the migration is not running, because the row exists while it runs. `migrate:status` shows only that the row exists, with the migration, the time and the direction: the process that wrote it is the `owner` in the D32 message.
+`marmeon migrate --wait=0 --force` (in a protected environment `--force` is needed) prints the holder of the migration lock (D8) while a migration holds it.
+With the lock free it stops at the row (D32) and runs nothing. A process that was killed frees the lock while the server may still run
+its last statement, so also look at `SHOW PROCESSLIST` on the server for a statement of that migration that is still running, and wait for it. Then two ways lead out, and neither runs a statement of the migration.
+Both look at the database first, except `retry` after an `up()`, which meets the checks of the `migrate` run it starts. After a `down()`, `retry` expects the migration to count as ran again and the schema of the migrations that ran to be there,
+including what the `down()` dropped, and `done` expects the schema without the migration. After an `up()`, `done` expects the schema with the migration. Anything missing stops the command with D3 and changes nothing.
+The migration's file has to exist and has to run on the connection the row names, or the command stops with D32 and changes nothing.
+
+- **`marmeon migrate --interrupted=retry`** after you undid by hand what the migration did. After an `up()` the migration is pending again, and
+  the command runs the pending migrations, this one among them, in the order of their names. The row stays until the migration starts again and replaces it,
+  so a check that refuses the run (a table the migration creates is still there, D3) leaves the row. A row of a `down()`, or of a migration that is not pending any more (its file is gone, or it is recorded), refuses the run (D32):
+  nothing runs then. If a migration that sorts before it starts and stops, its row joins the others, and the next `retry` takes all of them. After a `down()` its record stays, and the command stops after it deleted
+the row: run `migrate:rollback` to roll the migration back. Use `retry` when the process died before its first statement too: the schema is
+  unchanged then.
+- **`marmeon migrate --interrupted=done`** after you finished by hand what the migration did. After an `up()` the command records the
+  migration in the batch it belonged to, with the checksum of its file as it is now, and deletes the row in one transaction. After a
+  `down()` it deletes the migration's record and the row in one transaction. It stops there: run `marmeon migrate` for the migrations that are pending. Every `--interrupted` call needs the file of the migration, and refuses with D32 when no module has it.
+
+Both take the [migration lock](#one-migration-at-a-time) (`--wait=<seconds>`), and both ask for `--force` in a protected environment like the other
+commands that change the database. A `migrations` table with other columns than this release reads is refused with D1, as by the other commands, and so is a row with a direction this release does not know (a newer Marmeon wrote it).
+Nothing is changed then. Without a row, the command says that nothing is to resolve, migrates nothing and ends with exit code 1.
+`done` resolves the oldest row, one per call. `retry` after an `up()` covers every row of an `up()`: a `retry` run that starts a migration before the retried one and stops
+there leaves a row of its own, and the next `retry` takes both. So `retry` means you undid every migration the rows name. `migrate:status` shows the oldest row only: list all of them with
+`select name, direction, started_at from migration_interruption order by started_at`, or from the error lines each run printed. A row of a `down()`, or of a migration that is recorded or has no file,
+beside the rows of an `up()` refuses `retry` with D32, and nothing changes: resolve that row first. Marmeon never leaves a row of a migration that is recorded; such a row comes from a hand-edited table, so check the database and delete it by hand.
+
 On a development database, `migrate:fresh` drops every table, the one with the row included, and starts over: it deletes all data.
+It is the way out when you do not want to undo anything by hand. In a protected environment (production, or `NODE_ENV` unset) it needs `--force` ([where the app is protected](#where-the-app-is-protected)).
 
 The role your app uses has to see `migration_interruption`. MySQL hides a table a role has no privilege on, and a role that sees
-`migrations` and not `migration_interruption` cannot say whether a migration has not finished, so its queries fail with D32 as well.
+`migrations` and not `migration_interruption` cannot say whether a migration has not finished, so its queries and `migrate:status` fail with D32 as well.
 Grant it `select` on the table. If the table has other columns than the ones listed under [how the migrator keeps track](#how-the-migrator-keeps-track), the error is D1.
 
 #### What MySQL refuses before a migration runs
@@ -500,7 +527,7 @@ What the app does with the answer, per connection (`default` decides; the other 
 | ahead | The database also has migrations the code does not know: a process of an older release during a deploy. | Queries run, with the schema the code knows: its secret columns, soft deletes and relations. Logged once. See [migrating a running app](#migrating-a-running-app). |
 | pending | The database lacks a migration the code has: the app started before `migrate`, or after a rollback. The record in the form Marmeon 0.3 wrote, without `checksum`, counts as lacking too (see below). | **Every** query fails with a `MigrationStateError` (D2) that names the missing migrations, `/up/ready` is red. The database is asked again at most once a second, so the app answers a second after `marmeon migrate` ran, with no restart. A process that was ready before a rollback keeps its schema until it restarts. |
 | newer | `migrations` has other columns than this release reads: a newer Marmeon migrated the database. | Every query fails (D1); `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well and change nothing. Update `@marmeon/*`. |
-| interrupted | MySQL only: `migration_interruption` holds a row: a migration started and has not finished. | Every query of a new process fails (D32), as do `migrate`, `migrate:rollback` and `migrate:reset`; `/up/ready` is red. See [a migration that stopped halfway](#a-migration-that-stopped-halfway). |
+| interrupted | MySQL only: `migration_interruption` holds a row: a migration started and has not finished. | Every query of a new process fails (D32), and `migrate` without `--interrupted`, `migrate:rollback` and `migrate:reset` run no migration; `/up/ready` is red. See [a migration that stopped halfway](#a-migration-that-stopped-halfway). |
 | unmigrated | The database has tables and no `migrations`: a database that lost it, or another tool's. | Every query fails (D1). For your own database, run `marmeon migrate`: it writes `migrations` and runs every migration, and tables it did not make stay as they are, unknown (see below). For a database another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages). |
 
 It never works as if no column were secret and no row deleted: a code with migrations the database lacks is refused rather than
@@ -755,11 +782,12 @@ A deployment runs `marmeon migrate --force` once, before the new version takes r
     { "name": "2026_01_01_000000_create_users_table", "module": "auth", "connection": "default", "batch": 1, "status": "ran" },
     { "name": "2026_01_05_000000_create_accounts_table", "module": "accounts", "connection": "default", "batch": null, "status": "pending" }
   ],
-  "warnings": []
+  "warnings": [],
+  "interrupted": null
 }
 ```
 
-`module` is the name of the module the migration belongs to. `connection` is the connection the migration [runs on](#migrations-on-another-connection); the record that it ran is always on `default`. It is `null` when that cannot be told (the file does not load, its connection function throws, or it names a connection that is not configured), with the warning `<name>: the connection it runs on is unknown — marmeon migrate says why`; the error itself is never part of the document. The text table shows a `CONNECTION` column only when a migration does not run on `default` or its connection is unknown (shown as `?`). `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the record says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too, and each migration whose file [changed after it ran](#a-migration-that-changed-after-it-ran) (`<name> changed since it ran in batch <n>`). A record this
+`module` is the name of the module the migration belongs to. `connection` is the connection the migration [runs on](#migrations-on-another-connection); the record that it ran is always on `default`. It is `null` when that cannot be told (the file does not load, its connection function throws, or it names a connection that is not configured), with the warning `<name>: the connection it runs on is unknown — marmeon migrate says why`; the error itself is never part of the document. The text table shows a `CONNECTION` column only when a migration does not run on `default` or its connection is unknown (shown as `?`). `status` is `"ran"` or `"pending"`; `batch` is a number for a migration that ran and `null` for a pending one; `migrations` is `[]` when no module has any. `warnings` is always there: it names each migration the record says ran but no module has a file for (`<name> ran in batch <n> but no module has its file`), which the text output prints as a warning too, and each migration whose file [changed after it ran](#a-migration-that-changed-after-it-ran) (`<name> changed since it ran in batch <n>`). `interrupted` is `null`, or on MySQL the migration that [started and has not finished](#a-migration-that-stopped-halfway) (also while it runs) with its `name`, `module`, `direction` (`up` or `down`) and `startedAt`; the text output warns about it. On MySQL, `migrate:status` fails with D32 when the role sees `migrations` and not `migration_interruption`: it cannot tell whether a migration has not finished, and says so instead of printing a list. A record this
 release cannot read (other columns, see [how the migrator keeps track](#how-the-migrator-keeps-track)) fails the command: stdout stays empty, the
 message with its code is on stderr, the exit code is 1.
 

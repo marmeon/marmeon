@@ -86,7 +86,7 @@ up once the app has booted, so a failed boot (1) comes first. A few commands hav
 | `make:docker --caddy --nginx` | `make:docker` when its files exist, without `--force` |
 | `start --workers=abc`, `schedule:work --stop-timeout=x`, `queue:work --sleep=x` | A server that cannot start, a job that fails |
 | `schedule:test` without a task name or with an unknown one | `schedule:test` of a task that fails |
-| `migrate --wait=soon`, `publish` with two packages, `uploads:prune --hours=soon` | `migrate` that cannot take the lock |
+| `migrate --wait=soon`, `migrate --interrupted=maybe`, `publish` with two packages, `uploads:prune --hours=soon` | `migrate` that cannot take the lock |
 | `auth:end-sessions` without an identifier | `auth:end-sessions <identifier>` without `--force`, `migrate:fresh` without `--force` on a protected environment, `uploads:prune --hours=0` without `--force`: the arguments are well formed, the state decides |
 
 ## Machine-readable output
@@ -252,7 +252,7 @@ The installed packages add their commands when the app boots:
 
 | Package | Commands |
 | --- | --- |
-| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `publish`, `db:seed`, `db:show`, `db:query` (`NODE_ENV` development and test only), `db:types`. The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations) and [seeding](seeding.md#running-seeders). |
+| `@marmeon/database` | `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:fresh`, `migrate:status`, `publish`, `db:seed`, `db:show`, `db:query` (`NODE_ENV` development and test only), `db:types`. After a MySQL migration stopped halfway, `migrate` takes `--interrupted=retry\|done` to resolve it, see [a migration that stopped halfway](migrations.md#a-migration-that-stopped-halfway). The four that change the schema take `--wait=<seconds>` (default 60) for another migration to end, see [one migration at a time](migrations.md#one-migration-at-a-time). See [migrations](migrations.md#running-migrations) and [seeding](seeding.md#running-seeders). |
 | `@marmeon/queue` | `queue:work`, `queue:size`, `queue:failed`, `queue:retry`, `queue:forget`, `queue:flush`, `queue:prune-failed`, `make:queue-table`. See [queues](queues.md). |
 | `@marmeon/scheduler` | `schedule:work`, `schedule:run`, `schedule:list`, `schedule:test`. See [task scheduling](scheduling.md#running-the-scheduler). |
 | `@marmeon/cache` | `cache:prune`, `cache:clear`, `make:cache-table`. See [cache](cache.md#expired-entries-and-clearing). |

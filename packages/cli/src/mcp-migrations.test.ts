@@ -183,6 +183,20 @@ describe('migrations with the child process replaced', () => {
     expect(JSON.stringify(result)).not.toContain('leaks');
   });
 
+  it('shows the migration that stopped halfway field by field, and null for a document without the key', async () => {
+    withPackage();
+    answer({ format: 1, migrations: [], warnings: [], interrupted: { name: 'a', module: 'm', direction: 'up', startedAt: '2026-11-27T10:00:00.000Z', extra: 'leaks' } });
+    const left = (await MIGRATIONS_TOOL.run({}, context())) as Record<string, any>;
+    expect(left.interrupted).toEqual({ name: 'a', module: 'm', direction: 'up', startedAt: '2026-11-27T10:00:00.000Z' });
+    expect(JSON.stringify(left)).not.toContain('leaks');
+    answer({ format: 1, migrations: [], warnings: [] });
+    expect(((await MIGRATIONS_TOOL.run({}, context())) as Record<string, any>).interrupted).toBeNull();
+    answer({ format: 1, migrations: [], warnings: [], interrupted: null });
+    expect(((await MIGRATIONS_TOOL.run({}, context())) as Record<string, any>).interrupted).toBeNull();
+    answer({ format: 1, migrations: [], warnings: [], interrupted: { name: 'a' } });
+    expect(await MIGRATIONS_TOOL.run({}, context())).toEqual({ failure: expect.stringContaining('update marmeon') });
+  });
+
   it('refuses a document of another format, and an entry it cannot read', async () => {
     withPackage();
     answer({ format: 2, migrations: [], warnings: [] });
