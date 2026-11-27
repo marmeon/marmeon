@@ -11,6 +11,7 @@ import { runMigration } from './migrations/run.ts';
 import { DatabaseServiceProvider } from './provider.ts';
 import { sql } from 'kysely';
 import { SchemaRequirements } from './schema-requirements.ts';
+import { migratorConnection } from './migrator-connection.ts';
 import { freshConnections, silent as quiet, withMysql } from './__fixtures__/databases.ts';
 import { tempDir } from '../../../scripts/test/temp-dir.js';
 
@@ -64,6 +65,30 @@ withMysql('the database health check on a mysql connection', () => {
         await expect(new DatabaseHealthCheck(down, new SchemaRequirements()).handle()).rejects.toThrow(/The database connection "default" failed: .*ECONNREFUSED/);
       } finally {
         await down.destroy();
+      }
+    } finally {
+      await close();
+    }
+  });
+});
+
+// A migration that did not finish keeps the code of its refusal on readiness: D32, not the D1 of the other states.
+withMysql('the database health check after a MySQL migration stopped halfway', () => {
+  it('fails with D32 and names the migration', async () => {
+    const { connections, close } = await freshConnections('mysql');
+    try {
+      await migratorConnection(connections)
+        .insertInto('migration_interruption')
+        .values({ name: '2026_01_05_000000_create_accounts_table', module: 'accounts', connection_name: 'default', direction: 'up', batch: 1, started_at: '2026-11-27T10:00:00.000Z', owner: 'web-1:4242' })
+        .execute();
+      const processOf = new Connections({ connections: { default: connections.options() }, root: '/', logger: quiet });
+      try {
+        const error = await new DatabaseHealthCheck(processOf, new SchemaRequirements()).handle().then(() => undefined, (e: unknown) => e);
+        expect(error).toBeInstanceOf(AggregateError);
+        expect((error as AggregateError).message).toMatch(/^\[marmeon:D32\] The database connection "default" failed: Migration 2026_01_05_000000_create_accounts_table \(module "accounts"\) started its up\(\)/);
+        expect((error as AggregateError).errors[0]).toMatchObject({ name: 'MigrationStateError', reason: 'interrupted' });
+      } finally {
+        await processOf.destroy();
       }
     } finally {
       await close();

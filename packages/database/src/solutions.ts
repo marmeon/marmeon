@@ -128,6 +128,18 @@ export const databaseSolutions = defineSolutions([
   },
   {
     for: MigrationStateError,
+    code: 'D32',
+    solve: (e) => ({
+      title: 'Resolve the migration that has not finished',
+      text:
+        `A migration on the connection "${e.connection}" has not finished, or Marmeon cannot tell whether one did, so every query on it is refused. ` +
+        'If the message names a migration: finish or undo what the migration did by hand, then delete its row from migration_interruption. On a development database, "marmeon migrate:fresh" starts over instead, and deletes all data. ' +
+        'If it says the role does not see migration_interruption: grant the role `select` on that table (MySQL hides a table the role has no privilege on), or restore it if it was dropped by hand.',
+      docs: 'docs/migrations.md#a-migration-that-stopped-halfway',
+    }),
+  },
+  {
+    for: MigrationStateError,
     code: 'D1',
     solve: (e) => ({
       title: e.reason === 'newer' ? 'Update Marmeon' : e.reason === 'unmanaged' ? 'Remove managed: false' : 'Migrate the database, or tell Marmeon another tool manages it',

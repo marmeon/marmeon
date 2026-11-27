@@ -6,7 +6,7 @@ import { printable, withCode } from '@marmeon/core/internal';
 import { sql, type Generated, type Kysely } from 'kysely';
 import { Connections } from '../connections.ts';
 import { tableColumns, type CatalogQuery } from '../introspection.ts';
-import { appTables, assertNotUnreleased, assertRecordReadable, createMigrationsTable, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, recordVersion } from '../migration-state.ts';
+import { appTables, assertInterruptionReadable, assertNotUnreleased, assertRecordReadable, createMigrationsTable, interruptedError, isMigratorTable, isUnreleased, legacyTables, MIGRATIONS_TABLE, readInterruption, recordVersion, type Interruption } from '../migration-state.ts';
 import { migratorConnection } from '../migrator-connection.ts';
 import { unknownDriver } from '../supported-driver.ts';
 import type { Driver } from '../schema/blueprint.ts';
@@ -168,8 +168,8 @@ function checkNamed(driver: Driver, plan: readonly PlanStep[], who: string): voi
 }
 
 /**
- * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps two tables for it, `migrations` (which
- * ran, in which batch) and, on SQLite, `migration_lock`; what the migrations say about the schema (secret columns, `timestamps()`,
+ * Runs the migrations of every module in batches, ordered by their timestamp. The database keeps `migrations` for it (which
+ * ran, in which batch). On SQLite it keeps `migration_lock` too, and on MySQL `migration_interruption`. What the migrations say about the schema (secret columns, `timestamps()`,
  * `softDeletes()`, `.inverse()`, the owner of a table) is computed from their plans, not stored. After every migration the
  * database is checked against that schema, and a migration that left it different is rolled back (on MySQL, which cannot, it is reported and what it did stays).
  *
@@ -177,7 +177,7 @@ function checkNamed(driver: Driver, plan: readonly PlanStep[], who: string): voi
  * file): its record stays on `default` (one order, one batch number for all).
  *
  * `migrations` has exactly the columns `batch, checksum, id, module, name` (or `batch, id, module, name` as Marmeon 0.3 wrote them, which the
- * migrating methods carry over); any other set was written by a Marmeon this release does not know and is
+ * migrating methods carry over). On MySQL `migration_interruption` has exactly its own columns. Any other set was written by a Marmeon this release does not know and is
  * refused ({@link MigrationStateError}). It reads the record on a connection of its own, so it works on a database whose migrations
  * are not all there, which the app's connections refuse; in a process that migrates it hands the schema it leaves to that process's
  * connections. See `docs/migrations.md#how-the-migrator-keeps-track`.
@@ -381,6 +381,7 @@ export class Migrator {
   /** @internal — rolls back the last batch, or the last `steps` migrations. */
   async rollback(options: { steps?: number } & Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () => {
+      await this.#refuseInterrupted('rollback');
       await this.#withdrawnOnFailure(() => this.#carryOver(options));
       const rows = (await this.#ran()).toReversed();
       const last = rows[0]?.batch;
@@ -393,6 +394,7 @@ export class Migrator {
   async reset(options: Pick<MigrateOptions, 'onRun' | 'onCarriedOver' | 'onChanged'> = {}): Promise<MigrationRun[]> {
     return this.locked(async () =>
       this.#withdrawnOnFailure(async () => {
+        await this.#refuseInterrupted('rollback');
         await this.#carryOver(options);
         return this.#down((await this.#ran()).toReversed(), options);
       }),
@@ -423,6 +425,8 @@ export class Migrator {
           // A database an unreleased build migrated is the one this command is the way out of; a record of a newer Marmeon is not dropped.
           const columns = await columnsOf(books, this.#driver());
           if (!isUnreleased(columns)) assertRecordReadable(columns, connection);
+          // A marker that reads is no obstacle (dropping it is the point of this command), one of a newer Marmeon is left alone like its record.
+          if (this.#driver() === 'mysql') assertInterruptionReadable(columns, connection);
         }
         await dropAllTables(books, this.#driver(connection));
       }
@@ -547,7 +551,7 @@ export class Migrator {
 
   async #tablesOf(connection: string): Promise<string[]> {
     const { columns, extension } = await this.#catalog(connection);
-    return appTables(columns, extension);
+    return appTables(columns, this.#driver(connection), extension);
   }
 
   /**
@@ -559,7 +563,7 @@ export class Migrator {
     const catalog = await this.#catalog(connection);
     const found = new Map<string, Set<string>>();
     const withheld = new Set<string>();
-    for (const table of appTables(catalog.columns, catalog.extension)) {
+    for (const table of appTables(catalog.columns, this.#driver(connection), catalog.extension)) {
       if (catalog.withheld.has(table)) {
         withheld.add(table);
         continue;
@@ -587,7 +591,7 @@ export class Migrator {
       const columns = new Map(names.map((name): [string, string[]] => [name, []]));
       const found = db.prepare(`select name from pragma_table_info('${MIGRATIONS_TABLE}')`).all() as { name: string }[];
       if (found.length > 0) columns.set(MIGRATIONS_TABLE, found.map((row) => row.name));
-      const tables = appTables(columns);
+      const tables = appTables(columns, 'sqlite');
       if (recordVersion(columns, 'default') === undefined) return { rows: [], tables };
       const rows = db.prepare(`select * from ${MIGRATIONS_TABLE} order by batch, id`).all() as { name: string; module: string; batch: number; checksum?: string | null }[];
       return { rows: rows.map((row) => ({ ...row, checksum: row.checksum ?? null })), tables };
@@ -848,7 +852,7 @@ export class Migrator {
       const tables: string[] = [];
       const extra: string[] = [];
       for (const [table, found] of columns) {
-        if (isMigratorTable(table) || left.includes(table) || table.startsWith('sqlite_') || extension.has(table)) continue;
+        if (isMigratorTable(table, this.#driver(connection)) || left.includes(table) || table.startsWith('sqlite_') || extension.has(table)) continue;
         const known = state.projection.tables.get(table);
         if (known === undefined || state.connections.get(table) !== connection) tables.push(table);
         else {
@@ -867,7 +871,21 @@ export class Migrator {
     const columns = await columnsOf(books, this.#driver());
     assertNotUnreleased(columns, 'default');
     assertRecordReadable(columns, 'default');
+    await this.#refuseInterrupted('migrate');
     return columns.has(MIGRATIONS_TABLE);
+  }
+
+  /** On MySQL: the migration that started and has not finished, if the table of interruptions says so (or cannot be read). */
+  async #interruption(): Promise<Interruption | undefined> {
+    if (this.#driver() !== 'mysql') return undefined;
+    const books = this.#books();
+    return readInterruption(runner(books), await columnsOf(books, 'mysql'), 'default');
+  }
+
+  /** Refuses a command that would run migrations on top of one that has not finished. Inside the lock: a second `migrate` that waited for it reads the marker after the first one ended. */
+  async #refuseInterrupted(refused: 'migrate' | 'rollback'): Promise<void> {
+    const found = await this.#interruption();
+    if (found) throw interruptedError(found, 'default', refused);
   }
 
   /**
@@ -879,6 +897,7 @@ export class Migrator {
     const books = this.#books();
     const columns = await columnsOf(books, this.#driver());
     const version = recordVersion(columns, 'default');
+    if (this.#driver() === 'mysql') assertInterruptionReadable(columns, 'default');
     if (version === undefined) return [];
     const rows = (await books.selectFrom(MIGRATIONS_TABLE).selectAll().orderBy('batch').orderBy('id').execute()) as {
       id: number;

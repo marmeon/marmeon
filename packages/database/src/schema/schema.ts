@@ -66,10 +66,10 @@ export class Schema {
     );
   }
 
-  /** Refuses a name the migrator keeps its tables under: `migrations` and `migration_lock`. */
+  /** Refuses a name the migrator keeps its tables under: `migrations` and `migration_lock`; on MySQL also `migration_interruption`, refused when the migration runs. */
   #allowed(table: string, action: string): void {
     // The last segment: `public.migrations` and `main.migrations` are the same table. And the table Kysely sends: `public. migrations` and `public.migrations.x` are the table `migrations` of `public`.
-    if (!isMigratorTable(lastSegment(table)) && !isMigratorTable(tableParts(table).at(-1)!.name)) return;
+    if (!isMigratorTable(lastSegment(table), undefined) && !isMigratorTable(tableParts(table).at(-1)!.name, undefined)) return;
     throw new SchemaError(
       withCode(
         'D4',
@@ -97,7 +97,7 @@ export class Schema {
   #rawAllowed(node: RawNode, driver: Driver): void {
     // The text as the driver's compiler sends it, read with the driver's own lexing (strings, quoted names, comments, dollar quotes, executable comments).
     const text = rawText(node, driver);
-    for (const word of statementWords(text, driver)) if (isMigratorTable(word)) this.#rawNames(word, driver === 'mysql' && hasExecutableComment(text) ? 'comment' : driver === 'sqlite' ? 'string' : undefined);
+    for (const word of statementWords(text, driver)) if (isMigratorTable(word, undefined)) this.#rawNames(word, driver === 'mysql' && hasExecutableComment(text) ? 'comment' : driver === 'sqlite' ? 'string' : undefined);
   }
 
   /** Runs the callback that describes a table, and closes the description: it is synchronous like `up()`. */

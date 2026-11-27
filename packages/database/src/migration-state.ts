@@ -25,6 +25,14 @@ export const LOCK_TABLE = 'migration_lock';
 export const LOCK_COLUMNS: readonly string[] = ['acquired_at', 'heartbeat_at', 'name', 'owner'];
 
 /**
+ * MySQL only: the table whose row says a migration started and has not finished. Other drivers keep no such table; a table of that
+ * name there is the app's. See `docs/migrations.md#a-migration-that-stopped-halfway`.
+ */
+export const INTERRUPTION_TABLE = 'migration_interruption';
+/** The columns of {@link INTERRUPTION_TABLE}, sorted. */
+export const INTERRUPTION_COLUMNS: readonly string[] = ['batch', 'connection_name', 'direction', 'module', 'name', 'owner', 'started_at'];
+
+/**
  * The tables Marmeon 0.3 kept beside the record of migrations, and their columns. This release neither reads nor writes them and
  * `migrate` leaves them where they are: a process of 0.3 that still runs reads them, and a missing table means "no secret columns" to it.
  */
@@ -37,10 +45,14 @@ export const LEGACY_TABLES: Readonly<Record<string, readonly string[]>> = {
 /** The table a build of Marmeon that was never released kept its record of migrations in. There is no way from it to this release. */
 const UNRELEASED_TABLE = 'marmeon_migrations';
 
-/** Whether `name` belongs to the migrator: the record of migrations and the lock. No migration may create, change or drop them. */
-export function isMigratorTable(name: string): boolean {
+/**
+ * Whether `name` belongs to the migrator: the record of migrations and the lock. No migration may create, change or drop them.
+ * `driver` `undefined` asks for the names reserved on every driver (what a plan is checked against); `'mysql'` adds
+ * {@link INTERRUPTION_TABLE}, which is the app's own name on SQLite and Postgres.
+ */
+export function isMigratorTable(name: string, driver: Driver | undefined): boolean {
   const lower = name.toLowerCase();
-  return lower === MIGRATIONS_TABLE || lower === LOCK_TABLE;
+  return lower === MIGRATIONS_TABLE || lower === LOCK_TABLE || (driver === 'mysql' && lower === INTERRUPTION_TABLE);
 }
 
 /** What stops a connection from answering queries: its migrations are not what the code expects. */
@@ -51,9 +63,10 @@ export class MigrationStateError extends Error {
   /**
    * `pending`: the database lacks migrations the code has (run `marmeon migrate`). `newer`: the record of migrations has a form this
    * release does not read. `unmigrated`: the database has tables and no record of migrations. `unmanaged`: the connection is set to
-   * `managed: false` and Marmeon migrates the database after all.
+   * `managed: false` and Marmeon migrates the database after all. `interrupted` (MySQL): a migration started and has not finished, or the
+   * table that says so cannot be read; see `docs/migrations.md#a-migration-that-stopped-halfway`.
    */
-  readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged';
+  readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged' | 'interrupted';
   /** `pending`: the migrations the database lacks, in the order they run. */
   readonly missing: readonly string[];
 
@@ -88,9 +101,9 @@ export function legacyTables(columns: ReadonlyMap<string, readonly string[]>): s
  * The tables of the app: not the migrator's, not 0.3's leftovers, not SQLite's own (`sqlite_sequence`), and not the ones an extension
  * owns (`ignore`: PostGIS's `spatial_ref_sys`).
  */
-export function appTables(columns: ReadonlyMap<string, readonly string[]>, ignore: ReadonlySet<string> = new Set()): string[] {
+export function appTables(columns: ReadonlyMap<string, readonly string[]>, driver: Driver, ignore: ReadonlySet<string> = new Set()): string[] {
   const left = new Set(legacyTables(columns));
-  return [...columns.keys()].filter((name) => !isMigratorTable(name) && !left.has(name) && !name.startsWith('sqlite_') && !ignore.has(name));
+  return [...columns.keys()].filter((name) => !isMigratorTable(name, driver) && !left.has(name) && !name.startsWith('sqlite_') && !ignore.has(name));
 }
 
 /**
@@ -152,7 +165,86 @@ export function assertLockReadable(columns: ReadonlyMap<string, readonly string[
   );
 }
 
-/** Creates the record of migrations — what the first `migrate` on a database does. */
+/** A migration that started and has not finished, as its row says. */
+export interface Interruption {
+  readonly name: string;
+  readonly module: string;
+  /** The database connection the migration runs on, which may be another MySQL connection than `default`. */
+  readonly connection: string;
+  /** `up` or `down`; a newer Marmeon may have written another value, which refuses all the same. */
+  readonly direction: string;
+  /** The batch of the run the migration belongs to. */
+  readonly batch: number;
+  /** ISO-8601 UTC text. */
+  readonly startedAt: string;
+  /** Who ran it. */
+  readonly owner: string;
+}
+
+/** Refuses a table of interruptions with other columns than this release writes. */
+export function assertInterruptionReadable(columns: ReadonlyMap<string, readonly string[]>, connection: string): void {
+  const found = columns.get(INTERRUPTION_TABLE);
+  if (found === undefined || sameColumns(found, INTERRUPTION_COLUMNS)) return;
+  throw new MigrationStateError(
+    'newer',
+    connection,
+    withCode(
+      'D1',
+      `The table of interrupted migrations (${INTERRUPTION_TABLE}) of the database connection "${connection}" has the columns ${printable(found.toSorted().join(', '))}, not the ones this release of Marmeon writes ` +
+        `(${INTERRUPTION_COLUMNS.join(', ')}): a newer Marmeon migrated this database, or another tool keeps a table of that name. Update @marmeon/*. ${REFUSED}. See docs/migrations.md#how-the-migrator-keeps-track.`,
+    ),
+  );
+}
+
+/**
+ * The migration of a MySQL database that started and has not finished, or undefined. Callers ask on MySQL only. Refuses a table with
+ * other columns, and a database that has the record of migrations and no table of interruptions: this release makes both together, so
+ * the role does not see the table (MySQL hides what it holds no privilege on), or it was dropped by hand, and whether a migration
+ * stopped halfway cannot be told. A `select` the server refuses throws and is not caught.
+ */
+export async function readInterruption(run: CatalogQuery, columns: ReadonlyMap<string, readonly string[]>, connection: string): Promise<Interruption | undefined> {
+  assertInterruptionReadable(columns, connection);
+  if (!columns.has(INTERRUPTION_TABLE)) {
+    if (!columns.has(MIGRATIONS_TABLE)) return undefined;
+    throw new MigrationStateError(
+      'interrupted',
+      connection,
+      withCode(
+        'D32',
+        `The database connection "${connection}" has the record of migrations (${MIGRATIONS_TABLE}) but this role does not see ${INTERRUPTION_TABLE}, the table that says whether a migration has not finished, so Marmeon cannot tell. ` +
+          `Grant the role \`select\` on ${INTERRUPTION_TABLE}; if the table was dropped by hand, restore it with the columns ${INTERRUPTION_COLUMNS.join(', ')}. ${REFUSED}. See docs/migrations.md#a-migration-that-stopped-halfway.`,
+      ),
+    );
+  }
+  const rows = await run<{ batch: number | string; connection_name: string; direction: string; module: string; name: string; owner: string; started_at: string }>(
+    `select "batch", "connection_name", "direction", "module", "name", "owner", "started_at" from "${INTERRUPTION_TABLE}" order by "started_at", "name"`,
+  );
+  const row = rows[0];
+  if (row === undefined) return undefined;
+  return { name: row.name, module: row.module, connection: row.connection_name, direction: row.direction, batch: Number(row.batch), startedAt: row.started_at, owner: row.owner };
+}
+
+/**
+ * The refusal while a migration has not finished. `refused` says what is refused: every query of the connection, or the command that
+ * would run a migration on top of the half done one.
+ */
+export function interruptedError(found: Interruption, connection: string, refused: 'queries' | 'migrate' | 'rollback'): MigrationStateError {
+  const after =
+    refused === 'queries'
+      ? `Every query on the connection "${printable(connection)}" is refused until that is resolved.`
+      : `${refused === 'migrate' ? 'marmeon migrate' : 'marmeon migrate:rollback (migrate:reset)'} does not start until that is resolved.`;
+  return new MigrationStateError(
+    'interrupted',
+    connection,
+    withCode(
+      'D32',
+      `Migration ${printable(found.name)} (module "${printable(found.module)}") started its ${printable(found.direction)}() on the database connection "${printable(found.connection)}" at ${printable(found.startedAt)} (${printable(found.owner)}) and has not finished (${INTERRUPTION_TABLE} holds its row). ${after} ` +
+        'How to resolve it: docs/migrations.md#a-migration-that-stopped-halfway.',
+    ),
+  );
+}
+
+/** Creates the record of migrations — what the first `migrate` on a database does. On MySQL the table of interruptions comes first, beside it. */
 export async function createMigrationsTable(db: Kysely<any>, driver: Driver): Promise<void> {
   let id: ['integer' | 'bigint', (c: ColumnDefinitionBuilder) => ColumnDefinitionBuilder];
   switch (driver) {
@@ -167,6 +259,21 @@ export async function createMigrationsTable(db: Kysely<any>, driver: Driver): Pr
       break;
     default:
       return unknownDriver(driver);
+  }
+  // First, so that a record without this table is never this release's: one that is (a role without privilege, a table dropped by hand) cannot say whether a migration stopped halfway.
+  if (driver === 'mysql') {
+    await db.schema
+      .createTable(INTERRUPTION_TABLE)
+      .ifNotExists()
+      .addColumn('name', 'varchar(255)', (c) => c.primaryKey())
+      .addColumn('module', 'varchar(255)', (c) => c.notNull())
+      .addColumn('connection_name', 'varchar(255)', (c) => c.notNull())
+      .addColumn('direction', 'varchar(4)', (c) => c.notNull())
+      .addColumn('batch', 'integer', (c) => c.notNull())
+      .addColumn('started_at', 'varchar(32)', (c) => c.notNull())
+      .addColumn('owner', 'varchar(255)', (c) => c.notNull())
+      .modifyEnd(sql`default character set utf8mb4 collate utf8mb4_0900_bin`)
+      .execute();
   }
   const table = db.schema
     .createTable(MIGRATIONS_TABLE)
@@ -213,10 +320,12 @@ export async function checkMigrationState(run: CatalogQuery, driver: Driver, con
   const { types, extension } = await tableColumns(run, driver);
   const columns = new Map([...types].map(([table, found]) => [table, [...found.keys()]]));
   assertNotUnreleased(columns, connection);
+  // A record this release cannot read is said so first: the table of interruptions is judged against a record that is this release's.
+  if (driver === 'mysql') assertRecordReadable(columns, connection);
   const recorded = columns.get(MIGRATIONS_TABLE);
   let ran: Set<string>;
   if (recorded === undefined) {
-    const tables = appTables(columns, extension);
+    const tables = appTables(columns, driver, extension);
     if (tables.length > 0) {
       throw new MigrationStateError(
         'unmigrated',
@@ -245,6 +354,12 @@ export async function checkMigrationState(run: CatalogQuery, driver: Driver, con
       );
     }
     ran = new Set((await run<{ name: string }>(`select name from ${MIGRATIONS_TABLE}`)).map((row) => row.name));
+  }
+  // Read after the record, so that a row written between the two reads is seen and not skipped.
+  // Before the pending migrations: a row in the table is the reason, and "run marmeon migrate" would be wrong advice.
+  if (driver === 'mysql') {
+    const found = await readInterruption(run, columns, connection);
+    if (found) throw interruptedError(found, connection, 'queries');
   }
   const missing = expected.filter((name) => !ran.has(name));
   if (missing.length > 0) {

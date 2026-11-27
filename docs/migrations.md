@@ -180,7 +180,7 @@ describes today. The second argument tells the driver, `'sqlite'`, `'pgsql'` or 
 
 A data step changes data only. A schema change in it, through the query builder (`db.schema.createTable(…)`) or as raw SQL that
 begins with `create`, `alter`, `drop` or `do`, stops with error D4: add it as a step of its own with `schema.create()`,
-`schema.alter()` or `schema.raw()`. So does a write to the migrator's own tables through the query builder, wherever it stands in the query (a CTE, a subquery, an `insert … select`), and raw SQL appended to a query that changes the schema. Raw SQL that names `migrations` or `migration_lock` (also through `sql.id()`, `sql.table()` or an alias), alone or inside a write, stops with D4 as well, and so does a read of them in raw SQL: every word outside a string counts. The query builder may read them. The statement is read as it is sent: compiled by the connection's dialect, with names quoted and escaped, and (on Postgres) a name spelled with `U&"…"` escapes read as the name it is. A `U&"…"` name with a `UESCAPE` clause, or with an escape that cannot be read, counts as naming the migrator's tables.
+`schema.alter()` or `schema.raw()`. So does a write to the migrator's own tables through the query builder, wherever it stands in the query (a CTE, a subquery, an `insert … select`), and raw SQL appended to a query that changes the schema. On MySQL the same holds for `migration_interruption`. Raw SQL that names `migrations` or `migration_lock` (also through `sql.id()`, `sql.table()` or an alias), alone or inside a write, stops with D4 as well, and so does a read of them in raw SQL: every word outside a string counts. The query builder may read them. The statement is read as it is sent: compiled by the connection's dialect, with names quoted and escaped, and (on Postgres) a name spelled with `U&"…"` escapes read as the name it is. A `U&"…"` name with a `UESCAPE` clause, or with an escape that cannot be read, counts as naming the migrator's tables.
 
 This is a guard against mistakes, not a sandbox. A connection taken from `db` without its plugins or a query compiled by hand
 is not looked into, and a raw statement is read by its words, not parsed. Keep to the query
@@ -293,7 +293,7 @@ the query builder as it is: no secret column, soft delete or timestamp mark appl
 The migrations are the one source, and the database holds none of what they say. The app computes a
 [projection](#what-the-migrations-describe) from the migration files and keeps it in `.marmeon/schema.json`, a cache that `marmeon build`
 writes fresh. [Table types](queries.md#table-types) shows the same schema as the committed `bootstrap/database.d.ts`, the one place that
-lists the current definition of every table. The database holds only `migrations` and, on SQLite, `migration_lock`; the framework's
+lists the current definition of every table. The database holds only `migrations` and, on SQLite, `migration_lock`. On MySQL it also holds `migration_interruption`. The framework's
 own tables (`jobs`, `sessions`, …) are ordinary tables that your migrations create. [How the migrator keeps track](#how-the-migrator-keeps-track)
 has the states the app can find the database in, [what `migrate` checks](#what-migrate-checks-after-each-migration) the checks around
 each migration, and [deploying new migrations](#deploying-new-migrations) what a release with new migrations does to a running app.
@@ -375,7 +375,7 @@ a migration has no transaction around it and nothing to roll back: the steps tha
 - **The record is made before the first migration.** `migrations` exists from the first run on, so a first migration that fails leaves
   an empty `migrations` and the tables it made.
 - **Starting again after a failed run** means cleaning up by hand: drop what the failed migration made, then run `migrate`.
-  `migrate:fresh` does not run on MySQL yet. Until the half-made tables are gone, a run that creates one of them stops with error D3 (`already has the
+  `migrate:fresh` drops every table and starts over (outside development it needs `--force`). Until the half-made tables are gone, a run that creates one of them stops with error D3 (`already has the
   table …`) before it changes anything, and a step that adds what is already there stops with the server's error. A migration that is run again starts at its first step, and a `schema.data()` step that was
   committed before the failure runs a second time: write data steps so that running them twice is harmless (`where` the change has not
   been made, or a value that is set, not added to).
@@ -393,6 +393,20 @@ a migration has no transaction around it and nothing to roll back: the steps tha
 - **The default of a `text()` column that stays `longtext`, and of a `json()` column, is an expression**, written in parentheses, because
   MySQL takes no literal there (a `text()` in a key becomes a `varchar(768)` and keeps the literal).
   `useCurrent()` is `(utc_timestamp(3))`: the column holds UTC.
+
+#### A migration that stopped halfway
+
+On MySQL, `migration_interruption` is a table that `migrate` creates beside `migrations`. A row in it means a migration started and has
+not finished. While the row is there, every query of a process that starts or is not ready yet fails with a `MigrationStateError` (D32).
+The message names the migration, its `up()` or `down()`, the connection and the time. `migrate`, `migrate:rollback` and `migrate:reset` do not start.
+A process that was ready before the row appeared keeps answering until it restarts.
+
+Two ways lead out. You finish or undo by hand what the migration did, then delete its row from `migration_interruption`.
+On a development database, `migrate:fresh` drops every table, the one with the row included, and starts over: it deletes all data.
+
+The role your app uses has to see `migration_interruption`. MySQL hides a table a role has no privilege on, and a role that sees
+`migrations` and not `migration_interruption` cannot say whether a migration has not finished, so its queries fail with D32 as well.
+Grant it `select` on the table. If the table has other columns than the ones listed under [how the migrator keeps track](#how-the-migrator-keeps-track), the error is D1.
 
 #### What MySQL refuses before a migration runs
 
@@ -440,17 +454,19 @@ Not held before the migration runs, so the server refuses them with the earlier 
 
 ### How the migrator keeps track
 
-The database holds two tables for the migrator, and nothing else of what the migrations say:
+The migrator keeps the tables below, and the database holds nothing else of what the migrations say:
 
 | Table | Holds |
 | --- | --- |
 | `migrations` | The migrations that ran, with their batch and the checksum of their file: `id`, `name`, `module`, `batch`, `checksum`. On the `default` connection only. |
 | `migration_lock` | SQLite only: the row that [lets one migration run at a time](#one-migration-at-a-time). |
+| `migration_interruption` | MySQL only: the migration that started and has not finished, see [a migration that stopped halfway](#a-migration-that-stopped-halfway). Its columns are `batch`, `connection_name`, `direction`, `module`, `name`, `owner` and `started_at`. |
 
-The first `migrate` on a database creates `migrations`. The columns `batch, checksum, id, module, name` are its format: a table with any other
+The first `migrate` on a database creates `migrations`. On MySQL it creates `migration_interruption` first. The columns `batch, checksum, id, module, name` are its format: a table with any other
 columns (but see below for the form of 0.3) was written by a newer Marmeon (or is another tool's), and every command refuses it rather than guess what the columns mean. The
-same holds for the columns of `migration_lock`. A migration that creates, alters, drops or renames `migrations` or `migration_lock`
-stops with a `SchemaError` (D4) before anything runs, and so does a `schema.data()` step writing to them. Every other name is the app's,
+same holds for the columns of `migration_lock` and of `migration_interruption`. A migration that creates, alters, drops or renames `migrations` or `migration_lock`
+stops with a `SchemaError` (D4) before anything runs, and so does a `schema.data()` step writing to them. On MySQL `migration_interruption` is reserved the same way, when the migration is about to run.
+On SQLite and Postgres that name is yours. Every other name is the app's,
 the framework's own tables (`jobs`, `cache`, `sessions`, …) included. A connection with `managed: false` has neither table, and
 the migration commands leave it alone.
 
@@ -468,6 +484,7 @@ What the app does with the answer, per connection (`default` decides; the other 
 | ahead | The database also has migrations the code does not know: a process of an older release during a deploy. | Queries run, with the schema the code knows: its secret columns, soft deletes and relations. Logged once. See [migrating a running app](#migrating-a-running-app). |
 | pending | The database lacks a migration the code has: the app started before `migrate`, or after a rollback. The record in the form Marmeon 0.3 wrote, without `checksum`, counts as lacking too (see below). | **Every** query fails with a `MigrationStateError` (D2) that names the missing migrations, `/up/ready` is red. The database is asked again at most once a second, so the app answers a second after `marmeon migrate` ran, with no restart. A process that was ready before a rollback keeps its schema until it restarts. |
 | newer | `migrations` has other columns than this release reads: a newer Marmeon migrated the database. | Every query fails (D1); `migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status` and `migrate:fresh` refuse as well and change nothing. Update `@marmeon/*`. |
+| interrupted | MySQL only: `migration_interruption` holds a row: a migration started and has not finished. | Every query of a new process fails (D32), as do `migrate`, `migrate:rollback` and `migrate:reset`; `/up/ready` is red. See [a migration that stopped halfway](#a-migration-that-stopped-halfway). |
 | unmigrated | The database has tables and no `migrations`: a database that lost it, or another tool's. | Every query fails (D1). For your own database, run `marmeon migrate`: it writes `migrations` and runs every migration, and tables it did not make stay as they are, unknown (see below). For a database another tool manages, set [`managed: false`](database.md#a-database-another-tool-manages). |
 
 It never works as if no column were secret and no row deleted: a code with migrations the database lacks is refused rather than

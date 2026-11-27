@@ -304,7 +304,7 @@ export declare class MigrationLockTimeoutError extends Error {
 export declare class MigrationStateError extends Error {
     name: string;
     readonly connection: string;
-    readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged';
+    readonly reason: 'pending' | 'newer' | 'unmigrated' | 'unmanaged' | 'interrupted';
     readonly missing: readonly string[];
     constructor(reason: MigrationStateError['reason'], connection: string, message: string, missing?: readonly string[]);
 }

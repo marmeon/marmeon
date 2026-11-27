@@ -430,13 +430,13 @@ withMysql('migrations on MySQL', () => {
       ['2026_01_02_000000_create_posts_table', 2],
       ['2026_01_03_000000_add_slug_to_posts_table', 2],
     ]);
-    expect(await tables()).toEqual(['articles', 'migrations', 'users']);
+    expect(await tables()).toEqual(['articles', 'migration_interruption', 'migrations', 'users']);
     expect(await columns('articles')).toEqual(['id', 'user_id', 'title', 'content', 'published_at', 'slug']);
   });
 
   it('gives every table the binary collation, so a value is the same value in any case it was written in', async () => {
     const collations = (await sql<{ collation: string }>`select table_collation as collation from information_schema.tables where table_schema = database()`.execute(db())).rows;
-    expect(collations).toHaveLength(3);
+    expect(collations).toHaveLength(4);
     expect(new Set(collations.map((row) => row.collation))).toEqual(new Set(['utf8mb4_0900_bin']));
     await db().insertInto('users').values({ name: 'Ada', email: 'Ada@Example.com' }).execute();
     await db().insertInto('users').values({ name: 'Ada', email: 'ada@example.com' }).execute(); // not a duplicate
@@ -456,12 +456,12 @@ withMysql('migrations on MySQL', () => {
   it('rolls back the last batch, undoing renames and dropping an index by the table it is on', async () => {
     const both = migrator(connections, auth, blog);
     expect((await both.rollback()).map((run) => run.name)).toEqual(['2026_01_03_000000_add_slug_to_posts_table', '2026_01_02_000000_create_posts_table']);
-    expect(await tables()).toEqual(['migrations', 'users']);
+    expect(await tables()).toEqual(['migration_interruption', 'migrations', 'users']);
     await both.migrate();
     expect((await both.rollback({ steps: 1 })).map((run) => run.name)).toEqual(['2026_01_03_000000_add_slug_to_posts_table']);
     expect(await columns('posts')).toEqual(['id', 'user_id', 'title', 'body', 'published_at']);
     expect((await both.reset()).length).toBe(2);
-    expect(await tables()).toEqual(['migrations']);
+    expect(await tables()).toEqual(['migration_interruption', 'migrations']);
   });
 
   it('runs the schema changes and the data steps that follow a data step that succeeded, on the connection its transaction ended on', async () => {
@@ -513,7 +513,7 @@ withMysql('migrations on MySQL', () => {
       (globalThis as { guardedStatement?: string }).guardedStatement = statement;
       await expect(migrator(own.connections, mysqlModule('mysql-guard')).migrate()).rejects.toThrow(/^\[marmeon:D4\] Cannot run this statement in a schema\.data\(\) step: it ends or steers the transaction of the step, which the migrator controls, and a schema change would be missing from the plan of the migration\. /);
       expect((await sql<{ amount: number }>`select amount from ledger order by id`.execute(rows)).rows).toEqual([{ amount: 10 }, { amount: 20 }]);
-      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(rows)).rows.map((row) => row.name)).toEqual(['ledger', 'migrations']);
+      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(rows)).rows.map((row) => row.name)).toEqual(['ledger', 'migration_interruption', 'migrations']);
     } finally {
       delete (globalThis as { guardedStatement?: string }).guardedStatement;
       await own.close();
@@ -526,7 +526,7 @@ withMysql('migrations on MySQL', () => {
       const run = migrator(own.connections, mysqlModule('mysql-down-two'));
       await run.migrate();
       await expect(run.rollback()).rejects.toThrow(/^\[marmeon:D18\] Migration 2026_03_10_000000_create_older_table \(module "mysql-down-two"\) has a schema\.raw\(\) step/);
-      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>())).rows.map((row) => row.name)).toEqual(['migrations', 'newer', 'older']);
+      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>())).rows.map((row) => row.name)).toEqual(['migration_interruption', 'migrations', 'newer', 'older']);
       expect((await run.status()).map((m) => m.batch)).toEqual([1, 1]);
     } finally {
       await own.close();
@@ -547,7 +547,7 @@ withMysql('migrations on MySQL', () => {
       const rows = failing.connections.get<any>();
       await expect(migrator(failing.connections, broken).migrate()).rejects.toThrow('this migration is broken');
       // MySQL cannot undo the table the migration made, and the record is made before the first migration: it is empty.
-      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(rows)).rows.map((row) => row.name)).toEqual(['half', 'migrations']);
+      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(rows)).rows.map((row) => row.name)).toEqual(['half', 'migration_interruption', 'migrations']);
       expect((await sql<{ n: number }>`select count(*) as n from migrations`.execute(rows)).rows[0]?.n).toBe(0);
     } finally {
       await failing.close();
@@ -589,7 +589,7 @@ withMysql('migrations on MySQL', () => {
       );
       // The create of the migration before it did not run either: nothing was sent that changes the schema.
       expect(sent.filter((text) => /^\s*(create|alter|drop|rename)\b/i.test(text))).toEqual([]);
-      expect(await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>()).then((result) => result.rows.map((row) => row.name))).toEqual(['migrations']);
+      expect(await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>()).then((result) => result.rows.map((row) => row.name))).toEqual(['migration_interruption', 'migrations']);
     } finally {
       await own.close();
     }
@@ -601,9 +601,9 @@ withMysql('migrations on MySQL', () => {
       const run = migrator(own.connections, mysqlModule('mysql-raw'));
       await run.migrate();
       const names = async () => (await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>())).rows.map((row) => row.name);
-      expect(await names()).toEqual(['from_both', 'from_mysql', 'migrations']);
+      expect(await names()).toEqual(['from_both', 'from_mysql', 'migration_interruption', 'migrations']);
       await run.rollback();
-      expect(await names()).toEqual(['migrations']);
+      expect(await names()).toEqual(['migration_interruption', 'migrations']);
     } finally {
       await own.close();
     }
@@ -615,7 +615,7 @@ withMysql('migrations on MySQL', () => {
       const run = migrator(own.connections, mysqlModule('mysql-raw-down'));
       await run.migrate();
       await expect(run.rollback()).rejects.toThrow(/^\[marmeon:D18\] Migration 2026_03_06_000000_create_keeps_down_table \(module "mysql-raw-down"\) has a schema\.raw\(\) step \(step 2 of its plan\)/);
-      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>())).rows.map((row) => row.name)).toEqual(['keeps_down', 'migrations']);
+      expect((await sql<{ name: string }>`select table_name as name from information_schema.tables where table_schema = database() order by 1`.execute(own.connections.get<any>())).rows.map((row) => row.name)).toEqual(['keeps_down', 'migration_interruption', 'migrations']);
     } finally {
       await own.close();
     }

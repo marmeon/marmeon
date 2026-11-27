@@ -1,9 +1,12 @@
 import { withCode } from '@marmeon/core/internal';
-import { sql, type Kysely } from 'kysely';
+import { sql, type Kysely, type RawNode } from 'kysely';
+import { INTERRUPTION_TABLE } from '../migration-state.ts';
+import { lastSegment, rawText, statementWords } from '../migrator-connection.ts';
 import { blueprintParts, foreignKeyName, mysqlTypeOf } from './blueprint.ts';
 import { MYSQL_KEY_BYTES, MYSQL_KEY_PARTS, mysqlCatalogKeyBytes, mysqlKeyBytes, type CatalogColumn } from './mysql-keys.ts';
 import type { PlanStep, TablesAt } from './plan.ts';
 import { SchemaError } from './schema-error.ts';
+import { tableParts } from './table-name.ts';
 
 // What MySQL refuses before a migration's first statement, in two stages. MySQL commits every DDL statement as it runs, so one that fails
 // half way leaves the first half in place, and a rerun fails on it.
@@ -26,9 +29,50 @@ export function fitsMysql(name: string, what: string, hint: string): void {
   throw new SchemaError(withCode('D5', `The ${what} "${name}" is ${length} characters long; MySQL allows 64 and refuses a longer name. ${hint}`));
 }
 
+/**
+ * `migration_interruption` is the migrator's table on MySQL only (a plan is read against the names of every driver when it is made, and
+ * on SQLite and Postgres the name is the app's), so it is refused here, when a MySQL migration is about to run. The other two names are
+ * refused when the plan is made.
+ */
+function refuseInterruptionTable(step: PlanStep): void {
+  // The last segment, as `schema.create()` reads a name, and the table Kysely sends (`db. migration_interruption`).
+  const named = (table: string) => [lastSegment(table), tableParts(table).at(-1)!.name].some((name) => name.toLowerCase() === INTERRUPTION_TABLE);
+  const refuse = (table: string, what: string): never => {
+    throw new SchemaError(
+      withCode('D4', `Cannot ${what} "${table}": the name belongs to the migrator on MySQL, which holds the row of a migration that has not finished. Choose another name. See docs/migrations.md#how-the-migrator-keeps-track.`),
+    );
+  };
+  switch (step.kind) {
+    case 'create':
+    case 'alter':
+    case 'drop':
+      if (named(step.table)) refuse(step.table, { create: 'create the table', alter: 'alter the table', drop: 'drop the table' }[step.kind]);
+      return;
+    case 'rename':
+      if (named(step.from)) refuse(step.from, 'rename the table');
+      if (named(step.to)) refuse(step.to, 'rename a table to');
+      return;
+    case 'raw': {
+      const statement = step.statements.mysql;
+      if (!statement) return;
+      const found = statementWords(rawText(statement.toOperationNode() as RawNode, 'mysql'), 'mysql').find((word) => word.toLowerCase() === INTERRUPTION_TABLE);
+      if (found === undefined) return;
+      throw new SchemaError(
+        withCode(
+          'D4',
+          `The raw SQL names "${found}", a table of the migrator on MySQL (as a table, column or alias), which holds the row of a migration that has not finished. Choose another name. See docs/migrations.md#how-the-migrator-keeps-track.`,
+        ),
+      );
+    }
+    case 'data':
+      return;
+  }
+}
+
 /** The first stage: what the plan alone shows, from the columns each blueprint adds. */
 export function checkMysqlPlan(steps: readonly PlanStep[]): void {
   for (const step of steps) {
+    refuseInterruptionTable(step);
     if (step.kind === 'rename') {
       fitsMysql(step.to, 'table name', 'Use a shorter table name.');
       continue;

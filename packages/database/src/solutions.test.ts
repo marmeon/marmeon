@@ -2,6 +2,7 @@ import { ErrorSolutions } from '@marmeon/core';
 import { describe, expect, it } from 'vitest';
 import { DatabaseConnectionError } from './driver.ts';
 import { MigrationLockTimeoutError } from './migrations/lock.ts';
+import { interruptedError, MigrationStateError } from './migration-state.ts';
 import { databaseSolutions } from './solutions.ts';
 
 describe('the database solutions tied to an error code', () => {
@@ -27,5 +28,17 @@ describe('the database solutions tied to an error code', () => {
     expect(newer.map((solution) => [solution.code, solution.command])).toEqual([['D7', undefined]]);
     const lock = await registry.find(new MigrationLockTimeoutError({ owner: 'web-1:4242' } as never));
     expect(lock.map((solution) => solution.code)).toEqual(['D8']);
+  });
+
+  it('answer a migration that stopped halfway, and a role that cannot tell whether one did, with the page that resolves it and no single command', async () => {
+    const half = interruptedError({ name: '2026_01_05_000000_create_accounts_table', module: 'accounts', connection: 'default', direction: 'up', batch: 2, startedAt: '2026-11-27T10:00:00.000Z', owner: 'web-1:4242' }, 'default', 'queries');
+    const cannotTell = new MigrationStateError('interrupted', 'default', '[marmeon:D32] The database connection "default" has the record of migrations (migrations) but this role does not see migration_interruption, so Marmeon cannot tell.');
+    for (const error of [half, cannotTell]) {
+      const found = await registry.find(error);
+      expect(found.map((solution) => [solution.code, solution.command, solution.docs])).toEqual([['D32', undefined, 'docs/migrations.md#a-migration-that-stopped-halfway']]);
+      expect(found[0]!.text).toMatch(/by hand, then delete its row from migration_interruption\. On a development database, "marmeon migrate:fresh" starts over instead, and deletes all data\./);
+      expect(found[0]!.text).not.toContain('--interrupted');
+      expect(found[0]!.text).toContain('`select` on that table');
+    }
   });
 });
