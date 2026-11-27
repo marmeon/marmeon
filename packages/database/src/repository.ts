@@ -633,7 +633,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     const named = (error as { constraint?: unknown }).constraint;
     const name = typeof named === 'string' ? named : /UNIQUE constraint failed: index '(.+)'/.exec(String((error as Error).message))?.[1];
     const indexed = name === undefined ? undefined : metadata.projection?.tables.get(this.#name)?.indexes.find((index) => index.unique && index.name === name);
-    if (indexed) return indexed.columns;
+    // A copy: the projection's array is shared by every request, and the caller gets to change what it receives.
+    if (indexed) return [...indexed.columns];
     const kinds = metadata.kinds.get(this.#name);
     const detailed = typeof (error as { detail?: unknown }).detail === 'string';
     if (name !== undefined && !detailed) return columnsInName(name, this.#name, [...(kinds?.keys() ?? [])]);
