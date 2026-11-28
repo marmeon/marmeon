@@ -167,6 +167,9 @@ instead: `RowOf<NoteTable>`, `NewRowOf<NoteTable>` and `RowUpdateOf<NoteTable>`.
 Kysely's own documentation covers the builder: joins, subqueries, `onConflict`, `returning` and the rest. What Marmeon adds is
 on this page.
 
+MySQL has neither `RETURNING` nor `ON CONFLICT`: on a MySQL connection the builder's `returning()`, `onConflict()` and merge are refused with
+[D29](errors.md#server-error-codes) before the statement is sent, see [Writing on MySQL](#writing-on-mysql).
+
 > [!WARNING]
 > Secret columns, such as the password hash, are left out of every `selectAll()` and `returningAll()` of the query builder, and
 > a query reads one only with `secret()`. For a table the migrations created, those two name the columns the migrations know, so a
@@ -303,7 +306,8 @@ if (!created.ok) {
 name, so its columns are exact. An index from raw SQL that no migration describes is read from what the driver reports: the
 index's name on SQLite, and on Postgres when the error has no `detail`. Its columns are the column names that occur in that name,
 so a word of the name that is also a column can be counted. Name such an index `{table}_{columns}_unique`, or describe it in a
-migration. `tryUpdate()` reports `columns` the same way. The starter kit registers a user this way:
+migration. MySQL cannot be selected yet; when it can, its error names only the index, so `columns` is empty for an index that no migration
+describes. `tryUpdate()` reports `columns` the same way. The starter kit registers a user this way:
 
 ```ts title="modules/auth/UserRepository.ts"
 import type { PasswordHash } from '@marmeon/auth';
@@ -324,7 +328,7 @@ To answer a form with "taken" at its field instead, wrap the write in `failOnDup
 [validation](validation.md#the-unique-index-is-the-truth) page shows it.
 
 `insertMany()` and `tryInsertMany()` are for an import of thousands of rows. Both cut them into statements the driver accepts, since one statement takes at most
-65 535 parameters on Postgres and 32 766 on SQLite (a row of two columns: about 32 000 and 16 000 rows), and writes all of them in one
+65 535 parameters on Postgres and MySQL and 32 766 on SQLite (a row of two columns: about 32 000 and 16 000 rows; on MySQL with `returning`, and in `insertMissing()`, rows are written one by one, see [Writing on MySQL](#writing-on-mysql)), and writes all of them in one
 transaction, or in a savepoint inside an open one. When the third of five chunks fails, the first two are rolled back with it: all rows
 or none. `insertMany()` throws on a duplicate in any chunk, as `insert()` does. `tryInsertMany()` returns the same `err` as `tryInsert()`, with
 `columns`; the transaction around it stays usable, and returning the `err` from its callback rolls it back. Any other failure throws. Every row needs the same columns, and at least one, else a
@@ -360,6 +364,52 @@ const added = await questions.insertMissing(rows, { on: ['survey', 'name'], retu
 ```
 
 The web-app's `lab` module seeds a survey's questions this way (`SurveyRepository.addMissing()`).
+
+#### Writing on MySQL
+
+MySQL cannot be selected yet; what follows is what the framework's own tests run against. MySQL has no `RETURNING`, so `insert()` and
+`tryInsert()` write the row and read it back by its primary key, in one transaction (a savepoint inside one). The key is the id in the
+answer to the insert, the key the row names, or, for a UUIDv7 column, a UUIDv7 that the repository draws in the layout of the column's
+default from the host's clock. `update()` and `tryUpdate()` count the rows the statement matched (an update that changes nothing counts
+its row) and read the row back by its key, the new one when the values change it. That makes four statements where Postgres and SQLite
+need one: the write, the read and the transaction's two ends, which inside a transaction are a savepoint and its release.
+
+`insert()` and `tryInsert()` refuse with [D29](errors.md#server-error-codes) before anything is sent: a table without a primary key
+that Marmeon knows, a key column that the row leaves out and nothing generates that Marmeon can read back, an auto-increment
+key given a value that is not empty, `0` or a positive whole number written plainly (`'0600'`, `-1`), and a key column written in another
+case (`ID`). A name with a character outside ASCII must be exactly a column of the table, because MySQL folds case in its own way. On a table the
+migrations did not create, or a connection with `managed: false`, Marmeon does not know which key column the database generates, so an
+insert needs every key value. A key set to an expression, a key column written in another case, and a name outside ASCII that is no column of the table are refused with D29 by `update()` as well; on a table without a single-column
+primary key `update()` throws the `TypeError` it throws on every driver. A key that matches more than one row makes `update()` an error, and the write
+is rolled back: MySQL compares a number with text loosely, so the number `5` also matches the text `'05'`. `delete()`, `forceDelete()` and `restore()` do not check this yet, so pass the key in the column's type.
+A UUID key is compared as it is written, in the case it was stored in (Marmeon makes it lower case): `update()` with an upper-case UUID
+finds no row and returns `undefined`, so pass the id in lower case. A trigger that changes a primary key the row names is not supported on MySQL: the row is read back by the key that was given, which can find another row that has it.
+
+A relation's `create()` and `createMany()` read each row back by its primary key like `insert()`, in the order given and without secret columns. They refuse the
+same tables as `insert()` with [D29](errors.md#server-error-codes), and `createMany()` writes nothing of the earlier rows when a later row is refused or cannot be read back.
+
+`attach()` and `sync()` write the links one by one, inside the transaction they run in. A link is skipped, as `insertMissing()` skips a row, when MySQL reports the
+duplicate on the pivot's unique index over the two keys, or when the pivot already holds that very link. Every other duplicate throws and rolls the call back. A pivot with no
+unique index over the two keys that Marmeon knows skips nothing: on a connection with `managed: false` only a primary key over the two keys counts, and an index made by raw SQL is not known.
+
+A factory's `create()` reads each row back by its primary key, one row at a time and all or nothing for each. It refuses a table without a primary key with
+[D29](errors.md#server-error-codes) before it creates a row it relates to; a key value it cannot read back by is refused, as by `insert()`, when its row is written.
+
+`tryInsert()` reports `columns` for the primary key and for the unique indexes a migration describes, other than a partial one, and an
+empty list otherwise.
+
+`insertMany()` and `tryInsertMany()` with `returning` write and read row by row, two statements per row, in one transaction (a
+savepoint inside one), so a duplicate in any row leaves nothing of the earlier rows; every row passes the checks of `insert()`. Without
+`returning` they write in chunks as on the other drivers. `insertMissing()` writes row by row too. It skips a row when MySQL reports the
+duplicate on a unique index over exactly the `on` columns (found by its name in the migrations; the primary key when `on` is exactly its
+columns). MySQL names only the first index a row violates, so when it names another one, `insertMissing()` reads the table for a row whose `on` values equal
+the row's exactly (text with text, and a number or bigint with the same whole number as text: `5` is never `'05'`) and skips the row only if it finds one; a value that is a
+`Date`, bytes, an object or a number that is not a whole number within 2^53 is never skipped that way (`true` and `false` count as `1` and `0`). A read that fails throws its own error, with the duplicate as its `cause` when the error has none. Every other duplicate throws and rolls the call back, and an `on` that no unique index backs throws before a row is
+written. It uses no `INSERT IGNORE`, which would also hide other errors. An `on` column that MySQL generates (auto-increment) needs a positive
+whole number in every row, since `0` would become a new id on every run: any other value is a `TypeError`. With `managed: false` only the primary key can be `on`, any
+other columns are refused with D29, and every primary key value in `on` must be a positive whole number: Marmeon cannot tell a key column from an auto-increment one there, so any other value is a `TypeError`.
+
+The builder's `returning()`, `onConflict()` and merge are refused with D29 before they are sent.
 
 ### Route binding
 
@@ -521,7 +571,7 @@ await this.relation(noteId, 'tags').detach(4); // 1
 `sync(ids)` leaves the note linked to exactly these tags: it attaches the missing ones, detaches the others and leaves the rest
 alone, and says which it attached and detached. `attach()` takes one id or a list, skips the ones linked already, also by a
 request at the same moment, and returns those it linked. Only a link on the pivot's two keys is skipped: when another unique
-index of the pivot refuses a link, `attach()` and `sync()` throw and write nothing. `detach()` returns how many links went: without an argument, every
+index of the pivot refuses a link, `attach()` and `sync()` throw and write nothing. On MySQL they skip a link made at the same moment when MySQL reports the duplicate on the pivot's unique index of the two keys, or when the pivot already holds that link, see [Writing on MySQL](#writing-on-mysql). `detach()` returns how many links went: without an argument, every
 one; with an empty list, none. Every write through a relation, also with an empty list, answers 404 when the parent row is
 missing or soft-deleted. Ids that may be `undefined`, such as a field a request did not send, are a compile error and
 refused when the call runs.
@@ -735,7 +785,7 @@ The migrator records which module's migration created each table. That record is
 
 | Function | Says |
 | --- | --- |
-| `isUniqueViolation(error)` | Whether the error is a unique violation, on SQLite and Postgres. |
+| `isUniqueViolation(error)` | Whether the error is a unique violation, on SQLite and Postgres, and on MySQL once it can be selected. |
 | `uniqueViolationColumns(error)` | The violated index's columns, as far as the driver names them. |
 | `missingTable(error)` | The table a statement could not find, or `undefined`. |
 

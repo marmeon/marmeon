@@ -1,7 +1,7 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Migrator, RecordNotFoundError, Repository, secret, type Connections, type Connection, type QueryEvent, type RowOf } from './index.ts';
@@ -21,11 +21,15 @@ const ISO_UTC = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/;
 class PostRepository extends Repository<'posts', FixtureTables> {
   static table = 'posts' as const;
 }
+class TagRepository extends Repository<'tags', FixtureTables> {
+  static table = 'tags' as const;
+}
 class UserRepository extends Repository<'users', FixtureTables> {
   static table = 'users' as const;
 }
 
-describe.each(drivers)('writing through relations on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('writing through relations on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let db: Connection<FixtureTables>;
@@ -42,12 +46,13 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     db = connections.get<FixtureTables>();
     posts = new PostRepository(connections);
     users = new UserRepository(connections);
+    const tags = new TagRepository(connections);
     ids.ada = (await users.insert({ name: 'Ada', email: 'ada@example.com' })).id;
     ids.alan = (await users.insert({ name: 'Alan', email: 'alan@example.com' })).id;
     ids.gone = (await users.insert({ name: 'Gone', email: 'gone@example.com', deleted_at: new Date() })).id;
     ids.first = (await posts.insert({ author_id: ids.ada, title: 'First' })).id;
     ids.second = (await posts.insert({ author_id: ids.ada, title: 'Second' })).id;
-    for (const slug of ['kysely', 'sql', 'orm'] as const) ids[slug] = (await db.insertInto('tags').values({ slug }).returning('id').executeTakeFirstOrThrow()).id;
+    for (const slug of ['kysely', 'sql', 'orm'] as const) ids[slug] = (await tags.insert({ slug })).id;
     connections.onQuery((query) => queries.push(query));
   });
   afterAll(() => close());
@@ -121,12 +126,12 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
   });
 
   describe('a pivot with another unique index', () => {
-    const uniqueViolation = driver === 'pgsql' ? { code: '23505' } : { errcode: 2067 };
+    const uniqueViolation = driver === 'pgsql' ? { code: '23505' } : driver === 'mysql' ? { errno: 1062 } : { errcode: 2067 };
     beforeAll(async () => {
       await db.deleteFrom('post_tag').execute();
       await sql`create unique index post_tag_one on post_tag (post_id)`.execute(db);
     });
-    afterAll(() => sql`drop index post_tag_one`.execute(db));
+    afterAll(() => (driver === 'mysql' ? sql`drop index post_tag_one on post_tag` : sql`drop index post_tag_one`).execute(db));
 
     it('attach() of a link that breaks the other index throws and links nothing', async () => {
       await posts.relation(ids.first, 'tags').attach(ids.kysely);
@@ -167,15 +172,17 @@ describe.each(drivers)('writing through relations on %s', (driver) => {
     expect(await tagsOf(ids.first)).toEqual([ids.kysely]);
   });
 
-  it('attach() twice at once links once — the row is locked on Postgres, and the pivot insert leaves an existing link alone', async () => {
+  it('attach() twice at once links once — the row is locked on Postgres and MySQL, and the pivot insert leaves an existing link alone', async () => {
     queries.length = 0;
     const both = await Promise.all([posts.relation(ids.first, 'tags').attach([ids.kysely]), posts.relation(ids.first, 'tags').attach([ids.kysely])]);
     expect(both.map((attached) => attached.length).sort()).toEqual([0, 1]);
     expect(await tagsOf(ids.first)).toEqual([ids.kysely]);
-    const parentReads = queries.filter((query) => query.sql.startsWith('select "id" from "posts"'));
+    const parentReads = queries.filter((query) => /^select [`"]id[`"] from [`"]posts[`"]/.test(query.sql));
     expect(parentReads).toHaveLength(2);
-    expect(parentReads.every((query) => query.sql.endsWith(' for update') === (driver === 'pgsql'))).toBe(true);
-    expect(queries.some((query) => /on conflict \("post_id", "tag_id"\) do nothing/.test(query.sql))).toBe(true);
+    expect(parentReads.every((query) => query.sql.endsWith(' for update') === (driver !== 'sqlite'))).toBe(true);
+    // MySQL has no ON CONFLICT: a link is inserted alone, and only the pivot's own duplicate is skipped.
+    expect(queries.some((query) => /on conflict \("post_id", "tag_id"\) do nothing/.test(query.sql))).toBe(driver !== 'mysql');
+    expect(queries.some((query) => /insert ignore|on duplicate key/.test(query.sql))).toBe(false);
   });
 
   it('refuses to write the links of a pivot with soft deletes — sync, attach and detach', async () => {

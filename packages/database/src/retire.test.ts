@@ -3,7 +3,7 @@ import type { ModuleDefinition } from '@marmeon/core';
 import { sql, type Kysely } from 'kysely';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir, workspaceTempDir } from '../../../scripts/test/temp-dir.js';
-import { appOf as fakeApp, drivers, freshDatabase, silent } from './__fixtures__/databases.ts';
+import { appOf as fakeApp, driversWithMysql, freshDatabase, silent } from './__fixtures__/databases.ts';
 import type { ConnectionOptions } from './config.ts';
 import { Connections, Migrator } from './index.ts';
 import { dropAllTables } from './migrations/drop-all.ts';
@@ -16,7 +16,8 @@ const dropping: ModuleDefinition[] = [...retiring, { name: 'roster-drop', migrat
 const root = workspaceTempDir('marmeon-retire-');
 
 // A release retires columns and runs `migrate`; the process of the release before keeps serving, and still reads and writes them.
-describe.each(drivers)('a retired column on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('a retired column on %s', (driver) => {
   let options: ConnectionOptions;
   let drop: () => Promise<void>;
   const opened: Connections[] = [];
@@ -51,7 +52,8 @@ describe.each(drivers)('a retired column on %s', (driver) => {
 
   const keys = (rows: readonly object[]) => Object.keys(rows[0]!).sort();
 
-  it('is left out of select-all and returning-all, and the previous release, which still knows it, keeps reading it', async () => {
+  // The builder's returning() is refused on MySQL, which has none.
+  it.runIf(driver !== 'mysql')('is left out of select-all and returning-all, and the previous release, which still knows it, keeps reading it', async () => {
     const [inserted] = await before.insertInto('members').values({ name: 'ada', slug: 'ada', nickname: 'countess', pin: '1815', badge: 'b1' }).returning('id').execute();
     expect(keys(await release.selectFrom('members').selectAll().execute())).toEqual(['id', 'name', 'slug']);
     expect(keys(await release.insertInto('members').values({ name: 'grace', slug: 'grace' }).returningAll().execute())).toEqual(['id', 'name', 'slug']);

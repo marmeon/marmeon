@@ -1,6 +1,6 @@
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import './__fixtures__/relations.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Migrator, RecordNotFoundError, Repository, type Connections, type Json, type Connection, type QueryEvent } from './index.ts';
@@ -24,7 +24,8 @@ class ApiKeyRepository extends Repository<'api_keys', FixtureTables> {
   static table = 'api_keys' as const;
 }
 
-describe.each(drivers)('finders of a repository on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('finders of a repository on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let db: Connection<FixtureTables>;
@@ -58,7 +59,8 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
         { post_id: ids.first, user_id: ids.ada, body: 'deleted', approved: false, deleted_at: new Date() },
       ])
       .execute();
-    const tag = (await db.insertInto('tags').values({ slug: 'sql' }).returning('id').executeTakeFirstOrThrow()).id;
+    await db.insertInto('tags').values({ slug: 'sql' }).execute();
+    const tag = (await db.selectFrom('tags').select('id').where('slug', '=', 'sql').executeTakeFirstOrThrow()).id;
     await db.insertInto('post_tag').values({ post_id: ids.first, tag_id: tag }).execute();
     await keys.insert({ user_id: ids.ada, name: 'cli', token: 'the-secret-token' });
     connections.onQuery((query) => queries.push(query));
@@ -125,7 +127,8 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
     await expect(keys.pluck('token' as never)).rejects.toThrow('This query selects api_keys.token, a secret column, without secret()');
   });
 
-  it('findOrFail(id, { with }) loads relations in the same query — soft-deleted related rows left out — and answers 404', async () => {
+  // A relation inside a query does not run on MySQL yet.
+  it.runIf(driver !== 'mysql')('findOrFail(id, { with }) loads relations in the same query — soft-deleted related rows left out — and answers 404', async () => {
     const { result: post, sql } = await logged(() => posts.findOrFail(ids.first, { with: ['author', 'comments', 'tags'] }));
     expect(sql).toHaveLength(1);
     expect(post).toMatchObject({ id: ids.first, title: 'First', author: { id: ids.ada, name: 'Ada', is_admin: true, balance: '12.50' }, tags: [{ slug: 'sql' }] });
@@ -153,7 +156,7 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
     expectTypeOf(await posts.findOrFail(ids.first)).toEqualTypeOf<NonNullable<Awaited<ReturnType<PostRepository['find']>>>>();
   });
 
-  it('binds a route parameter with the relations its binding names — in the same query, scoped as before', async () => {
+  it.runIf(driver !== 'mysql')('binds a route parameter with the relations its binding names — in the same query, scoped as before', async () => {
     class CommentRepository extends Repository<'comments', FixtureTables> {
       static table = 'comments' as const;
     }
@@ -201,7 +204,7 @@ describe.each(drivers)('finders of a repository on %s', (driver) => {
       }
     });
 
-    it('narrows with its callback — conditions, relations — and types the batches by it', async () => {
+    it.runIf(driver !== 'mysql')('narrows with its callback — conditions, relations — and types the batches by it', async () => {
       const batches: { id: number; title: string; comments_count: number; author: { name: string } | null }[][] = [];
       const { sql } = await logged(async () => {
         for await (const rows of posts.chunk(1, (query) => query.where('featured', '=', true).withCount('comments').with('author', (author) => author.select('name')))) {

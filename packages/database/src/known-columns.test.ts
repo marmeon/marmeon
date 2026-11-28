@@ -90,8 +90,8 @@ describe.each(driversWithMysql)('selectAll() and returningAll() spell out the co
 
   it('leaves it out of returning-all on insert, update, delete and upsert', async () => {
     if (driver === 'mysql') {
-      // A pinned gap: MySQL has no RETURNING, no form of it exists yet, and the statement is sent as it is: every one is a syntax error (1064).
-      const refused = { code: 'ER_PARSE_ERROR', errno: 1064 };
+      // MySQL has no RETURNING: the compiler refuses every one of these with D29 before it is sent.
+      const refused = { message: expect.stringContaining('[marmeon:D29]') };
       await expect(ahead.insertInto('lockers').values({ name: 'grace' }).returningAll().execute()).rejects.toMatchObject(refused);
       await expect(ahead.updateTable('lockers').set({ name: 'turing' }).returningAll().execute()).rejects.toMatchObject(refused);
       await expect(ahead.deleteFrom('lockers').returningAll().execute()).rejects.toMatchObject(refused);

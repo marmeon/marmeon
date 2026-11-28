@@ -136,8 +136,9 @@ export function mysqlConnection(url: string, override?: number): import('mysql2'
     charset: 'utf8mb4',
     // One statement per query: the server refuses a second statement in the text (a statement with parameters is prepared, which allows one anyway).
     multipleStatements: false,
-    // `LOAD DATA LOCAL INFILE` lets a server read files of the app's host.
-    flags: ['-LOCAL_FILES'],
+    // `LOAD DATA LOCAL INFILE` lets a server read files of the app's host. mysql2 sets FOUND_ROWS by default, which makes an update's
+    // affected rows the rows it matched, changed or not; `update()` counts on it, so this line pins it.
+    flags: ['-LOCAL_FILES', 'FOUND_ROWS'],
     supportBigNumbers: true,
     bigNumberStrings: true,
     dateStrings: true,

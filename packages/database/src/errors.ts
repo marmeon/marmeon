@@ -1,8 +1,9 @@
 import { translatable, ValidationError } from '@marmeon/router';
+import { isMysqlDuplicate, notedColumns } from './mysql-duplicates.ts';
 
 /**
- * Whether `error` is a unique-constraint violation — SQLite (`SQLITE_CONSTRAINT_UNIQUE`, 2067) or
- * Postgres (SQLSTATE 23505). Repositories have `tryInsert()` for the common case. Inside a
+ * Whether `error` is a unique-constraint violation — SQLite (`SQLITE_CONSTRAINT_UNIQUE`, 2067),
+ * Postgres (SQLSTATE 23505) or MySQL (errno 1062 or 1586, SQLSTATE 23000). Repositories have `tryInsert()` for the common case. Inside a
  * transaction, catch it outside a nested `transaction()`, never inside it: on Postgres the failed statement
  * aborts that transaction, which then rolls back and throws `TransactionError` (D24). See
  * `docs/transactions.md#nested-transactions`.
@@ -10,18 +11,22 @@ import { translatable, ValidationError } from '@marmeon/router';
 export function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const { code, errcode } = error as { code?: unknown; errcode?: unknown };
-  return code === '23505' || errcode === 2067 || (code === 'ERR_SQLITE_ERROR' && /UNIQUE constraint failed/.test(String((error as Error).message)));
+  return isMysqlDuplicate(error) || code === '23505' || errcode === 2067 || (code === 'ERR_SQLITE_ERROR' && /UNIQUE constraint failed/.test(String((error as Error).message)));
 }
 
 /**
- * The table a statement could not find — SQLite (`no such table: users`) or Postgres (SQLSTATE 42P01, `relation "users"
- * does not exist`) — or undefined for any other error. Mostly a migration that has not run (the error page says which).
+ * The table a statement could not find — SQLite (`no such table: users`), Postgres (SQLSTATE 42P01, `relation "users"
+ * does not exist`) or MySQL (errno 1146, `Table 'app.users' doesn't exist`) — or undefined for any other error. Mostly a migration
+ * that has not run (the error page says which).
  */
 export function missingTable(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  const { code, message } = error as { code?: unknown; message?: unknown };
+  const { code, message, errno, sqlMessage } = error as { code?: unknown; message?: unknown; errno?: unknown; sqlMessage?: unknown };
+  if (errno === 1146 && typeof sqlMessage === 'string') return /^Table '(.+)' doesn't exist$/.exec(sqlMessage)?.[1]?.split('.').slice(1).join('.') || 'unknown';
   if (typeof message !== 'string') return undefined;
   if (code === '42P01') return /relation "([^"]+)" does not exist/.exec(message)?.[1] ?? 'unknown';
+  // Only node:sqlite's own error: another driver's message can carry a caller's value, such as a MySQL duplicate's.
+  if (code !== 'ERR_SQLITE_ERROR') return undefined;
   return /no such table: ([\w.]+)/.exec(message)?.[1];
 }
 
@@ -29,10 +34,13 @@ export function missingTable(error: unknown): string | undefined {
  * The columns of a unique violation, as far as the driver tells: Postgres's `detail` (`Key (email)=(…) already exists.`, an
  * expression index names its columns inside: `Key (lower(email::text))`) or its constraint's name, SQLite's message
  * (`UNIQUE constraint failed: users.team_id, users.email`, or the index: `index 'users_email_unique'`). Words, not a parser:
- * `failOnDuplicate` matches its fields against them. Empty for anything else.
+ * `failOnDuplicate` matches its fields against them. MySQL names only the index: its columns when the error passed the app's connection
+ * and the index is the primary key or one a migration describes, else empty. Empty for anything else.
  */
 export function uniqueViolationColumns(error: unknown): string[] {
   if (!isUniqueViolation(error)) return [];
+  // No table check, as with Postgres's `detail`: a field matches the columns an error names, and a trigger's index of another table is the caller's to know.
+  if (isMysqlDuplicate(error)) return [...(notedColumns(error) ?? [])];
   const { detail, constraint, message } = error as { detail?: unknown; constraint?: unknown; message?: unknown };
   const words = (text: string) => text.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
   const key = typeof detail === 'string' ? /^Key \((.+?)\)=\(/.exec(detail)?.[1] : undefined;

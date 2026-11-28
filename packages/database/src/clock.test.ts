@@ -1,13 +1,17 @@
 import { TestClock } from '@marmeon/core/testing';
 import type { Application, ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import { define, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Factories, Migrator, Repository, type Connections } from './index.ts';
 
 class PostRepository extends Repository<'posts', FixtureTables> {
   static table = 'posts' as const;
+}
+
+class FlagRepository extends Repository<'flags', any> {
+  static table = 'flags' as const;
 }
 
 class UserRepository extends Repository<'users', FixtureTables> {
@@ -31,7 +35,8 @@ const DAY = 86_400_000;
 /** What a stamp is in milliseconds, whatever text the driver reads it back as. */
 const at = (value: unknown) => new Date(value as string).getTime();
 
-describe.each(drivers)('stamping with the app clock on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('stamping with the app clock on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
@@ -119,7 +124,7 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
 
   it('relation().create() and createMany() stamp the related rows with the clock', async () => {
     const author = await users.insert({ name: 'Ada', email: 'ada@example.com' });
-    const post = await connections.get<any>().insertInto('posts').values({ title: 'Hello', author_id: author.id }).returningAll().executeTakeFirstOrThrow();
+    const post = await new PostRepository(connections).insert({ title: 'Hello', author_id: author.id });
     const posts = new PostRepository(connections);
     clock.travel({ days: 4 });
     const one = (await posts.relation(post.id, 'comments').create({ user_id: author.id, body: 'One' } as never)) as { created_at: string; updated_at: string };
@@ -130,9 +135,10 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
 
   it('attach() and sync() stamp the links of a pivot with timestamps with the clock', async () => {
     const author = await users.insert({ name: 'Ada', email: 'ada@example.com' });
-    const post = await connections.get<any>().insertInto('posts').values({ title: 'Hello', author_id: author.id }).returningAll().executeTakeFirstOrThrow();
-    const flags = await connections.get<any>().insertInto('flags').values([{ label: 'a' }, { label: 'b' }, { label: 'c' }]).returning('id').execute();
-    const [a, b, c] = flags.map((flag: { id: number }) => flag.id);
+    const post = await new PostRepository(connections).insert({ title: 'Hello', author_id: author.id });
+    const flagRows = new FlagRepository(connections);
+    const flags = [await flagRows.insert({ label: 'a' }), await flagRows.insert({ label: 'b' }), await flagRows.insert({ label: 'c' })];
+    const [a, b, c] = flags.map((flag) => flag.id);
     const writer = new PostRepository(connections).relation(post.id, 'flags' as never) as unknown as { attach(ids: number[]): Promise<number[]>; sync(ids: number[]): Promise<unknown> };
     clock.travel({ days: 6 });
     await writer.attach([a!]);
@@ -152,7 +158,8 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
     expect(at(gone.deleted_at)).toBe(START + 9 * DAY);
   });
 
-  it('now() of a factory definition is the app clock: make(), create(), using(trx) and a state as a function', async () => {
+  // A `…Z` string is refused by a MySQL datetime column, see docs/database.md#mysql.
+  it.runIf(driver !== 'mysql')('now() of a factory definition is the app clock: make(), create(), using(trx) and a state as a function', async () => {
     const factories = new Factories(connections);
     clock.travel({ days: 5 });
     expect(new Date(factories.for(ClockedPostFactory).make().published_at as string).getTime()).toBe(START + 5 * DAY);
@@ -180,7 +187,7 @@ describe.each(drivers)('stamping with the app clock on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('stamping without an app clock on %s', (driver) => {
+describe.each(driversWithMysql)('stamping without an app clock on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
 
@@ -201,7 +208,7 @@ describe.each(drivers)('stamping without an app clock on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('a factory definition reading now() without an app clock on %s', (driver) => {
+describe.each(driversWithMysql)('a factory definition reading now() without an app clock on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
 
@@ -211,7 +218,8 @@ describe.each(drivers)('a factory definition reading now() without an app clock 
   });
   afterAll(() => close());
 
-  it('gives the wall clock', async () => {
+  // A `…Z` string is refused by a MySQL datetime column, see docs/database.md#mysql.
+  it.runIf(driver !== 'mysql')('gives the wall clock', async () => {
     const factories = new Factories(connections);
     const row = await factories.for(ClockedPostFactory).create();
     expect(Math.abs(at(row.published_at) - Date.now())).toBeLessThan(5000);

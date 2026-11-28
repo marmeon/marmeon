@@ -1,6 +1,7 @@
 import { sql, type Selectable } from 'kysely';
 import type { Connection, NewRowOf, RowOf } from './builder.ts';
 import { Connections } from './connections.ts';
+import { atomically, insertAndRead, keyedRow, readBackKey } from './mysql-returning.ts';
 import { metadataOf, nowOf } from './schema-resolver.ts';
 import { stampTimestamps } from './timestamps.ts';
 import type { Tables } from './types.ts';
@@ -154,6 +155,8 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
     const metadata = metadataOf(db);
     if (metadata && !metadata.fresh) await sql`select 1`.execute(db);
     const secrets = metadata?.secrets.get(this.#definition.table);
+    // MySQL has no RETURNING: a row is read back by its primary key. The refusal for a table without one comes before any related row is created.
+    const readBack = metadata?.driver === 'mysql' ? readBackKey(metadata, this.#definition.table, 'create') : undefined;
     // A related factory: create its row first and use its id.
     const settle = async (value: unknown): Promise<unknown> =>
       value instanceof PendingFactory ? ((await (value.#pending.db ? value : value.using(db as never)).create()) as { id: unknown }).id : value;
@@ -175,6 +178,11 @@ export class PendingFactory<T extends keyof DB & string, DB = Tables, Many exten
         waiting.delete(column);
       }
       const [stamped] = await stampTimestamps(db, this.#definition.table, [values]);
+      if (readBack !== undefined) {
+        const row = keyedRow(readBack, stamped!, 'create');
+        rows.push((await atomically(db, (trx) => insertAndRead(trx, readBack, row, 'all', 'create'))) as RowOf<DB[T]>);
+        continue;
+      }
       rows.push((await db.insertInto(this.#definition.table).values(stamped!).returningAll().executeTakeFirstOrThrow()) as RowOf<DB[T]>);
     }
     return (this.#pending.count === undefined ? rows[0] : rows) as never;

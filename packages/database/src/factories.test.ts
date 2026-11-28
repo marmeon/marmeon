@@ -1,6 +1,6 @@
 import { Application, Container, type ModuleDefinition } from '@marmeon/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import { ApiKeyFactory, ArticleFactory, define, SluggedArticleFactory, UserFactory } from './__fixtures__/factories.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { Connections, Factories, Migrator, PendingFactory, Repository, secret, type SeedContext } from './index.ts';
@@ -48,7 +48,8 @@ const modules: ModuleDefinition[] = [
   { name: 'keys', migrations: new URL('./__fixtures__/migrations/relations-secrets/', import.meta.url) },
 ];
 
-describe.each(drivers)('factories and seeders on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('factories and seeders on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let factories: Factories;
@@ -268,7 +269,8 @@ describe.each(drivers)('factories and seeders on %s', (driver) => {
       expect(await db().selectFrom('api_keys').select('id').execute()).toEqual([]);
     });
 
-    it('refuses a derived column on a connection that does not know the schema', async () => {
+    // A connection without a schema cannot read a row back on MySQL, so the related factory fails first.
+    it.runIf(driver !== 'mysql')('refuses a derived column on a connection that does not know the schema', async () => {
       const Leaky = define('api_keys', ({ factory }) => ({ user_id: factory(UserFactory), token: 'secret-token', name: (row) => String((row as never as { token: string }).token) }));
       await expect(factories.for(Leaky).using(connections.infrastructure() as never).create()).rejects.toThrow('Factory for "api_keys": derived columns need a connection that knows the schema');
       expect(await db().selectFrom('api_keys').select('id').execute()).toEqual([]);

@@ -117,15 +117,11 @@ describe.each(driversWithMysql)('schema metadata on %s', (driver) => {
     const repository = comments();
     expect((await repository.paginate(repository.query().select('body').orderBy('id'), { page: 1, perPage: 10 })).meta.total).toBe(1);
     expect((await cursorPaginate(comments().query().select(['id', 'body']), { column: 'id', encrypter: testEncrypter() })).data).toEqual([kept]);
-    if (driver === 'mysql') {
-      // A pinned gap: update() of a repository ends in `returningAll()`, the server has no RETURNING (syntax error 1064), and the repository has no MySQL form for it yet.
-      await expect(comments().update(deleted!.id, { body: 'changed' })).rejects.toMatchObject({ code: 'ER_PARSE_ERROR', errno: 1064, message: expect.stringContaining('returning') });
-    } else {
-      expect(await comments().update(deleted!.id, { body: 'changed' })).toBeUndefined(); // a soft-deleted row is left alone
-      const old = '2020-01-01T00:00:00.000Z';
-      await connections.get<FixtureTables>().updateTable('comments').set({ updated_at: old }).execute();
-      expect((await comments().update(kept!.id, { body: 'changed' }))!.updated_at > old).toBe(true);
-    }
+    expect(await comments().update(deleted!.id, { body: 'changed' })).toBeUndefined(); // a soft-deleted row is left alone
+    // MySQL takes no `Z` in a write.
+    const old = driver === 'mysql' ? '2020-01-01 00:00:00.000' : '2020-01-01T00:00:00.000Z';
+    await connections.get<FixtureTables>().updateTable('comments').set({ updated_at: old }).execute();
+    expect((await comments().update(kept!.id, { body: 'changed' }))!.updated_at > old).toBe(true);
     expect(await comments().delete(kept!.id)).toBe(true);
     expect(await comments().delete(kept!.id)).toBe(false);
     expect(await connections.get<FixtureTables>().selectFrom('comments').select('id').execute()).toHaveLength(2); // both still there, deleted softly

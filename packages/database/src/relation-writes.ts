@@ -1,6 +1,7 @@
 import type { Connection, NewRowOf, RowOf, RowUpdateOf } from './builder.ts';
 import type { Relation } from './introspection.ts';
 import type { SchemaMetadata } from './metadata.ts';
+import { insertAndRead, keyedRow, readBackKey, skipsDuplicate, uniqueIndexNames } from './mysql-returning.ts';
 import type { Exact } from './repository.ts';
 import { fold } from './secret-guard.ts';
 import { softDeleteFilter } from './schema-resolver.ts';
@@ -135,10 +136,27 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
    * pivot's two keys is skipped — a pivot is read as one because they are unique together — so another unique index that refuses
    * a link throws instead of the link going missing.
    */
-  const link = async (db: Connection<any>, relation: Relation, key: unknown, ids: readonly unknown[]): Promise<unknown[]> => {
+  const link = async (db: Connection<any>, relation: Relation, key: unknown, ids: readonly unknown[], metadata: SchemaMetadata): Promise<unknown[]> => {
     if (ids.length === 0) return [];
     // A pivot with `timestamps()` keeps the time of its links: the app's clock, like every row a repository writes.
     const rows = await stampTimestamps(db, relation.pivot!, ids.map((id) => ({ [relation.foreignKey]: key, [relation.relatedKey!]: id })));
+    if (metadata.driver === 'mysql') {
+      // One insert per id. A duplicate is skipped as `insertMissing()` skips one (`skipsDuplicate`): on the pivot's unique index over exactly the two
+      // keys, or when the pivot holds that very link. `INSERT IGNORE` would skip a foreign-key or other unique violation too. With no such index
+      // known, nothing is skipped. InnoDB undoes only the failed statement, so the caller's transaction stays usable.
+      const on = [relation.foreignKey, relation.relatedKey!];
+      const names = uniqueIndexNames(metadata, relation.pivot!, on);
+      const done: unknown[] = [];
+      for (const [at, id] of ids.entries()) {
+        try {
+          await db.insertInto(relation.pivot!).values(rows[at]!).execute();
+          done.push(id);
+        } catch (error) {
+          if (names.size === 0 || !(await skipsDuplicate(db, error, relation.pivot!, names, on, rows[at]!))) throw error;
+        }
+      }
+      return done;
+    }
     const inserted = await db
       .insertInto(relation.pivot!)
       .values(rows)
@@ -159,27 +177,31 @@ export function relationWriter(context: WriteContext): LinkWriter<unknown> & { c
     }
     // `returningAll()` is spelled out without the secret columns by the connection, like every select of all columns.
     const [row] = await stampTimestamps(db, relation.table, [{ ...values, [relation.foreignKey]: key }]);
+    if (metadata.driver === 'mysql') {
+      const readBack = readBackKey(metadata, relation.table, method);
+      return insertAndRead(db, readBack, keyedRow(readBack, row!, method), 'all', method);
+    }
     return db.insertInto(relation.table).values(row!).returningAll().executeTakeFirstOrThrow();
   };
 
   return {
     sync: (ids) =>
-      write('sync', async (db, relation, key) => {
+      write('sync', async (db, relation, key, metadata) => {
         const wanted = distinct(ids);
         const current = await linked(db, relation, key);
         const missing = without(wanted, current);
         const detached = without(current, wanted);
         // Refused before anything changes: a sync either happens whole, or not at all.
         await refuseGone(db, relation, key, 'sync', missing);
-        const attached = await link(db, relation, key, missing);
+        const attached = await link(db, relation, key, missing, metadata);
         if (detached.length > 0) await db.deleteFrom(relation.pivot!).where(relation.foreignKey, '=', key).where(relation.relatedKey!, 'in', detached).execute();
         return { attached, detached };
       }),
     attach: (ids) =>
-      write('attach', async (db, relation, key) => {
+      write('attach', async (db, relation, key, metadata) => {
         const missing = without(distinct(list(ids)), await linked(db, relation, key));
         await refuseGone(db, relation, key, 'attach', missing);
-        return link(db, relation, key, missing);
+        return link(db, relation, key, missing, metadata);
       }),
     detach: (...given: [] | [unknown]) => {
       const ids = given[0];

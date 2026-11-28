@@ -387,6 +387,9 @@ The error speaks with the rule's message, in the request's language, with the re
 another index stays a 500: a bug, not the user's input. In a transaction, the 422 rolls it back. `unique` gives the friendly
 message before the insert, and the index is what holds.
 
+MySQL cannot be selected yet. When it can, its duplicate-key error names only the index, so `failOnDuplicate()` finds the field of the
+primary key and of a unique index a migration describes. A duplicate in an index you made with raw SQL stays a 500.
+
 A [partial unique index](migrations.md#partial-indexes) holds for some rows only. The rule always checks the value that is submitted, so
 apply it only when the submitted row falls under the index's condition, with `when()`. For `table.unique('slug', { where: { stage: 'live' } })`:
 

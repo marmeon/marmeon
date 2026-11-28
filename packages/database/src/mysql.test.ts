@@ -30,7 +30,7 @@ describe('mysqlConnection', () => {
       bigNumberStrings: true,
       dateStrings: true,
       decimalNumbers: false,
-      flags: ['-LOCAL_FILES'],
+      flags: ['-LOCAL_FILES', 'FOUND_ROWS'],
       typeCast,
     });
     expect(mysqlConnection('mysql://app@db/shop')).toMatchObject({ port: 3306, password: '' });

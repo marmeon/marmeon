@@ -2,7 +2,7 @@ import type { Application, ModuleDefinition, Result } from '@marmeon/core';
 import { sql, type Generated } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import type { RouteBindingContext } from '@marmeon/router';
-import { drivers, freshConnections } from './__fixtures__/databases.ts';
+import { drivers, driversWithMysql, freshConnections } from './__fixtures__/databases.ts';
 import type { FixtureTables } from './__fixtures__/tables.ts';
 import { isUniqueViolation, Migrator, type DuplicateError, RecordNotFoundError, Repository, type Connections, type RowOf } from './index.ts';
 
@@ -26,7 +26,8 @@ const modules: ModuleDefinition[] = [
   { name: 'blog', migrations: new URL('./__fixtures__/migrations/blog/', import.meta.url) },
 ];
 
-describe.each(drivers)('Repository on %s', (driver) => {
+// The MySQL cases run in `pnpm test:mysql`, which sets MARMEON_TEST_MYSQL_URL.
+describe.each(driversWithMysql)('Repository on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   let users: UserRepository;
@@ -84,14 +85,18 @@ describe.each(drivers)('Repository on %s', (driver) => {
       const byEmail = await users.tryInsert({ name: 'Other', email: 'ada@example.com' });
       expect(byEmail).toEqual({ ok: false, error: { kind: 'duplicate', columns: ['email'] } });
       const byPair = await users.tryInsert({ name: 'Ada', email: 'ada2@example.com', born_on: '1815-12-10' });
-      expect(byPair.ok === false && [...byPair.error.columns].sort()).toEqual(['born_on', 'name']);
-      await sql`create unique index users_lower_email_unique on users (lower(email))`.execute(db);
-      // Only the expression index holds these values: the other case slips past the plain index of `email`.
-      const byExpression = await users.tryInsert({ name: 'Third', email: 'ADA@example.com' });
-      expect(byExpression.ok === false && byExpression.error.columns).toEqual(['email']);
+      // MySQL names only the index, and this one came from raw SQL: no columns.
+      expect(byPair.ok === false && [...byPair.error.columns].sort()).toEqual(driver === 'mysql' ? [] : ['born_on', 'name']);
+      // MySQL compares in a binary collation and writes an expression index differently: it has no such case.
+      if (driver !== 'mysql') {
+        await sql`create unique index users_lower_email_unique on users (lower(email))`.execute(db);
+        // Only the expression index holds these values: the other case slips past the plain index of `email`.
+        const byExpression = await users.tryInsert({ name: 'Third', email: 'ADA@example.com' });
+        expect(byExpression.ok === false && byExpression.error.columns).toEqual(['email']);
+      }
     } finally {
-      await sql`drop index users_name_born_on_unique`.execute(db);
-      await sql`drop index if exists users_lower_email_unique`.execute(db);
+      await (driver === 'mysql' ? sql`drop index users_name_born_on_unique on users` : sql`drop index users_name_born_on_unique`).execute(db);
+      if (driver !== 'mysql') await sql`drop index if exists users_lower_email_unique`.execute(db);
     }
   });
 
@@ -144,7 +149,8 @@ describe.each(drivers)('Repository on %s', (driver) => {
     expect(error).toMatchObject({ status: 404, message: 'Not Found', table: 'users', key: 404 });
   });
 
-  it('updates a row, sets updated_at when the migration has timestamps(), and returns undefined for no row', async () => {
+  // MySQL refuses a timestamp text ending in `Z` in a write, see docs/database.md#mysql.
+  it.runIf(driver !== 'mysql')('updates a row, sets updated_at when the migration has timestamps(), and returns undefined for no row', async () => {
     const old = '2020-01-01T00:00:00.000Z';
     const ada = await users.insert({ name: 'Ada', email: 'ada@example.com', created_at: old, updated_at: old });
     const updated = await users.update(ada.id, { name: 'Ada Lovelace' });
@@ -248,7 +254,7 @@ describe('Repository classes', () => {
   });
 });
 
-describe.each(drivers)('Repository as a route binder on %s', (driver) => {
+describe.each(driversWithMysql)('Repository as a route binder on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeAll(async () => {
@@ -297,6 +303,7 @@ describe.each(drivers)('Repository as a route binder on %s', (driver) => {
   });
 });
 
+// Created with Kysely's schema builder, whose identity column MySQL does not know.
 describe.each(drivers)('Repository without markers on %s', (driver) => {
   interface LogTables {
     log_entries: { id: Generated<number>; message: string; deleted_at: string | null; updated_at: string | null };
@@ -332,7 +339,7 @@ describe.each(drivers)('Repository without markers on %s', (driver) => {
   });
 });
 
-describe.each(drivers)('Repository on a table whose primary key is not id, on %s', (driver) => {
+describe.each(driversWithMysql)('Repository on a table whose primary key is not id, on %s', (driver) => {
   interface PageTables {
     pages: { slug: string; title: string };
   }
@@ -387,7 +394,7 @@ describe.each(drivers)('Repository on a table whose primary key is not id, on %s
   });
 });
 
-describe.each(drivers)('Repository on a table without a single-column primary key on %s', (driver) => {
+describe.each(driversWithMysql)('Repository on a table without a single-column primary key on %s', (driver) => {
   interface PivotTables {
     role_user: { role_id: number; user_id: number };
     audit_lines: { line: string };
@@ -438,11 +445,13 @@ describe.each(drivers)('Repository on a table without a single-column primary ke
       static table = 'audit_lines' as const;
       static routeKey = 'line';
     }
-    await new AuditLines(connections).insert({ line: 'one' });
+    // Through the builder: a repository does not insert a row it cannot read back by a key, on MySQL.
+    await connections.get<any>().insertInto('audit_lines').values({ line: 'one' }).execute();
     expect(await new ByLine(connections).findByRouteKey('one')).toEqual({ line: 'one' });
   });
 });
 
+// Created with Kysely's schema builder, whose identity column MySQL does not know.
 describe.each(drivers)('Scoped route bindings under a parent keyed by a slug on %s', (driver) => {
   interface ProjectTables {
     projects: { slug: string; name: string };
@@ -488,7 +497,7 @@ describe.each(drivers)('Scoped route bindings under a parent keyed by a slug on 
   });
 });
 
-describe.each(drivers)('Repository lookups that need what the schema says, on %s', (driver) => {
+describe.each(driversWithMysql)('Repository lookups that need what the schema says, on %s', (driver) => {
   let connections: Connections;
   let close: () => Promise<void>;
   beforeAll(async () => {
@@ -507,7 +516,8 @@ describe.each(drivers)('Repository lookups that need what the schema says, on %s
     );
   });
 
-  it('refuses a route key of a kind that matches no text unless a routeKeyPattern says what it looks like', async () => {
+  // MySQL's `datetime(3)` is not a timestamp kind to Marmeon yet.
+  it.runIf(driver !== 'mysql')('refuses a route key of a kind that matches no text unless a routeKeyPattern says what it looks like', async () => {
     class ByCreated extends Repository<'users', FixtureTables> {
       static table = 'users' as const;
       static routeKey = 'created_at';

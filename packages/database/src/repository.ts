@@ -6,6 +6,8 @@ import type { Driver } from './schema/blueprint.ts';
 import type { Connection, NewRowOf, RowOf, RowUpdateOf, SelectQuery, Transaction } from './builder.ts';
 import { Connections } from './connections.ts';
 import { shielded, unshielded } from './driver.ts';
+import { mysqlDuplicateKey, uniqueIndexColumns } from './mysql-duplicates.ts';
+import { checkNames, checkOnIdentity, checkPlainKeyValue, insertAndRead, insertKeyed, keyedRow, readBackKey, readByKey, refuseUnmanagedOn, skipsDuplicate, uniqueIndexNames, type ReadBackKey } from './mysql-returning.ts';
 import { isUniqueViolation, uniqueViolationColumns } from './errors.ts';
 import type { RelationName, WithRelations } from './chain.ts';
 import { keyset, paginate, type CheckPageRequest, type Paginated, type PageRequest } from './pagination.ts';
@@ -79,7 +81,8 @@ export function parameterLimit(driver: Driver | undefined): number {
 function noMatchingIndex(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const { code, message } = error as { code?: unknown; message?: unknown };
-  return code === '42P10' || /ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint/.test(String(message));
+  // Exact: a MySQL duplicate's message carries the caller's value, which could imitate the text.
+  return code === '42P10' || (code === 'ERR_SQLITE_ERROR' && message === 'ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint');
 }
 
 /** One text per value, equal for `1`, `'1'` and `1n`, so rows sort the same whichever type a caller hands in. */
@@ -309,13 +312,19 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
     return Number((row as { count: number | string }).count);
   }
 
-  /** Inserts a row and returns it as stored — defaults and generated id included. */
+  /**
+   * Inserts a row and returns it as stored — defaults and generated id included. On MySQL the row is read back by its primary key,
+   * see `docs/queries.md#writing-on-mysql`.
+   */
   async insert<V extends NewRowOf<DB[T]>>(values: Exact<V, NewRowOf<DB[T]>>): Promise<RowOf<DB[T]>> {
-    return (await this.#untyped
-      .insertInto(this.#name)
-      .values((await stampTimestamps(this.#untyped, this.#name, [values as Record<string, unknown>]))[0]!)
-      .returningAll()
-      .executeTakeFirstOrThrow()) as RowOf<DB[T]>;
+    const stamped = (await stampTimestamps(this.#untyped, this.#name, [values as Record<string, unknown>]))[0]!;
+    if (metadataOf(this.#db)?.driver === 'mysql') {
+      // Every refusal comes before the transaction: nothing is sent for a table whose row cannot be read back.
+      const key = readBackKey(await this.#schema('insert()'), this.#name, 'insert');
+      const row = keyedRow(key, stamped, 'insert');
+      return (await this.transaction((repository) => insertAndRead(repository.#untyped, key, row, 'all', 'insert'))) as RowOf<DB[T]>;
+    }
+    return (await this.#untyped.insertInto(this.#name).values(stamped).returningAll().executeTakeFirstOrThrow()) as RowOf<DB[T]>;
   }
 
   /**
@@ -334,12 +343,12 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
   }
 
   /**
-   * Inserts many rows in chunks the driver accepts (a statement takes at most 65 535 parameters on Postgres and 32 766 on SQLite), in
+   * Inserts many rows in chunks the driver accepts (a statement takes at most 65 535 parameters on Postgres and MySQL, 32 766 on SQLite), in
    * one transaction — a savepoint inside an open one: all rows or none. Resolves with the number of rows inserted, `0` for none without
    * a statement. With `returning`, the rows come back instead, holding only the columns you name (never a secret one: a `TypeError`),
    * in no promised order — match them by a column you wrote, such as a unique one. Every row must have the same columns, and at least one,
    * else a `TypeError`. Throws on a unique violation like {@link insert}, with every chunk rolled back; {@link tryInsertMany} returns
-   * it instead. See `docs/queries.md#writing`.
+   * it instead. On MySQL, with `returning`, row by row (`docs/queries.md#writing-on-mysql`). See `docs/queries.md#writing`.
    */
   insertMany<V extends NewRowOf<DB[T]>>(rows: readonly Exact<V, NewRowOf<DB[T]>>[]): Promise<number>;
   insertMany<V extends NewRowOf<DB[T]>, const C extends readonly [ReturnableColumn<DB[T]>, ...ReturnableColumn<DB[T]>[]]>(
@@ -379,7 +388,8 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * one unique index, none of them secret, and every row needs a value in each (never null: a NULL never conflicts), else a
    * `TypeError`. A unique violation on any other index throws, with every chunk rolled back. A soft-deleted row counts as present.
    * Resolves with the number of rows inserted; with `returning`, those rows, as {@link insertMany} returns them. Lock order and
-   * concurrency: `docs/queries.md#writing`.
+   * concurrency: `docs/queries.md#writing`. On MySQL, row by row: a row is skipped when a row with its exact `on` values is there;
+   * an auto-increment `on` column (on `managed: false`, any primary key column) needs a positive whole number (a `TypeError`), see `docs/queries.md#writing-on-mysql`.
    */
   insertMissing<V extends NewRowOf<DB[T]>>(
     rows: readonly Exact<V, NewRowOf<DB[T]>>[],
@@ -419,6 +429,7 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
         throw new TypeError(`${method}() writes the columns of the first row (${columns.join(', ')}) in every row — row ${index} has ${own.join(', ') || 'none'}.`);
       }
     });
+    const mysql = metadataOf(this.#db)?.driver === 'mysql';
     const limit = parameterLimit(metadataOf(this.#db)?.driver);
     if (on) {
       rows.forEach((row, index) => {
@@ -426,12 +437,54 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
         if (missing !== undefined) throw new TypeError(`${method}() matches on ${missing}, but row ${index} has no value for it (${row[missing] === null ? 'null' : 'undefined'}) — a NULL never conflicts, so the row would be written again on every run.`);
       });
     }
+    // MySQL: what row-by-row writing refuses (no index over `on`, an `on` id MySQL would replace, a table without a key to read back by) comes here, before a statement is sent.
+    let names: ReadonlySet<string> = new Set();
+    let key: ReadBackKey | undefined;
+    if (mysql) {
+      const metadata = await this.#schema(`${method}()`);
+      if (on) {
+        names = uniqueIndexNames(metadata, this.#name, on);
+        if (names.size === 0) {
+          if (metadata.managed) throw this.#noUniqueIndex(method, on);
+          refuseUnmanagedOn(this.#name, method);
+        }
+        checkOnIdentity(metadata, this.#name, on, rows, method);
+      }
+      if (returning) key = readBackKey(metadata, this.#name, method);
+    }
     // Stamped once: the rows of one call share their time, whatever chunk they are written in.
     const stamped = await stampTimestamps(this.#untyped, this.#name, rows);
     // In the order of the `on` values, so two calls with the same keys lock them in the same order and cannot deadlock on Postgres.
     if (on) stamped.sort((a, b) => compareKeys(on.map((column) => a[column]), on.map((column) => b[column])));
     const size = Math.floor(limit / columnsOf(stamped[0]!).length);
+    const keyed = key ? stamped.map((row) => keyedRow(key, row, method)) : stamped;
     try {
+      if (mysql && (on || returning)) {
+        return await this.transaction(async (repository) => {
+          const db = repository.#untyped;
+          let count = 0;
+          const written: Record<string, unknown>[] = [];
+          for (const row of keyed) {
+            if (!on) {
+              written.push(await insertAndRead(db, key!, row, returning!, method));
+              continue;
+            }
+            // A row is skipped only for a duplicate on a unique index over exactly `on`, or when a row with its exact `on` values is there
+            // (`skipsDuplicate`). `INSERT IGNORE` and `ON DUPLICATE KEY UPDATE` would skip a duplicate of any index, a fault the caller has to see.
+            let values: Record<string, unknown> | undefined;
+            try {
+              if (key) values = await insertKeyed(db, key, row, method);
+              else await db.insertInto(repository.#name).values(row).execute();
+            } catch (error) {
+              if (await skipsDuplicate(db, error, repository.#name, names, on, row)) continue;
+              throw error;
+            }
+            count++;
+            if (key && values) written.push(await readByKey(db, key, values, returning!, method));
+          }
+          return { count: returning ? written.length : count, rows: written };
+        });
+      }
       return await this.transaction(async (repository) => {
         let count = 0;
         const written: Record<string, unknown>[] = [];
@@ -448,13 +501,17 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
       });
     } catch (error) {
       if (on && noMatchingIndex(error)) {
-        throw new TypeError(
-          `${method}() found no unique index on ${this.#name} (${on.join(', ')}) — add table.unique([${on.map((column) => `'${column}'`).join(', ')}]) in a migration, or name the columns of an index that exists.`,
-          { cause: error },
-        );
+        throw this.#noUniqueIndex(method, on, error);
       }
       throw error;
     }
+  }
+
+  #noUniqueIndex(method: string, on: readonly string[], cause?: unknown): TypeError {
+    return new TypeError(
+      `${method}() found no unique index on ${this.#name} (${on.join(', ')}) — add table.unique([${on.map((column) => `'${column}'`).join(', ')}]) in a migration, or name the columns of an index that exists.`,
+      cause === undefined ? undefined : { cause },
+    );
   }
 
   async #checkReturning(method: string, returning: readonly string[]): Promise<void> {
@@ -522,14 +579,32 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
 
   /**
    * Updates a row and returns it — `undefined` when there is none (or it is soft-deleted). Sets `updated_at` when the
-   * table's migration called `timestamps()`, unless `values` set it.
+   * table's migration called `timestamps()`, unless `values` set it. On MySQL the row is read back by its primary key, see
+   * `docs/queries.md#writing-on-mysql`.
    */
   async update<V extends RowUpdateOf<DB[T]>>(id: PrimaryKeyOf<T, DB>, values: Exact<V, RowUpdateOf<DB[T]>>): Promise<RowOf<DB[T]> | undefined> {
     const key = await this.#lookup(id);
     if (key === undefined) return undefined;
+    const set = { ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date(nowOf(this.#db)) };
+    if (metadataOf(this.#db)?.driver === 'mysql') {
+      const readBack = readBackKey(await this.#schema('update()'), this.#name, 'update');
+      checkNames(readBack, Object.keys(values as object), 'update');
+      const changesKey = readBack.columns.includes(key.column) && (values as Record<string, unknown>)[key.column] !== undefined;
+      if (changesKey) checkPlainKeyValue(readBack, key.column, (values as Record<string, unknown>)[key.column], 'update');
+      return (await this.transaction(async (repository) => {
+        const result = await repository.#untyped.updateTable(this.#name).set(set).where(key.column, '=', key.value).where(softDeleteFilter(this.#name)).executeTakeFirst();
+        // FOUND_ROWS: an update that changes nothing still counts the row it matched. More than one match is a key compared loosely; the throw rolls it back.
+        if (result.numUpdatedRows === 0n) return undefined;
+        if (result.numUpdatedRows > 1n) {
+          throw new Error(`update() on MySQL matched ${result.numUpdatedRows} rows of ${this.#name} by its primary key, so the update was rolled back: a key compared with a value of another type matches more than one row on MySQL (a number against text); pass the key in the column's type.`);
+        }
+        const value = changesKey ? (values as Record<string, unknown>)[key.column] : key.value;
+        return readByKey(repository.#untyped, readBack, { [key.column]: value }, 'all', 'update');
+      })) as RowOf<DB[T]> | undefined;
+    }
     return (await this.#untyped
       .updateTable(this.#name)
-      .set({ ...(values as Record<string, unknown>), [TOUCH_COLUMN]: new Date(nowOf(this.#db)) })
+      .set(set)
       .where(key.column, '=', key.value)
       .where(softDeleteFilter(this.#name))
       .returningAll()
@@ -624,12 +699,17 @@ export abstract class Repository<T extends keyof DB & string, DB = Tables> imple
    * The table's columns a unique violation hit. An index the migrations describe is looked up by its name (Postgres's constraint,
    * SQLite's `index '…'`): exact, also when the driver gives no detail. Any other index is read from what the driver reports: the
    * name where that is all there is (the longest known columns first, so `tenant_id` wins over `id`), otherwise the words of its
-   * message that are columns of the table. `[]` on a connection without Marmeon's plugins, where no column is known.
+   * message that are columns of the table. On MySQL, which names only the index, the columns come from the exact index name or are `[]`.
+   * `[]` on a connection without Marmeon's plugins, where no column is known.
    */
   async #duplicateColumns(error: unknown): Promise<readonly string[]> {
     const metadata = metadataOf(this.#db);
     if (!metadata) return [];
     if (!metadata.fresh) await sql`select 1`.execute(this.#db);
+    if (metadata.driver === 'mysql') {
+      const key = mysqlDuplicateKey(error);
+      return key?.table === this.#name ? [...(uniqueIndexColumns(metadata, key.table, key.index) ?? [])] : [];
+    }
     const named = (error as { constraint?: unknown }).constraint;
     const name = typeof named === 'string' ? named : /UNIQUE constraint failed: index '(.+)'/.exec(String((error as Error).message))?.[1];
     const indexed = name === undefined ? undefined : metadata.projection?.tables.get(this.#name)?.indexes.find((index) => index.unique && index.name === name);
