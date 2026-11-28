@@ -118,6 +118,14 @@ describe('searchText()', () => {
     expect(codePoints(searchText('𠀀'.repeat(300)))).toBe(MAX_TERM_LENGTH);
   });
 
+  it('cleans before it normalizes, as the indexed text is, so a removed NUL between a letter and its mark joins them', () => {
+    expect(searchText('cafe\u0000\u0301')).toBe('caf\u00e9');
+  });
+
+  it('keeps the first 30 of a run of marks in a term, as in the indexed text', () => {
+    expect(searchText('a' + '\u0301'.repeat(100))).toBe(('a' + '\u0301'.repeat(30)).normalize('NFKC'));
+  });
+
   it('cuts again after NFKC expanded the term', () => {
     // U+FDFA expands to 18 characters under NFKC.
     const expanded = searchText(String.fromCharCode(0xfdfa).repeat(100));

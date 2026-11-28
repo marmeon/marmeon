@@ -240,6 +240,16 @@ describe('the database driver on SQLite: matching and ranking', () => {
     expect(keysOf(await search(started, { in: PageIndex, term: 'whale', perPage: 2, page: 2 }))).toEqual([ids[0]]);
   });
 
+  it('finds fullwidth letters and a ligature by their plain form and by their own, and shows the plain form in the excerpt', async () => {
+    const started = await start();
+    const page = await insertPage(started.db, { title: 'Ｗｉｋｉ oﬃce' });
+    const plain = await insertPage(started.db, { title: 'Plain' });
+    await started.search.index(PageIndex, [page.id, plain.id]);
+    for (const term of ['Wiki', 'office', 'wiki office', 'Ｗｉｋｉ', 'oﬃce']) expect(keysOf(await search(started, { in: PageIndex, term }))).toEqual([page.id]);
+    const found = await search(started, { in: PageIndex, term: 'office', excerpts: true });
+    expect(found.data[0]!.excerpt!.map((segment) => segment.text).join('')).toBe('Wiki office');
+  });
+
   it('ignores diacritics in the term and in the text', async () => {
     const started = await start();
     const page = await insertPage(started.db, { title: 'Le lac de la Sée' });

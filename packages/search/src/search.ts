@@ -5,7 +5,7 @@ import type { DriverQuery, SearchDriver, SearchFailure, SearchKey, StoredDocumen
 import { DocumentsTooLongError, SearchSetupError } from './errors.ts';
 import { WEIGHTS, type IndexInfo, type SearchIndexes } from './registry.ts';
 import type { FiltersOf, IndexRowOf, KeyOf, SearchIndex, SearchIndexClass } from './search-index.ts';
-import { cleanText, searchText, tokens, type ExcerptSegment, type FilterScalar } from './terms.ts';
+import { normalizedText, searchText, tokens, type ExcerptSegment, type FilterScalar } from './terms.ts';
 
 /** The most keys one batch reads, writes or queues. */
 export const BATCH_SIZE = 500;
@@ -135,8 +135,8 @@ function cutText(text: string, max: number): { readonly text: string; readonly l
 }
 
 /**
- * Checks what `toDocument()` returned and turns it into what a driver stores: only declared fields and filters, texts cleaned and
- * cut to 200 000 characters in all in the order of the weights, the locale canonical.
+ * Checks what `toDocument()` returned and turns it into what a driver stores: only declared fields and filters, texts in the form
+ * of a search term (`normalizedText()`), cut to 200 000 characters in all in the order of the weights, the locale canonical.
  */
 export function storedDocument(info: IndexInfo, label: string, key: SearchKey, document: unknown): StoredDocument {
   const where = `${label}.toDocument() for the key ${keyId(key)}`;
@@ -160,7 +160,7 @@ export function storedDocument(info: IndexInfo, label: string, key: SearchKey, d
       if (field.weight !== weight) continue;
       const value = fields[field.name];
       if (typeof value !== 'string') continue;
-      const cut = cutText(cleanText(value), budget);
+      const cut = cutText(normalizedText(value, budget), budget);
       budget -= cut.length;
       if (cut.text !== '') texts[field.name] = cut.text;
     }

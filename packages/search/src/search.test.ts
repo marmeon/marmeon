@@ -2,14 +2,16 @@ import { createApplication, defineModule, type Application, type ServiceProvider
 import { Connections, DatabaseServiceProvider, sql, type Connection, type Database } from '@marmeon/database';
 import { Queue, QueueServiceProvider } from '@marmeon/queue';
 import { QueueFake } from '@marmeon/queue/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SearchDriver, type SearchDriverFactory } from './driver.ts';
 import { SearchSetupError } from './errors.ts';
 import { SearchServiceProvider } from './provider.ts';
-import { canonicalLocale, IndexReader, MAX_DOCUMENT_LENGTH, Search } from './search.ts';
+import type { IndexInfo } from './registry.ts';
+import { canonicalLocale, IndexReader, MAX_DOCUMENT_LENGTH, Search, storedDocument } from './search.ts';
 import { SearchIndex, type SearchDocument, type SearchIndexClass } from './search-index.ts';
 import { SyncSearchDocuments } from './sync-job.ts';
 import { MemoryDriver } from './test-helpers/memory-driver.ts';
+import { MAX_MARK_RUN } from './terms.ts';
 
 // Search against a driver of each write mode: what a rollback leaves, what reaches the driver, and every refusal of the input.
 
@@ -517,6 +519,76 @@ describe('Search refuses input it cannot index', () => {
     // highest before high before low: the title stays whole, the summary takes the rest but 10, and the body is cut to nothing.
     expect(second?.locale).toBe('pt-BR');
     expect(second?.fields).toEqual({ title: 't'.repeat(10), summary: 's'.repeat(MAX_DOCUMENT_LENGTH - 10) });
+  });
+});
+
+describe('storedDocument(): the text in NFKC', () => {
+  const info: IndexInfo = { name: 'shaped', key: 'id', fields: [{ name: 'title', weight: 'highest' }], filters: [] };
+  const stored = (title: string) => storedDocument(info, 'ShapedIndex', 1, { fields: { title } }).fields['title'] ?? '';
+  const codePoints = (text: string) => [...text].length;
+
+  it('stores fullwidth letters and ligatures in their plain form', () => {
+    expect(stored('Ｗｉｋｉ o\ufb03ce')).toBe('Wiki office');
+  });
+
+  it('measures the 200 000 characters after NFKC, where a ligature grows and a decomposed letter shrinks', () => {
+    // U+FB03 grows to three characters; U+1F82 decomposed is four characters that compose into one.
+    expect(stored('\ufb03'.repeat(MAX_DOCUMENT_LENGTH))).toBe('ffi'.repeat(MAX_DOCUMENT_LENGTH / 3 + 1).slice(0, MAX_DOCUMENT_LENGTH));
+    const composed = stored('\u03b1\u0313\u0300\u0345'.repeat(MAX_DOCUMENT_LENGTH + 10));
+    expect(codePoints(composed)).toBe(MAX_DOCUMENT_LENGTH);
+    expect(composed).toBe('\u1f82'.repeat(MAX_DOCUMENT_LENGTH));
+  });
+
+  /** The texts `normalize()` was called on while `run` ran, and what each call returned. */
+  function normalizing(run: () => void): { readonly inputs: string[]; readonly outputs: string[] } {
+    const spy = vi.spyOn(String.prototype, 'normalize');
+    try {
+      run();
+      return { inputs: spy.mock.contexts.map((context) => String(context)), outputs: spy.mock.results.map((result) => String(result.value)) };
+    } finally {
+      spy.mockRestore();
+    }
+  }
+  const normalized = (run: () => void) => normalizing(run).inputs;
+  /** One step of the prefix that normalizes: the budget and what the unsettled end of a cut prefix can grow to. */
+  const step = MAX_DOCUMENT_LENGTH + 18 * 2 * (MAX_MARK_RUN + 1);
+
+  it('normalizes no more of a huge field than four times what the budget and the unsettled end need', () => {
+    const receivers = normalized(() => stored('x'.repeat(5_000_000)));
+    expect(receivers.length).toBeGreaterThan(0);
+    for (const receiver of receivers) expect(codePoints(receiver)).toBeLessThanOrEqual(4 * step);
+  });
+
+  it('reads no further into a field that grows under NFKC than the budget needs', () => {
+    // U+FDFA grows to 18 characters: the first prefix already fills the budget, and nothing longer is normalized.
+    const receivers = normalized(() => expect(codePoints(stored('\ufdfa'.repeat(4 * MAX_DOCUMENT_LENGTH)))).toBe(MAX_DOCUMENT_LENGTH));
+    expect(receivers.map(codePoints)).toEqual([step]);
+  });
+
+  it('normalizes plain text of a huge field once', () => {
+    expect(normalized(() => stored('x'.repeat(5_000_000))).map(codePoints)).toEqual([step]);
+  });
+
+  it('keeps every result below 19 steps when a field shrinks under NFKC first and grows after', () => {
+    // Decomposed U+1F82 shrinks four to one and fills exactly the first step, U+FDFA grows one to 18 in the next: a pass that read
+    // more than one step of new text would pass 19 steps.
+    const { outputs } = normalizing(() => stored('\u03b1\u0313\u0300\u0345'.repeat(50_279) + '\ufdfa'.repeat(402_232)));
+    expect(outputs.length).toBeGreaterThan(1);
+    for (const output of outputs) expect(codePoints(output)).toBeLessThan(19 * step);
+  });
+
+  it.each([
+    ['combining marks', 'a' + '\u0301'.repeat(100_000) + '\u0316'.repeat(100_000), 'a' + '\u0301'.repeat(30)],
+    ['halfwidth sound marks', 'a' + '\uff9e\u0301'.repeat(100_000), 'a' + '\uff9e\u0301'.repeat(15)],
+  ])('keeps the first 30 of a run of %s, so no normalization sorts a longer run', (_, text, kept) => {
+    const run = /[\p{M}\uff9e\uff9f]{31}/u;
+    const receivers = normalized(() => expect(stored(text)).toBe(kept.normalize('NFKC')));
+    expect(receivers.length).toBeGreaterThan(0);
+    for (const receiver of receivers) expect(run.test(receiver)).toBe(false);
+  });
+
+  it('keeps the text after a long run of characters that cleaning removes', () => {
+    expect(stored('\u0000'.repeat(4 * MAX_DOCUMENT_LENGTH + 5) + 'abc')).toBe('abc');
   });
 });
 

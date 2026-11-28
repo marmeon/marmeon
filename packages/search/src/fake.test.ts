@@ -215,6 +215,15 @@ describe('SearchFake records', () => {
 });
 
 describe('SearchFake searches', () => {
+  it('stores fullwidth letters and a ligature in their plain form, and finds them by it and by their own', async () => {
+    const { fake, search, connections } = await start();
+    await insertPage(connections, { id: 1, title: 'Ｗｉｋｉ o\ufb03ce' });
+    await insertPage(connections, { id: 2, title: 'Plain' });
+    await search.index(PageIndex, [1, 2]);
+    expect(fake.documents(PageIndex).find((document) => document.key === 1)?.fields).toEqual({ title: 'Wiki office' });
+    for (const term of ['Wiki', 'office', 'Ｗｉｋｉ', 'o\ufb03ce']) expect(await found(search, { in: PageIndex, term })).toEqual([1]);
+  });
+
   it('scores a match by the weight of its field: highest 4, high 3, normal 2, low 1', async () => {
     const { search, connections } = await start();
     await insertPage(connections, { id: 1, title: 'Whales' });

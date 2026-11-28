@@ -50,12 +50,12 @@ function cut(text: string, max: number): string {
 }
 
 /**
- * The user's text as `DriverQuery.term` carries it, for a driver to bind, never to splice: NFKC, at most {@link MAX_TERM_LENGTH} characters, cleaned by
- * {@link cleanText} (so `ab` NUL `cd` reads `abcd`, as the indexed text does).
+ * The user's text as `DriverQuery.term` carries it, for a driver to bind, never to splice: at most {@link MAX_TERM_LENGTH}
+ * characters of {@link normalizedText}, the same form as the indexed text (so `ab` NUL `cd` reads `abcd`, as the indexed text does).
  */
 export function searchText(term: string): string {
   // Cut before normalizing as well, so the normalization never reads more than a bounded prefix of a long input.
-  return cut(cleanText(cut(term, MAX_TERM_LENGTH).normalize('NFKC')), MAX_TERM_LENGTH);
+  return normalizedText(cut(term, MAX_TERM_LENGTH), MAX_TERM_LENGTH);
 }
 
 /** The tokens of a term: at most {@link MAX_TOKENS}, each at most {@link MAX_TOKEN_LENGTH} characters. Empty: search nothing. */
@@ -191,4 +191,39 @@ export function excerptSegments(text: string): readonly ExcerptSegment[] {
  */
 export function cleanText(text: string): string {
   return text.replace(UNSTORABLE, '').toWellFormed();
+}
+
+/** The most marks in a row that {@link normalizedText} keeps, as the stream-safe format of UAX #15 allows. */
+export const MAX_MARK_RUN = 30;
+// The characters whose NFKD starts with a non-starter: the marks, and the halfwidth sound marks U+FF9E and U+FF9F (category Lm).
+const MARK_RUN = new RegExp(`([\\p{M}\\uFF9E\\uFF9F]{${MAX_MARK_RUN}})[\\p{M}\\uFF9E\\uFF9F]+`, 'gu');
+// NFKC composes at most four characters into one (the longest canonical decomposition) and makes at most 18 of one (U+FDFA).
+const NFKC_SHRINK = 4;
+const NFKC_GROWTH = 18;
+// The characters at the end of a cut prefix whose normalization the text after the cut may change: two stream-safe segments.
+const UNSETTLED = 2 * (MAX_MARK_RUN + 1);
+
+/** The first `max` code points of `text`, and whether that was all of it. */
+function prefix(text: string, max: number): { readonly text: string; readonly whole: boolean } {
+  const head = cut(text, max);
+  return { text: head, whole: head.length === text.length };
+}
+
+/**
+ * The first `max` code points of the NFKC form of the cleaned text ({@link cleanText}): the form of a search term and of indexed
+ * text alike. A run of more than {@link MAX_MARK_RUN} marks keeps its first ones, so the normalization stays linear (it sorts a run
+ * of marks), and the normalization reads a prefix that grows by a fixed step only until it surely fills `max`: a huge text costs
+ * no more than about four times `max`, and one pass adds at most one step of new text, so its result stays below 19 steps.
+ * @internal
+ */
+export function normalizedText(text: string, max: number): string {
+  const safe = cleanText(text).replace(MARK_RUN, '$1');
+  const settled = max + NFKC_GROWTH * UNSETTLED;
+  const most = NFKC_SHRINK * settled;
+  for (let read = settled; ; read = Math.min(read + settled, most)) {
+    const raw = prefix(safe, read);
+    const normalized = raw.text.normalize('NFKC');
+    // The end of a cut prefix may normalize differently once the text after it follows: only what lies before it is final.
+    if (raw.whole || read === most || !prefix(normalized, settled - 1).whole) return cut(normalized, max);
+  }
 }

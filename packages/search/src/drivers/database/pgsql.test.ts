@@ -220,6 +220,16 @@ describe.skipIf(!PGSQL_URL)('the database driver on Postgres: languages and matc
     expect(keysOf(await search(started, { in: PageIndex, term: 'whale', locale: 'fr' }))).toEqual([none.id]);
   });
 
+  it('finds fullwidth letters and a ligature by their plain form and by their own, and shows the plain form in the excerpt', async () => {
+    const started = await start();
+    const page = await insertPage(started.db, { title: 'Ｗｉｋｉ oﬃce' });
+    const plain = await insertPage(started.db, { title: 'Plain' });
+    await started.search.index(PageIndex, [page.id, plain.id]);
+    for (const term of ['Wiki', 'office', 'wiki office', 'Ｗｉｋｉ', 'oﬃce']) expect(keysOf(await search(started, { in: PageIndex, term }))).toEqual([page.id]);
+    const found = await search(started, { in: PageIndex, term: 'office', excerpts: true });
+    expect(found.data[0]!.excerpt!.map((segment) => segment.text).join('')).toBe('Wiki office');
+  });
+
   it('keeps diacritics in a document without a locale: simple neither stems nor folds them', async () => {
     const started = await start();
     const page = await insertPage(started.db, { title: 'Le lac de la Sée' });

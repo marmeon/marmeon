@@ -175,6 +175,9 @@ Search checks every document that `toDocument()` returns before it reaches the d
 - The locale is `null` or a language tag such as `en` or `pt-BR`. It is stored in its canonical form, so `pt-br` and `pt-BR` are
   the same locale. Any other value throws a `TypeError`, and so does a tag that is longer than 35 characters in its canonical form.
 - The texts lose the NUL character and the two characters of the Unicode private use area that mark the matches in excerpts.
+- The texts are stored in Unicode NFKC, the form a search term takes, so `Wiki` finds "Ｗｉｋｉ" and `office` finds "oﬃce".
+  Excerpts show that form: "Ｗｉｋｉ" appears as "Wiki". The 200 000 characters count the text in that form. A run of more than 30
+  combining marks in a row keeps its first 30, in the text and in the term alike.
 - A document keeps at most 200 000 characters of text. The fields fill that budget in the order of their weights, `highest` first, and
   in the order of `fields` within one weight. The field that reaches the limit is cut, and the fields after it are left out.
 
