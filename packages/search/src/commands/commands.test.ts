@@ -22,7 +22,7 @@ interface PageRow {
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
 
   source(db: Database) {
     return (db as unknown as Connection<{ pages: PageRow }>).selectFrom('pages').select(['id', 'title']);
@@ -36,7 +36,7 @@ class PageIndex extends SearchIndex<PageRow> {
 class PostIndex extends SearchIndex<PageRow> {
   static readonly index = 'posts';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
 
   source(db: Database) {
     return (db as unknown as Connection<{ pages: PageRow }>).selectFrom('pages').select(['id', 'title']);

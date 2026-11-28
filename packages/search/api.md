@@ -200,7 +200,7 @@ export declare class SearchSetupError extends Error {
     });
 }
 // SearchWeight
-export type SearchWeight = 'A' | 'B' | 'C' | 'D';
+export type SearchWeight = 'highest' | 'high' | 'normal' | 'low';
 // StoredDocument
 export interface StoredDocument {
     readonly key: SearchKey;
@@ -395,7 +395,7 @@ export interface SearchProblem {
     readonly fix?: string | undefined;
 }
 // SearchWeight
-export type SearchWeight = 'A' | 'B' | 'C' | 'D';
+export type SearchWeight = 'highest' | 'high' | 'normal' | 'low';
 // StoredDocument
 export interface StoredDocument {
     readonly key: SearchKey;

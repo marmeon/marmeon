@@ -23,8 +23,8 @@ import { createMeilisearchDriver } from './index.ts';
 
 const KEY = 'local-test-key';
 const BASE = 'http://meili.internal:7700';
-const PAGES: IndexInfo = { name: 'pages', key: 'id', fields: [{ name: 'body', weight: 'C' }, { name: 'title', weight: 'A' }], filters: ['tenant', 'kind'] };
-const POSTS: IndexInfo = { name: 'posts', key: 'slug', fields: [{ name: 'title', weight: 'A' }], filters: ['tenant'] };
+const PAGES: IndexInfo = { name: 'pages', key: 'id', fields: [{ name: 'body', weight: 'normal' }, { name: 'title', weight: 'highest' }], filters: ['tenant', 'kind'] };
+const POSTS: IndexInfo = { name: 'posts', key: 'slug', fields: [{ name: 'title', weight: 'highest' }], filters: ['tenant'] };
 
 const warnings: string[] = [];
 const logger = { warn: (message: string) => warnings.push(message) } as unknown as Logger;
@@ -123,6 +123,25 @@ describe('MeilisearchDriver: writes', () => {
       displayedAttributes: ['key', 's_title', 's_body'],
       pagination: { maxTotalHits: 1000 },
     });
+  });
+
+  it('orders the searchable attributes by weight, and two fields of one weight in the order the class declares them', async () => {
+    const http = meili().respond(`${BASE}/tasks/1`, () => Response.json({ uid: 1, status: 'succeeded' }));
+    const mixed: IndexInfo = {
+      name: 'mixed',
+      key: 'id',
+      fields: [
+        { name: 'notes', weight: 'normal' },
+        { name: 'slug', weight: 'low' },
+        { name: 'title', weight: 'highest' },
+        { name: 'body', weight: 'normal' },
+        { name: 'summary', weight: 'high' },
+      ],
+      filters: [],
+    };
+    await driver(http).prepare(mixed);
+    const settings = http.requests.find((request) => request.method === 'PATCH')!;
+    expect(await bodyOf(settings)).toMatchObject({ searchableAttributes: ['s_title', 's_summary', 's_notes', 's_body', 's_slug'] });
   });
 
   it('prepares a rebuild target under its own name and never deletes it', async () => {
@@ -261,7 +280,7 @@ describe('the meilisearch driver in an app', () => {
   class PageIndex extends SearchIndex<PageRow> {
     static readonly index = 'pages';
     static readonly key = 'id';
-    static readonly fields = { title: 'A' } as const;
+    static readonly fields = { title: 'highest' } as const;
 
     source(db: Database) {
       return (db as unknown as Connection<{ pages: PageRow }>).selectFrom('pages').select(['id', 'title']);

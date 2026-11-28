@@ -28,7 +28,7 @@ interface PageRow {
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['kind'] as const;
 
   source(db: Database) {
@@ -311,8 +311,8 @@ describe('the meilisearch driver in marmeon check', () => {
     name: 'pages',
     key: 'id',
     fields: [
-      { name: 'body', weight: 'C' },
-      { name: 'title', weight: 'A' },
+      { name: 'body', weight: 'normal' },
+      { name: 'title', weight: 'highest' },
     ],
     filters: ['tenant', 'kind'],
   };
@@ -623,7 +623,7 @@ describe('the meilisearch driver in marmeon check', () => {
           meilisearchSettings({
             name: 'pages',
             key: 'id',
-            fields: [{ name: 'title', weight: 'A' }],
+            fields: [{ name: 'title', weight: 'highest' }],
             filters: ['kind'],
           }),
         ),

@@ -310,7 +310,7 @@ The fake writes after the commit, so a write inside a transaction that rolls bac
 
 A search finds a document that holds every word of the term in its fields, compared without case and diacritics, so `hauser` finds
 `Häuser`. With `prefix`, the last word also matches the start of a word. The score adds up the weights of the fields that matched,
-4 for `A` down to 1 for `D`, and the best hits come first. Filters, the locale and the cap of 1000 hits follow the rules of
+4 for `highest` down to 1 for `low`, and the best hits come first. Filters, the locale and the cap of 1000 hits follow the rules of
 [searching](full-text-search.md#searching), and the fake compares a filter value with its type, so `1` does not match `true`. An excerpt shows the best field that matched, with the matching words marked.
 
 `failNext(kind, times)` makes the next searches return an `err`, of the kind `unavailable` by default or `missing-index`.

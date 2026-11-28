@@ -16,7 +16,7 @@ export interface RecordedSearchWrite {
   readonly documents: readonly StoredDocument[];
 }
 
-const SCORES: Readonly<Record<SearchWeight, number>> = { A: 4, B: 3, C: 2, D: 1 };
+const SCORES: Readonly<Record<SearchWeight, number>> = { highest: 4, high: 3, normal: 2, low: 1 };
 const FAILURE_KINDS: readonly unknown[] = ['unavailable', 'missing-index'];
 // The token shape of `terms.ts`: a word of a field is found the way a word of the term is.
 const WORD = /[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu;
@@ -118,7 +118,7 @@ function excerptOf(text: string, words: readonly Word[], matched: (word: Word) =
  * The real `Search` stays in front of it: the rows are read through `source()`, `includes()` and `toDocument()` run and every input is
  * checked as in production. It writes after the commit, so a rollback records nothing.
  * A search finds a document when it holds every word of the term, compared without case and diacritics (the last word as the start of
- * a word with `prefix`). The score adds up the weights of the fields that matched (A = 4 … D = 1). Filters (compared with their
+ * a word with `prefix`). The score adds up the weights of the fields that matched (`highest` = 4 … `low` = 1). Filters (compared with their
  * type), the locale and the cap of 1000 hits follow `docs/full-text-search.md#searching`.
  */
 export class SearchFake implements SearchDriver {

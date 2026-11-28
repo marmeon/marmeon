@@ -20,7 +20,7 @@ interface PostRow {
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['kind', 'tenant'] as const;
 
   source(db: Database) {
@@ -35,7 +35,7 @@ class PageIndex extends SearchIndex<PageRow> {
 class PostIndex extends SearchIndex<PostRow> {
   static readonly index = 'posts';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['kind'] as const;
 
   source(db: Database) {

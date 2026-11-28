@@ -1,7 +1,11 @@
 import type { Database, SelectQuery } from '@marmeon/database';
 
-/** How much a field counts when a search ranks its hits: `A` most, `D` least. */
-export type SearchWeight = 'A' | 'B' | 'C' | 'D';
+/**
+ * How much a field counts when a search ranks its hits: `highest` counts most. Postgres maps the four levels to tsvector weights A-D,
+ * SQLite to its four text columns, Meilisearch to the order of searchable attributes. See
+ * `docs/full-text-search.md#defining-an-index`.
+ */
+export type SearchWeight = 'highest' | 'high' | 'normal' | 'low';
 
 /** A value a filter compares: a document carries one per filter, and a search asks for one or for any of several. */
 export type FilterValue = string | number | boolean;

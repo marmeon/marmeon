@@ -11,8 +11,8 @@ const COUNT_LIMIT = 1001;
 /** The name of a filter as it may become a key of the JSON a document must contain: what an index may declare. */
 const FILTER_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 /**
- * The weights of `ts_rank_cd` for D, C, B and A: a match of weight A counts ten times one of weight D, as on SQLite. Normalization
- * 32 maps the rank into 0 to 1 (`rank / (rank + 1)`). The rank reads the document's vector and the query alone: no statistic of the
+ * The weights of `ts_rank_cd` for D, C, B and A (`low` to `highest`): a match of weight `highest` counts ten times one of weight
+ * `low`, as on SQLite. Normalization 32 maps the rank into 0 to 1 (`rank / (rank + 1)`). The rank reads the document's vector and the query alone: no statistic of the
  * table, so documents of other indexes and tenants move no score.
  */
 const RANK = sql`'{0.1, 0.2, 0.4, 1.0}'::float4[]`;
@@ -157,9 +157,9 @@ export async function pgsqlSchemaGaps(db: Connection<any>): Promise<{ readonly n
 
 /**
  * One search on Postgres: the documents whose vector matches the query of their configuration, in the indexes and with the locale
- * and every filter, ranked by `ts_rank_cd` (local to each document; weights 1.0, 0.4, 0.2 and 0.1 for A to D). The page is cut in a
- * CTE and `ts_headline` runs in the outer select over the page rows only, in the same statement (one snapshot: an excerpt is of the
- * very row the page holds). The count looks at no more than 1001 matches.
+ * and every filter, ranked by `ts_rank_cd` (local to each document; weights 1.0, 0.4, 0.2 and 0.1 for `highest` to `low`). The page
+ * is cut in a CTE and `ts_headline` runs in the outer select over the page rows only, in the same statement (one snapshot: an
+ * excerpt is of the very row the page holds). The count looks at no more than 1001 matches.
  */
 export async function queryPgsql(db: Connection<any>, request: DriverQuery, map: ReadonlyMap<string, string>): Promise<DriverPage> {
   const headline = request.excerpts

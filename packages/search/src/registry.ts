@@ -14,7 +14,13 @@ export interface IndexInfo {
 export const INDEX_NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 // `constructor` matches the pattern too and is refused on its own, like every name Object.prototype has.
 const ATTRIBUTE_NAME = /^[a-z][a-z0-9_]{0,63}$/;
-const WEIGHTS: readonly string[] = ['A', 'B', 'C', 'D'];
+/** @internal The weights from the one that counts most to the one that counts least. */
+export const WEIGHTS = ['highest', 'high', 'normal', 'low'] as const satisfies readonly SearchWeight[];
+/**
+ * @internal The tsvector letter of each weight, which the rebuild fingerprint hashes instead of the name: the fingerprint describes
+ * what the documents were written with, and the `setweight` calls of `statements.ts` write these letters.
+ */
+export const WEIGHT_LEVELS: Readonly<Record<SearchWeight, 'A' | 'B' | 'C' | 'D'>> = Object.freeze({ highest: 'A', high: 'B', normal: 'C', low: 'D' });
 const MAX_FIELDS = 32;
 const MAX_FILTERS = 32;
 
@@ -55,7 +61,7 @@ function infoOf(Index: SearchIndexClass, source: string): IndexInfo {
 
   const fields = read(Index, 'fields');
   if (typeof fields !== 'object' || fields === null || Array.isArray(fields)) {
-    throw setup(`${label} has static fields = ${shown(fields)}, but fields are an object of field names and weights: static fields = { title: 'A', body: 'C' }.`);
+    throw setup(`${label} has static fields = ${shown(fields)}, but fields are an object of field names and weights: static fields = { title: 'highest', body: 'normal' }.`);
   }
   const entries = Object.entries(fields);
   if (entries.length < 1 || entries.length > MAX_FIELDS) throw setup(`${label} declares ${entries.length} fields, but an index has 1 to ${MAX_FIELDS}.`);
@@ -63,7 +69,9 @@ function infoOf(Index: SearchIndexClass, source: string): IndexInfo {
     if (!ATTRIBUTE_NAME.test(field) || Object.hasOwn(Object.prototype, field)) {
       throw setup(`${label} declares the field ${shown(field)}, but a field name is lowercase letters, digits and "_", starting with a letter, at most 64 characters, and not "constructor".`);
     }
-    if (typeof weight !== 'string' || !WEIGHTS.includes(weight)) throw setup(`${label} gives the field "${field}" the weight ${shown(weight)}, but a weight is 'A', 'B', 'C' or 'D'.`);
+    if (typeof weight !== 'string' || !(WEIGHTS as readonly string[]).includes(weight)) {
+      throw setup(`${label} gives the field "${field}" the weight ${shown(weight)}, but a weight is 'highest', 'high', 'normal' or 'low'.`);
+    }
   }
 
   const declared = read(Index, 'filters');

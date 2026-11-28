@@ -7,7 +7,7 @@ type ArticleRow = Pick<Row<'handbook_articles'>, 'id' | 'locale' | 'title' | 'su
 export class ArticleIndex extends SearchIndex<ArticleRow> {
   static readonly index = 'handbook-articles';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', summary: 'B', body: 'C' } as const;
+  static readonly fields = { title: 'highest', summary: 'high', body: 'normal' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {

@@ -7,7 +7,7 @@ type FaqRow = Pick<Row<'handbook_faqs'>, 'id' | 'locale' | 'question' | 'answer'
 export class FaqIndex extends SearchIndex<FaqRow> {
   static readonly index = 'handbook-faqs';
   static readonly key = 'id';
-  static readonly fields = { question: 'A', answer: 'C' } as const;
+  static readonly fields = { question: 'highest', answer: 'normal' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {

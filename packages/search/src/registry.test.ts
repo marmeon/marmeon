@@ -30,14 +30,14 @@ abstract class PageRows extends SearchIndex<PageRow> {
 class PageIndex extends PageRows {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', body: 'C' } as const;
+  static readonly fields = { title: 'highest', body: 'normal' } as const;
   static readonly filters = ['kind'] as const;
 }
 
 class PostIndex extends PageRows {
   static readonly index = 'posts';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
 }
 
 /** A subclass of PageIndex named `name` whose statics are `statics` (an `undefined` hides the inherited one). */
@@ -79,7 +79,7 @@ describe('SearchIndexes: indexes from modules and providers', () => {
     expect(indexes.get('posts')).toBe(PostIndex);
     expect(indexes.get('nope')).toBeUndefined();
     const info = indexes.info(PageIndex);
-    expect(info).toEqual({ name: 'pages', key: 'id', fields: [{ name: 'title', weight: 'A' }, { name: 'body', weight: 'C' }], filters: ['kind'] });
+    expect(info).toEqual({ name: 'pages', key: 'id', fields: [{ name: 'title', weight: 'highest' }, { name: 'body', weight: 'normal' }], filters: ['kind'] });
     expect(Object.isFrozen(info) && Object.isFrozen(info.fields) && Object.isFrozen(info.fields[0]) && Object.isFrozen(info.filters)).toBe(true);
   });
 
@@ -92,8 +92,8 @@ describe('SearchIndexes: indexes from modules and providers', () => {
     const Index = variant('LaterIndex', {});
     const app = await inModule(Index);
     Object.defineProperty(Index, 'index', { value: 'Not A Name', configurable: true });
-    Object.defineProperty(Index, 'fields', { value: { secret_column: 'A' }, configurable: true });
-    expect(app.container.make(SearchIndexes).info(Index)).toMatchObject({ name: 'pages', fields: [{ name: 'title', weight: 'A' }, { name: 'body', weight: 'C' }] });
+    Object.defineProperty(Index, 'fields', { value: { secret_column: 'highest' }, configurable: true });
+    expect(app.container.make(SearchIndexes).info(Index)).toMatchObject({ name: 'pages', fields: [{ name: 'title', weight: 'highest' }, { name: 'body', weight: 'normal' }] });
   });
 
   it('counts the same class twice as one index, from one list, two modules or a module and a provider', async () => {
@@ -169,31 +169,33 @@ describe('SearchIndexes: the start refuses a broken definition with Q9', () => {
     ['title', '"title"'],
   ])('refuses fields that are no object: %j', async (fields, shown) => {
     expect(await refusal(inModule(variant('BadFieldsIndex', { fields })))).toBe(
-      `[marmeon:Q9] BadFieldsIndex (module pages) has static fields = ${shown}, but fields are an object of field names and weights: static fields = { title: 'A', body: 'C' }.`,
+      `[marmeon:Q9] BadFieldsIndex (module pages) has static fields = ${shown}, but fields are an object of field names and weights: static fields = { title: 'highest', body: 'normal' }.`,
     );
   });
 
   it('refuses no fields and more than 32, and takes 32', async () => {
-    const many = (count: number) => Object.fromEntries(Array.from({ length: count }, (_, index) => [`f${index}`, 'D']));
+    const many = (count: number) => Object.fromEntries(Array.from({ length: count }, (_, index) => [`f${index}`, 'low']));
     expect(await refusal(inModule(variant('EmptyIndex', { fields: {} })))).toBe('[marmeon:Q9] EmptyIndex (module pages) declares 0 fields, but an index has 1 to 32.');
     expect(await refusal(inModule(variant('WideIndex', { fields: many(33) })))).toBe('[marmeon:Q9] WideIndex (module pages) declares 33 fields, but an index has 1 to 32.');
     await expect(inModule(variant('FullIndex', { fields: many(32) }))).resolves.toBeDefined();
   });
 
   it.each(['Title', 'body text', '_body', 'body-text', 'b'.repeat(65), 'constructor'])('refuses the field name %j', async (field) => {
-    expect(await refusal(inModule(variant('BadFieldIndex', { fields: { [field]: 'A' } })))).toBe(
+    expect(await refusal(inModule(variant('BadFieldIndex', { fields: { [field]: 'highest' } })))).toBe(
       `[marmeon:Q9] BadFieldIndex (module pages) declares the field ${JSON.stringify(field)}, but a field name is lowercase letters, digits and "_", starting with a letter, at most 64 characters, and not "constructor".`,
     );
   });
 
   it.each([
-    ['E', '"E"'],
-    ['a', '"a"'],
+    ['A', '"A"'],
+    ['D', '"D"'],
+    ['Highest', '"Highest"'],
+    ['medium', '"medium"'],
     [1, 'a number'],
     [null, 'null'],
   ])('refuses the weight %j', async (weight, shown) => {
     expect(await refusal(inModule(variant('BadWeightIndex', { fields: { title: weight } })))).toBe(
-      `[marmeon:Q9] BadWeightIndex (module pages) gives the field "title" the weight ${shown}, but a weight is 'A', 'B', 'C' or 'D'.`,
+      `[marmeon:Q9] BadWeightIndex (module pages) gives the field "title" the weight ${shown}, but a weight is 'highest', 'high', 'normal' or 'low'.`,
     );
   });
 
@@ -229,7 +231,7 @@ describe('SearchIndexes: the start refuses a broken definition with Q9', () => {
 
   it('shows at most 80 characters of a value it refuses', async () => {
     const key = 'k'.repeat(81);
-    const Index = variant('LongFieldIndex', { fields: { [key]: 'A' } });
+    const Index = variant('LongFieldIndex', { fields: { [key]: 'highest' } });
     expect(await refusal(inModule(Index))).toBe(
       `[marmeon:Q9] LongFieldIndex (module pages) declares the field "${'k'.repeat(80)}"…, but a field name is lowercase letters, digits and "_", starting with a letter, at most 64 characters, and not "constructor".`,
     );
@@ -267,7 +269,7 @@ describe('SearchIndexes: the start refuses a broken definition with Q9', () => {
     class NoSource {
       static index = 'nosource';
       static key = 'id';
-      static fields = { title: 'A' };
+      static fields = { title: 'highest' };
       toDocument(): AnyDocument {
         return { fields: {} };
       }
@@ -275,7 +277,7 @@ describe('SearchIndexes: the start refuses a broken definition with Q9', () => {
     class FieldToDocument {
       static index = 'fieldtodocument';
       static key = 'id';
-      static fields = { title: 'A' };
+      static fields = { title: 'highest' };
       source(): never {
         throw new Error('not called');
       }

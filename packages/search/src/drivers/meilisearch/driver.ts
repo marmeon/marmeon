@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { err, ok, type Logger, type Result } from '@marmeon/core';
 import type { DriverHit, DriverPage, DriverQuery, SearchDriver, SearchFailure, SearchInspectContext, SearchKey, SearchProblem, StoredDocument } from '../../driver.ts';
-import type { IndexInfo } from '../../registry.ts';
+import { WEIGHTS, type IndexInfo } from '../../registry.ts';
 import { excerptSegments, MARK_END, MARK_START, meilisearchFilter, meilisearchFilterValue, type ExcerptSegment } from '../../terms.ts';
 import { MeilisearchError, SearchSyncError, type MeilisearchClient } from './client.ts';
 
@@ -9,7 +9,6 @@ import { MeilisearchError, SearchSyncError, type MeilisearchClient } from './cli
 const CROP_LENGTH = 24;
 /** The most hits Meilisearch counts and pages through, as `Search` reaches. */
 const MAX_TOTAL_HITS = 1000;
-const WEIGHT_ORDER = ['A', 'B', 'C', 'D'] as const;
 // An index uid Meilisearch accepts and a path segment cannot misread.
 const INDEX_UID = /^[A-Za-z0-9_-]{1,128}$/;
 // A canonical locale (`pt-BR`); `Search` hands over no other form.
@@ -26,9 +25,9 @@ export function documentId(key: SearchKey): string {
   return createHash('sha256').update(JSON.stringify(key), 'utf8').digest('base64url');
 }
 
-/** The fields of an index in the order of their weights, `A` first, and in declaration order within one weight. */
+/** The fields of an index in the order of their weights, `highest` first, and in declaration order within one weight. */
 function fieldsByWeight(index: IndexInfo): string[] {
-  return WEIGHT_ORDER.flatMap((weight) => index.fields.filter((field) => field.weight === weight).map((field) => `s_${field.name}`));
+  return WEIGHTS.flatMap((weight) => index.fields.filter((field) => field.weight === weight).map((field) => `s_${field.name}`));
 }
 
 function uid(name: string): string {

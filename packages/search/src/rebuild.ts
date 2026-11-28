@@ -6,7 +6,7 @@ import { searchOptions } from './config.ts';
 import type { SearchDriver, SearchKey } from './driver.ts';
 import { DatabaseSearchDriver } from './drivers/database/index.ts';
 import { DocumentsTooLongError } from './errors.ts';
-import type { IndexInfo, SearchIndexes } from './registry.ts';
+import { WEIGHT_LEVELS, type IndexInfo, type SearchIndexes } from './registry.ts';
 import { BATCH_SIZE, checkKey, keyId, lockDocuments, MAX_WRITES, sameRead, write, type IndexReader, type ReadResult } from './search.ts';
 import type { SearchIndex, SearchIndexClass } from './search-index.ts';
 
@@ -265,7 +265,8 @@ export class Rebuilder {
   /** SHA-256 of the index definition and the language map as canonical JSON: what the documents of a run were written with. */
   #fingerprint(info: IndexInfo): string {
     const languages = [...searchOptions(this.#parts.container).languages].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    const definition = [info.name, info.key, info.fields.map((field) => [field.name, field.weight]), info.filters, languages];
+    // A weight by its tsvector letter: the level the documents were written with, not its public spelling.
+    const definition = [info.name, info.key, info.fields.map((field) => [field.name, WEIGHT_LEVELS[field.weight]]), info.filters, languages];
     return createHash('sha256').update(JSON.stringify(definition), 'utf8').digest('hex');
   }
 

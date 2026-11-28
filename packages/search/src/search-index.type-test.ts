@@ -3,7 +3,7 @@ import { defineModule, type ServiceProviderClass } from '@marmeon/core';
 import type { Connection, Database } from '@marmeon/database';
 import { describe, it } from 'vitest';
 import './provider.ts';
-import { SearchIndex, type AnyDocument, type FiltersOf, type KeyOf, type SearchDocument } from './search-index.ts';
+import { SearchIndex, type AnyDocument, type FiltersOf, type KeyOf, type SearchDocument, type SearchWeight } from './search-index.ts';
 
 interface PageRow {
   id: number;
@@ -18,7 +18,7 @@ const pages = (db: Database) => (db as unknown as Connection<{ pages: PageRow }>
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', summary: 'B' } as const;
+  static readonly fields = { title: 'highest', summary: 'high' } as const;
   static readonly filters = ['kind', 'audience'] as const;
 
   source(db: Database) {
@@ -37,7 +37,7 @@ class PageIndex extends SearchIndex<PageRow> {
 class NewsIndex extends SearchIndex<PageRow> {
   static readonly index = 'news';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['kind'] as const;
 
   source(db: Database) {
@@ -54,7 +54,7 @@ describe('SearchIndex', () => {
     class Wrong extends SearchIndex<PageRow> {
       static readonly index = 'wrong';
       static readonly key = 'id';
-      static readonly fields = { title: 'A' } as const;
+      static readonly fields = { title: 'highest' } as const;
       static readonly filters = ['kind'] as const;
 
       source(db: Database) {
@@ -83,7 +83,7 @@ describe('SearchIndex', () => {
     class Plain extends SearchIndex<PageRow> {
       static readonly index = 'plain';
       static readonly key = 'id';
-      static readonly fields = { title: 'A' } as const;
+      static readonly fields = { title: 'highest' } as const;
 
       source(db: Database) {
         return pages(db);
@@ -107,7 +107,7 @@ describe('SearchIndex', () => {
     class Loose extends SearchIndex<PageRow> {
       static readonly index = 'loose';
       static readonly key = 'id';
-      static readonly fields = { title: 'A' } as const;
+      static readonly fields = { title: 'highest' } as const;
       static readonly filters = ['kind'];
 
       source(db: Database) {
@@ -125,7 +125,7 @@ describe('SearchIndex', () => {
     class Optional extends SearchIndex<PageRow> {
       static readonly index = 'optional';
       static readonly key = 'id';
-      static readonly fields = { title: 'A' } as const;
+      static readonly fields = { title: 'highest' } as const;
       static readonly filters: readonly string[] | undefined = ['kind'];
 
       source(db: Database) {
@@ -141,7 +141,7 @@ describe('SearchIndex', () => {
     class OptionalStatic extends SearchIndex<PageRow> {
       static readonly index = 'optional_static';
       static readonly key = 'id';
-      static readonly fields = { title: 'A' } as const;
+      static readonly fields = { title: 'highest' } as const;
       static readonly filters?: readonly string[] = ['kind'];
 
       source(db: Database) {
@@ -174,11 +174,33 @@ describe('SearchIndex', () => {
     void document;
   });
 
-  it('refuses a weight other than A to D where the class is registered, in a module and on a provider', () => {
-    class Heavy extends SearchIndex<PageRow> {
-      static readonly index = 'heavy';
+  it('names the four weights and refuses the letters and numbers', () => {
+    const weights: readonly SearchWeight[] = ['highest', 'high', 'normal', 'low'];
+    // @ts-expect-error — the storage levels A to D are no weight.
+    const letter: SearchWeight = 'A';
+    // @ts-expect-error — a weight is a name, not a number.
+    const number: SearchWeight = 1;
+    void [weights, letter, number];
+  });
+
+  it('refuses a weight other than highest, high, normal and low where the class is registered, in a module and on a provider', () => {
+    class Lettered extends SearchIndex<PageRow> {
+      static readonly index = 'lettered';
       static readonly key = 'id';
-      static readonly fields = { title: 'E' } as const;
+      static readonly fields = { title: 'A' } as const;
+
+      source(db: Database) {
+        return pages(db);
+      }
+
+      toDocument(row: PageRow): AnyDocument {
+        return { fields: { title: row.title } };
+      }
+    }
+    class Numbered extends SearchIndex<PageRow> {
+      static readonly index = 'numbered';
+      static readonly key = 'id';
+      static readonly fields = { title: 1 } as const;
 
       source(db: Database) {
         return pages(db);
@@ -189,25 +211,27 @@ describe('SearchIndex', () => {
       }
     }
     defineModule({ name: 'pages', searchIndexes: [PageIndex, NewsIndex] });
-    // @ts-expect-error — a weight is 'A', 'B', 'C' or 'D'.
-    defineModule({ name: 'pages', searchIndexes: [Heavy] });
+    // @ts-expect-error — a weight is 'highest', 'high', 'normal' or 'low', not a letter.
+    defineModule({ name: 'pages', searchIndexes: [Lettered] });
+    // @ts-expect-error — a weight is 'highest', 'high', 'normal' or 'low', not a number.
+    defineModule({ name: 'pages', searchIndexes: [Numbered] });
     const fine: ServiceProviderClass = class {
       static searchIndexes = [PageIndex];
       boot(): void {}
     };
-    // @ts-expect-error — a weight is 'A', 'B', 'C' or 'D'.
-    const heavy: ServiceProviderClass = class {
-      static searchIndexes = [Heavy];
+    // @ts-expect-error — a weight is 'highest', 'high', 'normal' or 'low', not a letter.
+    const lettered: ServiceProviderClass = class {
+      static searchIndexes = [Lettered];
       boot(): void {}
     };
-    void [fine, heavy];
+    void [fine, lettered];
   });
 
   it('refuses a class without source() or toDocument() in a registration', () => {
     class NoMethods {
       static readonly index = 'none';
       static readonly key = 'id';
-      static readonly fields = { title: 'A' } as const;
+      static readonly fields = { title: 'highest' } as const;
     }
     // @ts-expect-error — an index class has source() and toDocument().
     defineModule({ name: 'pages', searchIndexes: [NoMethods] });

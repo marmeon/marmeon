@@ -3,7 +3,7 @@ import { withCode } from '@marmeon/core/internal';
 import { Connections, Database, sql, type PageMeta, type Paginated } from '@marmeon/database';
 import type { DriverQuery, SearchDriver, SearchFailure, SearchKey, StoredDocument } from './driver.ts';
 import { DocumentsTooLongError, SearchSetupError } from './errors.ts';
-import type { IndexInfo, SearchIndexes } from './registry.ts';
+import { WEIGHTS, type IndexInfo, type SearchIndexes } from './registry.ts';
 import type { FiltersOf, IndexRowOf, KeyOf, SearchIndex, SearchIndexClass } from './search-index.ts';
 import { cleanText, searchText, tokens, type ExcerptSegment, type FilterScalar } from './terms.ts';
 
@@ -27,7 +27,6 @@ export const MAX_LOCALE_LENGTH = 35;
 const REQUEST_OPTIONS: readonly string[] = ['in', 'term', 'filters', 'locale', 'prefix', 'excerpts', 'page', 'perPage'];
 const FAILURE_KINDS: readonly unknown[] = ['unavailable', 'missing-index'];
 const LOCALE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$/;
-const WEIGHT_ORDER = ['A', 'B', 'C', 'D'] as const;
 
 /**
  * One search: the index or indexes to look in, the words the user typed, the filters that decide what this user may see, the locale
@@ -156,7 +155,7 @@ export function storedDocument(info: IndexInfo, label: string, key: SearchKey, d
   }
   const texts: Record<string, string> = {};
   let budget = MAX_DOCUMENT_LENGTH;
-  for (const weight of WEIGHT_ORDER) {
+  for (const weight of WEIGHTS) {
     for (const field of info.fields) {
       if (field.weight !== weight) continue;
       const value = fields[field.name];

@@ -38,7 +38,7 @@ const reads = { pages: 0 };
 abstract class PageRows extends SearchIndex<PageRow> {
   static readonly index: string = 'page-rows';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', body: 'C' } as const;
+  static readonly fields = { title: 'highest', body: 'normal' } as const;
   static readonly filters = ['audience', 'tenant'] as const;
 
   source(db: Database) {
@@ -62,7 +62,7 @@ class PageIndex extends PageRows {
 class PostIndex extends SearchIndex<PostRow> {
   static readonly index = 'posts';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -78,7 +78,7 @@ class PostIndex extends SearchIndex<PostRow> {
 class NoteIndex extends SearchIndex<PostRow> {
   static readonly index = 'notes';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -96,7 +96,7 @@ const shape: { document: (row: PageRow) => unknown } = { document: () => ({ fiel
 class ShapedIndex extends SearchIndex<PageRow> {
   static readonly index = 'shaped';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', summary: 'B', body: 'D' } as const;
+  static readonly fields = { title: 'highest', summary: 'high', body: 'low' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -514,7 +514,7 @@ describe('Search refuses input it cannot index', () => {
     await search.index(ShapedIndex, [1, 2]);
     const [first, second] = await driver.documents('shaped');
     expect(first).toEqual({ key: 1, locale: 'pt-BR', fields: { title: 'abc' }, filters: { audience: true } });
-    // A before B before D: the title stays whole, the summary takes the rest but 10, and the body is cut to nothing.
+    // highest before high before low: the title stays whole, the summary takes the rest but 10, and the body is cut to nothing.
     expect(second?.locale).toBe('pt-BR');
     expect(second?.fields).toEqual({ title: 't'.repeat(10), summary: 's'.repeat(MAX_DOCUMENT_LENGTH - 10) });
   });

@@ -41,7 +41,7 @@ function conditions(request: DriverQuery) {
   return sql.join(parts, sql` and `);
 }
 
-/** The text columns with the weights of A to D, as the score counts them. */
+/** The text columns `a` to `d` (the weights `highest` to `low`) with the factor the score counts each by. */
 const WEIGHTED_COLUMNS = [
   ['a', 10],
   ['b', 4],
@@ -89,8 +89,8 @@ async function excerpts(db: Connection<any>, request: DriverQuery, ids: readonly
 
 /**
  * One search on SQLite: FTS5 matches the quoted tokens, the rows that pass the indexes, the locale and every filter are ranked by a
- * score local to each document (weights 10, 4, 2 and 1 for A to D), `snippet()` runs only for the rows of the page, and the count
- * looks at no more than 1001 matches.
+ * score local to each document (factors 10, 4, 2 and 1 for `highest` to `low`), `snippet()` runs only for the rows of the page, and
+ * the count looks at no more than 1001 matches.
  */
 export async function querySqlite(db: Connection<any>, request: DriverQuery): Promise<DriverPage> {
   const where = conditions(request);

@@ -33,7 +33,7 @@ type Tables = { pages: PageRow; notes: NoteRow };
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', summary: 'B', body: 'D' } as const;
+  static readonly fields = { title: 'highest', summary: 'high', body: 'low' } as const;
   static readonly filters = ['audience', 'tenant'] as const;
 
   source(db: Database) {
@@ -52,7 +52,7 @@ class PageIndex extends SearchIndex<PageRow> {
 class NoteIndex extends SearchIndex<NoteRow> {
   static readonly index = 'notes';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -61,6 +61,21 @@ class NoteIndex extends SearchIndex<NoteRow> {
 
   toDocument(row: NoteRow): SearchDocument<typeof NoteIndex> {
     return { fields: { title: row.title }, filters: { audience: row.audience } };
+  }
+}
+
+/** One field per weight over the pages, the audience as the field of weight `low`. */
+class LeveledIndex extends SearchIndex<PageRow> {
+  static readonly index = 'leveled';
+  static readonly key = 'id';
+  static readonly fields = { title: 'highest', summary: 'high', body: 'normal', audience: 'low' } as const;
+
+  source(db: Database) {
+    return (db as unknown as Connection<Tables>).selectFrom('pages').select(['id', 'title', 'summary', 'body', 'audience', 'tenant', 'locale', 'published']);
+  }
+
+  toDocument(row: PageRow): SearchDocument<typeof LeveledIndex> {
+    return { fields: { title: row.title, summary: row.summary, body: row.body, audience: row.audience } };
   }
 }
 
@@ -88,7 +103,7 @@ async function start(): Promise<Started> {
       root: import.meta.dirname,
       discover: false,
       providers: [DatabaseServiceProvider, SearchServiceProvider, FakeProvider],
-      modules: [defineModule({ name: 'pages', searchIndexes: [PageIndex, NoteIndex] })],
+      modules: [defineModule({ name: 'pages', searchIndexes: [PageIndex, NoteIndex, LeveledIndex] })],
     },
     { env: { LOG_LEVEL: 'silent', NODE_ENV: 'test', DB_MANAGED: 'false', DB_DRIVER: 'sqlite', DB_DATABASE: ':memory:', SEARCH_DRIVER: 'fake' } },
   );
@@ -200,6 +215,22 @@ describe('SearchFake records', () => {
 });
 
 describe('SearchFake searches', () => {
+  it('scores a match by the weight of its field: highest 4, high 3, normal 2, low 1', async () => {
+    const { search, connections } = await start();
+    await insertPage(connections, { id: 1, title: 'Whales' });
+    await insertPage(connections, { id: 2, summary: 'Whales' });
+    await insertPage(connections, { id: 3, body: 'Whales' });
+    await insertPage(connections, { id: 4, audience: 'whales' });
+    await search.index(LeveledIndex, [4, 3, 2, 1]);
+    const result = await search.query({ in: LeveledIndex, term: 'whales' });
+    expect(result.ok && result.value.data.map((hit) => [hit.key, hit.score])).toEqual([
+      [1, 4],
+      [2, 3],
+      [3, 2],
+      [4, 1],
+    ]);
+  });
+
   it('finds a document holding every word, without case and diacritics, best fields first', async () => {
     const { search, connections } = await start();
     await insertPage(connections, { id: 1, title: 'Garden notes', body: 'Häuser am See' });
@@ -207,7 +238,7 @@ describe('SearchFake searches', () => {
     await insertPage(connections, { id: 3, title: 'Häuser only' });
     await search.index(PageIndex, [1, 2, 3]);
 
-    // id 2: title (A = 4) + summary (B = 3); id 1: body (D = 1) only. id 3 lacks "see".
+    // id 2: title (highest = 4) + summary (high = 3); id 1: body (low = 1) only. id 3 lacks "see".
     expect(await found(search, { in: PageIndex, term: 'hauser SEE' })).toEqual([2, 1]);
     const result = await search.query({ in: PageIndex, term: 'hauser see' });
     expect(result.ok && result.value.data.map((hit) => hit.score)).toEqual([7, 1]);
@@ -245,7 +276,7 @@ describe('SearchFake searches', () => {
 
   it('refuses filters a test hands the fake itself in a shape that Search.query() refuses', async () => {
     const fake = new SearchFake();
-    const info: IndexInfo = { name: 'pages', key: 'id', fields: [{ name: 'title', weight: 'A' }], filters: ['audience'] };
+    const info: IndexInfo = { name: 'pages', key: 'id', fields: [{ name: 'title', weight: 'highest' }], filters: ['audience'] };
     await fake.upsert(info, [{ key: 1, locale: null, fields: { title: 'Plan' }, filters: { audience: 'members' } }]);
     const query = (filters: unknown): DriverQuery => ({ indexes: [info], tokens: ['plan'], term: 'plan', filters: filters as DriverQuery['filters'], prefix: false, excerpts: false, offset: 0, limit: 20 });
     const hidden = {};

@@ -17,7 +17,7 @@ interface NoteRow {
 declare class PageIndex extends SearchIndex<PageRow> {
   static readonly index: 'pages';
   static readonly key: 'id';
-  static readonly fields: { readonly title: 'A' };
+  static readonly fields: { readonly title: 'highest' };
   source(): never;
   toDocument(row: PageRow): SearchDocument<typeof PageIndex>;
 }
@@ -25,7 +25,7 @@ declare class PageIndex extends SearchIndex<PageRow> {
 declare class NoteIndex extends SearchIndex<NoteRow> {
   static readonly index: 'notes';
   static readonly key: 'slug';
-  static readonly fields: { readonly title: 'A' };
+  static readonly fields: { readonly title: 'highest' };
   source(): never;
   toDocument(row: NoteRow): SearchDocument<typeof NoteIndex>;
 }

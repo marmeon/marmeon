@@ -25,7 +25,7 @@ interface Row {
 class PageIndex extends SearchIndex<Row> {
   static readonly index = 'pages';
   static readonly key = 'key';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
 
   source(db: Database) {
     return (db as unknown as Connection<{ pages: Row }>).selectFrom('pages').select(['key', 'title']);

@@ -52,7 +52,7 @@ type PageRow = Pick<Row<'pages'>, 'id' | 'title' | 'summary' | 'body' | 'audienc
 export class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', summary: 'B', body: 'C' } as const;
+  static readonly fields = { title: 'highest', summary: 'high', body: 'normal' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -79,7 +79,7 @@ The statics describe the index:
 | --- | --- |
 | `index` | The name the index is stored under: lowercase letters, digits, `_` and `-`, starting with a letter, at most 64 characters. Renaming it starts an empty index, and the documents under the old name stay until you flush them. |
 | `key` | The column of the source rows that identifies a document. Its values are strings or safe integers. A name every object has, such as `constructor`, is refused. |
-| `fields` | The fields a search looks in, 1 to 32, each with its weight: `A` counts most, `D` least. A field name is lowercase letters, digits and `_`, starting with a letter, at most 64 characters, and not `constructor`. |
+| `fields` | The fields a search looks in, 1 to 32, each with its weight: `highest`, `high`, `normal` or `low`. `highest` counts most, `low` least. A field name is lowercase letters, digits and `_`, starting with a letter, at most 64 characters, and not `constructor`. |
 | `filters` | Optional. The attributes a search may filter by, up to 32, named by the same rule as fields. `locale` is not one of them, because every search already narrows by locale. |
 | `connection` | Optional. Only `default` is supported. |
 
@@ -175,7 +175,7 @@ Search checks every document that `toDocument()` returns before it reaches the d
 - The locale is `null` or a language tag such as `en` or `pt-BR`. It is stored in its canonical form, so `pt-br` and `pt-BR` are
   the same locale. Any other value throws a `TypeError`, and so does a tag that is longer than 35 characters in its canonical form.
 - The texts lose the NUL character and the two characters of the Unicode private use area that mark the matches in excerpts.
-- A document keeps at most 200 000 characters of text. The fields fill that budget in the order of their weights, `A` first, and
+- A document keeps at most 200 000 characters of text. The fields fill that budget in the order of their weights, `highest` first, and
   in the order of `fields` within one weight. The field that reaches the limit is cut, and the fields after it are left out.
 
 The driver decides how a change reaches its index:
@@ -353,7 +353,7 @@ it does for [every package that ships migrations](migrations.md#publishing-the-m
 
 The migration makes two tables on the default connection. `search_documents` holds one row per document: the name of its index,
 its key, its locale, on Postgres the text search configuration that read it, its filters and the text of its fields in the columns
-`a` to `d`, one column per weight. `search_rebuilds` holds the
+`a` to `d`, one column per weight, `highest` in `a` and `low` in `d`. `search_rebuilds` holds the
 state of a running rebuild, on every driver: publish and run the migration for Meilisearch too. The text columns are [secret](migrations.md#secret-columns), so `selectAll()`, `marmeon db:query` and the
 database MCP never show indexed text. What the schema builder cannot write is part of the migration as raw SQL, and `migrate` does
 not name those objects as unknown.
@@ -376,7 +376,7 @@ delete.
 - **No stemming.** SQLite compares whole words, so `house` does not find "houses". Use Postgres in production when your users
   search in a language with many word forms.
 - **Ranking.** A hit's score counts, for each weight, how many words of the term occur in the fields of that weight. A word in a
-  field of weight `A` counts ten times one of weight `D`, `B` four times and `C` twice. A word that occurs several times in the
+  field of weight `highest` counts ten times one of weight `low`, `high` four times and `normal` twice. A word that occurs several times in the
   fields of one weight counts once for that weight.
 - **Locales.** SQLite searches every locale with the same rules. The locale only narrows a search to the documents of that locale
   and those without one.
@@ -391,7 +391,7 @@ delete.
 On Postgres the driver searches with the text search built into Postgres, and needs no extension. The migration adds a column
 `vector` of the type `tsvector` to `search_documents`, with a GIN index, and a GIN index on the filters. When the driver stores a
 document, it reads the text of each weight with the text search configuration of the document's locale (see
-[Languages](#languages)) and writes the words, reduced to their stems, into `vector`, each marked with its weight.
+[Languages](#languages)) and writes the words, reduced to their stems, into `vector`, each marked with the tsvector weight of its field: `A` for `highest` to `D` for `low`.
 
 - **Words and stems.** A search finds the forms of a word that the configuration reduces to the same stem: in a German
   document, `Haus` finds "Häuser", and in an English one, `house` finds "houses". Case does not count. Diacritics do count unless the
@@ -404,7 +404,7 @@ document, it reads the text of each weight with the text search configuration of
 - **Prefixes.** With `prefix: true`, the last word of the term also matches the start of a word: `häu` finds "Häuser". Use it for
   search as you type.
 - **Ranking.** A hit's score comes from `ts_rank_cd`, which reads the document and the term alone: how often and how close
-  together the words of the term occur, each occurrence weighed by its field, `A` ten times `D`, `B` four times and `C` twice. The
+  together the words of the term occur, each occurrence weighed by its field, `highest` ten times `low`, `high` four times and `normal` twice. The
   score lies between 0 and 1.
 - **Excerpts.** `ts_headline` makes the excerpt of a hit from the text of its declared fields. It runs only for the hits of the
   page, after the page is cut, so asking for excerpts costs no more for a search that matches many documents.
@@ -529,6 +529,11 @@ that index fails with that command in its message, and a search returns the `mis
 The driver stores each filter value as a hash, so filters compare exactly: Meilisearch alone would treat `Alice` and `alice`, or
 `7` and `"7"`, as one value. The `f_` attributes in Meilisearch therefore hold hashes. A field is stored as
 `s_<field>`, and a document's id is a hash of its key.
+
+Meilisearch has no weights. The driver lists the searchable attributes in the order of their weights, `highest` first, and two
+fields of the same weight in the order of `fields`. The driver leaves the ranking rules of Meilisearch as they are. Under the
+default rules, the `attribute` rule reads that order only after the number of matched words, typos and proximity, so a weight
+counts less here than on the `database` driver.
 
 A search sends only the words of the term, so no quote or `-` that a user types is search syntax. Every word must match. Meilisearch
 always matches the last word as the start of a word too, so `prefix: false` changes nothing on this driver. Every other failure

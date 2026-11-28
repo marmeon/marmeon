@@ -16,7 +16,7 @@ interface NoteRow {
 class NoteIndex extends SearchIndex<NoteRow> {
   static readonly index = 'notes';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
 
   source(db: Database) {
     return (db as unknown as Connection<{ notes: NoteRow }>).selectFrom('notes').select(['id', 'title', 'pinned']);

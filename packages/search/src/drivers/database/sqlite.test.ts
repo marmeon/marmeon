@@ -36,7 +36,7 @@ const pages = (db: Database) => (db as unknown as Connection<Tables>).selectFrom
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A', summary: 'B', body: 'C' } as const;
+  static readonly fields = { title: 'highest', summary: 'high', body: 'normal' } as const;
   static readonly filters = ['audience', 'tenant', 'featured'] as const;
 
   source(db: Database) {
@@ -60,7 +60,7 @@ class PageIndex extends SearchIndex<PageRow> {
 class PostIndex extends SearchIndex<PageRow> {
   static readonly index = 'posts';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -76,7 +76,7 @@ class PostIndex extends SearchIndex<PageRow> {
 class LevelIndex extends SearchIndex<PageRow> {
   static readonly index = 'levels';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['level'] as const;
 
   source(db: Database) {
@@ -89,11 +89,11 @@ class LevelIndex extends SearchIndex<PageRow> {
   }
 }
 
-/** The summary at weight D and the body at C, by slug. */
+/** The summary at weight `low` and the body at `normal`, by slug. */
 class NoteIndex extends SearchIndex<PageRow> {
   static readonly index = 'notes';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A', body: 'C', summary: 'D' } as const;
+  static readonly fields = { title: 'highest', body: 'normal', summary: 'low' } as const;
 
   source(db: Database) {
     return pages(db);
@@ -157,7 +157,7 @@ async function rowCounts(db: Connection<any>): Promise<{ documents: number; inde
 }
 
 describe('the database driver on SQLite: matching and ranking', () => {
-  it('ranks a match in a field of weight A above one in a field of weight C', async () => {
+  it('ranks a match in a field of weight highest above one in a field of weight normal', async () => {
     const started = await start();
     const inTitle = await insertPage(started.db, { title: 'whales', body: 'Ocean life' });
     const inBody = await insertPage(started.db, { title: 'Ocean life', body: 'whales' });
@@ -168,8 +168,8 @@ describe('the database driver on SQLite: matching and ranking', () => {
   });
 
   it.each([
-    ['A above B', { title: 'whales' }, { summary: 'whales' }],
-    ['B above C', { summary: 'whales' }, { body: 'whales' }],
+    ['highest above high', { title: 'whales' }, { summary: 'whales' }],
+    ['high above normal', { summary: 'whales' }, { body: 'whales' }],
   ] as const)('ranks a match of weight %s', async (_, strong, weak) => {
     const started = await start();
     const filler = { title: 'Ocean life', summary: 'Ocean life', body: 'Ocean life' };
@@ -182,7 +182,7 @@ describe('the database driver on SQLite: matching and ranking', () => {
     expect(page.data[0]!.score).toBeGreaterThan(page.data[1]!.score);
   });
 
-  it('ranks a match of weight C above one of weight D', async () => {
+  it('ranks a match of weight normal above one of weight low', async () => {
     const started = await start();
     const strong = await insertPage(started.db, { slug: 'strong', title: 'Ocean life', summary: 'Ocean life', body: 'whales' });
     const weak = await insertPage(started.db, { slug: 'weak', title: 'Ocean life', summary: 'whales', body: 'Ocean life' });
@@ -216,7 +216,7 @@ describe('the database driver on SQLite: matching and ranking', () => {
     const started = await start();
     const page = await insertPage(started.db, { title: 'house canary', body: 'houses' });
     await started.search.index(PageIndex, page.id);
-    // house and canary in the title (A): 10 + 10. The body's "houses" starts with "house", which is not the last word.
+    // house and canary in the title (highest): 10 + 10. The body's "houses" starts with "house", which is not the last word.
     expect((await search(started, { in: PageIndex, term: 'house canary', prefix: true })).data.map((hit) => hit.score)).toEqual([20]);
   });
 

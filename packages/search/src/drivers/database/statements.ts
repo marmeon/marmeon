@@ -1,6 +1,6 @@
 import { sql, type Connection } from '@marmeon/database';
 import type { SearchKey, StoredDocument } from '../../driver.ts';
-import type { IndexInfo } from '../../registry.ts';
+import { WEIGHTS, type IndexInfo } from '../../registry.ts';
 import { keyId } from '../../search.ts';
 
 /** The table of every index, made by the stub migration of the package. */
@@ -17,15 +17,16 @@ const UPSERT_CHUNK = 100;
 /** Keys per delete statement. */
 const DELETE_CHUNK = 500;
 
-const WEIGHTS = ['A', 'B', 'C', 'D'] as const;
-
 function chunks<T>(list: readonly T[], size: number): T[][] {
   const out: T[][] = [];
   for (let at = 0; at < list.length; at += size) out.push(list.slice(at, at + size));
   return out;
 }
 
-/** The text of each weight, A to D: the fields of that weight that have text, in the order the class declares them, one per line. */
+/**
+ * The text of each weight, `highest` to `low` (the columns `a` to `d`): the fields of that weight that have text, in the order the
+ * class declares them, one per line.
+ */
 export function weightedTexts(index: IndexInfo, document: StoredDocument): readonly [string, string, string, string] {
   const texts = WEIGHTS.map((weight) =>
     index.fields

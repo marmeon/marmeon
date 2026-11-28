@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Clock, type Application, type Logger } from '@marmeon/core';
 import { TestClock } from '@marmeon/core/testing';
 import { Connections, sql, type Connection, type Database } from '@marmeon/database';
@@ -6,6 +7,7 @@ import { HttpClientFake } from '@marmeon/fetch/testing';
 import type { JobContext } from '@marmeon/queue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { migratedApp, PGSQL_URL } from './__fixtures__/databases.ts';
+import { searchOptions } from './config.ts';
 import { SearchDriver, type SearchKey, type StoredDocument } from './driver.ts';
 import { MeilisearchClient } from './drivers/meilisearch/client.ts';
 import { documentId, MeilisearchDriver } from './drivers/meilisearch/driver.ts';
@@ -29,7 +31,7 @@ interface PageRow {
 class PageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'id';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
   static readonly filters = ['audience'] as const;
 
   source(db: Database) {
@@ -358,7 +360,7 @@ describe.skipIf(!PGSQL_URL)('Rebuilder and Search on Postgres: a write of an old
 class SlugPageIndex extends SearchIndex<PageRow> {
   static readonly index = 'pages';
   static readonly key = 'slug';
-  static readonly fields = { title: 'A' } as const;
+  static readonly fields = { title: 'highest' } as const;
 
   source(db: Database) {
     return (db as unknown as Connection<{ pages: PageRow }>).selectFrom('pages').select(['id', 'slug', 'title', 'audience', 'published']);
@@ -1167,7 +1169,7 @@ describe('Rebuilder: a run under another definition', () => {
   class WiderPageIndex extends SearchIndex<PageRow> {
     static readonly index = 'pages';
     static readonly key = 'id';
-    static readonly fields = { title: 'A', slug: 'D' } as const;
+    static readonly fields = { title: 'highest', slug: 'low' } as const;
     static readonly filters = ['audience'] as const;
 
     source(db: Database) {
@@ -1198,6 +1200,41 @@ describe('Rebuilder: a run under another definition', () => {
       [1, 2],
       [3, 4],
     ]);
+  });
+
+  it('fingerprints each weight by its tsvector letter, highest A to low D, in the order the class declares the fields', async () => {
+    class LeveledPageIndex extends SearchIndex<PageRow> {
+      static readonly index = 'pages';
+      static readonly key = 'id';
+      static readonly fields = { body: 'low', title: 'highest', summary: 'normal', slug: 'high' } as const;
+      static readonly filters = ['audience'] as const;
+
+      source(db: Database) {
+        return (db as unknown as Connection<{ pages: PageRow }>).selectFrom('pages').select(['id', 'slug', 'title', 'audience', 'published']);
+      }
+
+      toDocument(row: PageRow): SearchDocument<typeof LeveledPageIndex> {
+        return { fields: { title: row.title, slug: row.slug }, filters: { audience: row.audience } };
+      }
+    }
+    const { app, db } = await start('sqlite');
+    await insertPages(db, 1, 4);
+    const indexes = new SearchIndexes().add([LeveledPageIndex], 'test');
+    const c = app.container;
+    const leveled = new Rebuilder({
+      indexes,
+      reader: new IndexReader(indexes, c),
+      driver: () => c.make(SearchDriver),
+      connections: () => c.make(Connections),
+      container: c,
+      clock: c.make(Clock),
+      hooks: { afterBatch: () => Promise.reject(new Error('stop')) },
+    });
+    await rejection(leveled.rebuild(LeveledPageIndex, run(2)));
+    const { rows } = await sql<{ fingerprint: string }>`select fingerprint from search_rebuilds`.execute(db);
+    const languages = [...searchOptions(c).languages].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const definition = ['pages', 'id', [['body', 'D'], ['title', 'A'], ['summary', 'C'], ['slug', 'B']], ['audience'], languages];
+    expect(rows).toEqual([{ fingerprint: createHash('sha256').update(JSON.stringify(definition), 'utf8').digest('hex') }]);
   });
 
   it('resumes under the same definition', async () => {
