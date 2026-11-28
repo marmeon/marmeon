@@ -133,6 +133,10 @@ await internal.fetch('http://10.20.3.4/status');
 
 `allowing()` returns a new client and leaves the first as it was. A range that is not a range is a `TypeError`.
 
+The `meilisearch` search driver works this way. For each of its requests it allows the addresses that the host of
+`SEARCH_MEILISEARCH_URL` resolves to, and it follows no redirect. `FETCH_ALLOWED_ADDRESSES` stays unchanged, so the rest of your app
+still cannot reach that server. See [Meilisearch](full-text-search.md#meilisearch).
+
 ## Configuration
 
 | Variable | Default | Effect |

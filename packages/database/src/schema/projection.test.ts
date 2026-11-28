@@ -8,7 +8,9 @@ import { drivers, freshConnections, type TestDriver } from '../__fixtures__/data
 import { deriveRelations, introspect, tableColumns, type CatalogQuery } from '../introspection.ts';
 import { Migrator, type Connections } from '../index.ts';
 import { isMigratorTable } from '../migration-state.ts';
+import { declareDerivedSchema, derivedSchemaOf, type DerivedSchemaEntry } from '../derived-schema.ts';
 import { loadMigration } from '../migrations/load.ts';
+import { derivedTablesOf } from '../migrations/migrator.ts';
 import { runMigration } from '../migrations/run.ts';
 import { kindOf } from '../metadata.ts';
 import { columnType } from '../types-gen/render.ts';
@@ -811,26 +813,40 @@ async function generatedColumns(run: CatalogQuery, driver: TestDriver): Promise<
   return new Set(rows.filter((row) => row.generated === true || row.generated === 1).map((row) => `${row.t}\0${row.c}`));
 }
 
-/** Runs the migrations of `modules` on one fresh database — whatever connection they name — and compares the projection with what the database says. */
-async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Promise<void> {
+/**
+ * Runs the migrations of `modules` on one fresh database — whatever connection they name — and compares the projection with what the
+ * database says. `derived` is what a framework package declares with `declareDerivedSchema` (`owner` names it): exactly those tables
+ * (on SQLite with the shadow tables of a declared virtual table) and columns stay out, as they stay out of the migrate notice.
+ */
+async function expectParity(driver: TestDriver, modules: ModuleDefinition[], derived?: { owner: string; entry: DerivedSchemaEntry }, extra?: string): Promise<void> {
   const { connections, close } = await freshConnections(driver);
   try {
-    const migrator = new Migrator({ modules, root: workspaceTempDir('marmeon-projection-') } as unknown as Application, connections);
+    const app = { modules, root: workspaceTempDir('marmeon-projection-') } as unknown as Application;
+    if (derived) declareDerivedSchema(app, derived.owner, derived.entry);
+    const migrator = new Migrator(app, connections);
     // One scratch database of every table: the plans run on `default`, as the types are generated for all connections at once.
     for (const file of migrator.files()) await runMigration(connections, await loadMigration(file));
+    // A statement no migration describes, for the tests that prove an undeclared object still breaks parity.
+    if (extra !== undefined) await sql.raw(extra).execute(connections.get());
     const projection = await migrator.projection();
     const run = catalog(connections);
     const real = await introspect(run, driver);
     const all = await tableColumns(run, driver);
     const mine = factsOf(projection, driver);
-    const own = (name: string) => !isMigratorTable(name, undefined) && name !== 'sqlite_sequence';
+    const declared = derivedSchemaOf(app, 'default');
+    const derivedTables = await derivedTablesOf(connections.get<any>(), driver, declared.tables);
+    const own = (name: string) => !isMigratorTable(name, undefined) && name !== 'sqlite_sequence' && !derivedTables.has(name);
+    const derivedColumn = (name: string, column: string) => declared.columns.get(name)?.has(column) === true;
     const tables = projection.tables;
 
-    // Tables, columns and their order.
+    // Tables, columns and their order; a table no migration describes is named on its own.
+    expect([...all.types.keys()].filter((name) => own(name) && !tables.has(name)).sort(), 'tables no migration describes').toEqual([]);
     expect([...all.types.keys()].filter(own).sort()).toEqual([...tables.keys()].sort());
-    for (const [name, types] of all.types) {
+    for (const [name, allTypes] of all.types) {
       if (!own(name)) continue;
+      const types = new Map([...allTypes].filter(([column]) => !derivedColumn(name, column)));
       const projected = tables.get(name)!;
+      expect([...types.keys()].filter((column) => !projected.columns.some((c) => c.name === column)), `columns of ${name} no migration describes`).toEqual([]);
       expect(projected.columns.map((c) => c.name), `columns of ${name}`).toEqual([...types.keys()]);
       // What the database has beyond the columns Marmeon knows is exactly what the migrations retired.
       expect(mine.columns.get(name), `known columns of ${name}`).toEqual(projected.columns.filter((c) => !c.retired).map((c) => c.name));
@@ -846,11 +862,13 @@ async function expectParity(driver: TestDriver, modules: ModuleDefinition[]): Pr
     // The database keeps the constraints of a retired column; Marmeon does not know them.
     const retired = (name: string, column: string) => tables.get(name)?.columns.find((c) => c.name === column)?.retired === true;
     expect(mine.foreignKeys).toEqual(real.foreignKeys.filter((key) => own(key.table) && !retired(key.table, key.column)));
+    // A unique index that raw SQL makes is unknown to the projection: the search table's, which MySQL could not hold as a blueprint index.
+    const rawUnique = (name: string, set: readonly string[]) => name === 'search_documents' && set.join(',') === 'index_name,key';
     expect(Object.fromEntries(mine.uniques)).toEqual(
       Object.fromEntries(
         [...real.uniques]
           .filter(([name]) => own(name))
-          .map(([name, sets]) => [name, sets.filter((set) => !set.some((column) => retired(name, column)))] as const),
+          .map(([name, sets]) => [name, sets.filter((set) => !rawUnique(name, set) && !set.some((column) => retired(name, column)))] as const),
       ),
     );
     expect(Object.fromEntries(mine.primaryKeys)).toEqual(Object.fromEntries([...real.primaryKeys].filter(([name]) => own(name))));
@@ -882,8 +900,35 @@ describe.each(drivers)('the projection against the catalog on %s', (driver) => {
   }
 
   // A database of its own, and every migration of the web app on it: on Postgres the longest work of the file.
+  // The web app has the search table of @marmeon/search, which makes these with raw SQL and declares them (DERIVED_SCHEMA in
+  // packages/search/src/drivers/database/index.ts); the package is not a dependency of this one, so its entry is written out here.
+  const search = { owner: '@marmeon/search', entry: { tables: ['search_documents_fts'], columns: { search_documents: ['vector'] } } };
+
   it('matches the database that the migrations of the web app migrate', { timeout: 30_000 }, async () => {
-    await expectParity(driver, appMigrations('web-app'));
+    await expectParity(driver, appMigrations('web-app'), search);
+  });
+
+  /** The failed parity check of a run: its message up to the colon and the list it found, which the message itself cuts short. */
+  const refusal = async (run: Promise<void>) => {
+    const error = (await run.then(() => undefined, (caught: unknown) => caught)) as { message: string; actual?: unknown } | undefined;
+    return { check: error?.message.split(':')[0], found: error?.actual };
+  };
+
+  it('does not match it when the raw objects of the search table are not declared', { timeout: 30_000 }, async () => {
+    // Undeclared, either breaks parity: SQLite has the FTS5 table and its shadow tables, Postgres the column `vector`.
+    const found = await refusal(expectParity(driver, appMigrations('web-app'), { owner: '@marmeon/search', entry: {} }));
+    expect(found).toEqual(
+      driver === 'sqlite'
+        ? { check: 'tables no migration describes', found: ['search_documents_fts', 'search_documents_fts_config', 'search_documents_fts_data', 'search_documents_fts_docsize', 'search_documents_fts_idx'] }
+        : { check: 'columns of search_documents no migration describes', found: ['vector'] },
+    );
+  });
+
+  it('does not match it when a table the declaration does not cover is there, even one named like a shadow table', async () => {
+    // A plain table, not a shadow of the declared virtual table by SQLite's word: it is the app's, so parity breaks.
+    const [group] = Object.keys(GROUPS);
+    const found = await refusal(expectParity(driver, groupModules(group!), search, 'create table search_documents_fts_data (id integer)'));
+    expect(found).toEqual({ check: 'tables no migration describes', found: ['search_documents_fts_data'] });
   });
 
   it('matches the database that the migrations of the blank app migrate', async () => {

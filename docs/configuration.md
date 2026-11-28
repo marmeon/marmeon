@@ -439,7 +439,7 @@ holds this table to the code. A feature's page explains its variables; the last 
 The names follow a few rules:
 
 - A variable starts with the prefix of its area (`APP_`, `AUTH_`, `HASH_`, `CACHE_`, `CHAT_`, `CSRF_`, `DB_`, `DEVTOOLS_`, `FETCH_`, `LIVE_`, `LOG_`,
-  `MAIL_`, `NOTIFICATIONS_`, `OAUTH_`, `QUEUE_`, `REDIS_`, `SCHEDULE_`, `SERVER_`, `SESSION_`, `UPLOADS_`, `MARMEON_OTEL_`). Only `NODE_ENV`,
+  `MAIL_`, `NOTIFICATIONS_`, `OAUTH_`, `QUEUE_`, `REDIS_`, `SCHEDULE_`, `SEARCH_`, `SERVER_`, `SESSION_`, `UPLOADS_`, `MARMEON_OTEL_`). Only `NODE_ENV`,
   `PORT` and `HOST` have none, because platforms set them, and the names of the OpenTelemetry specification stay as it writes them.
 - `<AREA>_DRIVER` picks the driver. `<AREA>_CONNECTION` names a connection of the database or of Redis, and nothing else.
 - A duration says its unit: `_MILLISECONDS`, `_SECONDS`, `_MINUTES`, `_HOURS` or `_DAYS`. A rate ends in `_PER_MINUTE` or
@@ -575,6 +575,9 @@ The Kind column says which rule a variable falls under: `driver`, `connection`, 
 | `REDIS_PREFIX` | redis | value | optional | [Redis](redis.md#configuration) |
 | `REDIS_URL` | redis | value | `"redis://127.0.0.1:6379"` | [Redis](redis.md#configuration) |
 | `SCHEDULE_TIMEZONE` | scheduler | value | `"UTC"` | [Task Scheduling](scheduling.md#configuration) |
+| `SEARCH_DRIVER` | search | driver | `"database"` | [Search](full-text-search.md#configuration) |
+| `SEARCH_MEILISEARCH_API_KEY` | search | value | `""` | [Search](full-text-search.md#configuration) |
+| `SEARCH_MEILISEARCH_URL` | search | value | `""` | [Search](full-text-search.md#configuration) |
 | `SERVER_ASSET_VERSION` | server | value | optional | [Deployment](deployment.md#configuration) |
 | `SERVER_HEALTH_PATH` | server | value | `"/up"` | [Deployment](deployment.md#health-checks) |
 | `SERVER_KEEP_ALIVE_TIMEOUT_SECONDS` | server | duration | `65` | [Deployment](deployment.md#configuration) |

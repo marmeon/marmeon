@@ -57,6 +57,7 @@ import type { RenameProfileLinkController } from '../modules/user-profile/contro
 import type { ResendVerificationController } from '../modules/auth/controllers/ResendVerificationController.ts';
 import type { ResetPasswordController } from '../modules/auth/controllers/ResetPasswordController.ts';
 import type { RevokeAccessTokenController } from '../modules/auth/controllers/RevokeAccessTokenController.ts';
+import type { SearchHandbookController } from '../modules/handbook/controllers/SearchHandbookController.ts';
 import type { SearchProfileLinksController } from '../modules/user-profile/controllers/SearchProfileLinksController.ts';
 import type { SendPasswordResetLinkController } from '../modules/auth/controllers/SendPasswordResetLinkController.ts';
 import type { ShowAboutController } from '../modules/about/controllers/ShowAboutController.ts';
@@ -170,6 +171,7 @@ declare module '@marmeon/router' {
     'dashboard.panels': { method: 'get'; path: '/dashboard/panels'; controller: typeof ShowPanelsController };
     'dashboard.show': { method: 'get'; path: '/dashboard'; controller: typeof ShowDashboardController };
     'dashboard.sign-ins': { method: 'get'; path: '/dashboard/islands/sign-ins'; controller: typeof ShowRecentSignInsController };
+    'handbook.search': { method: 'get'; path: '/handbook/search'; controller: typeof SearchHandbookController };
     'help.page': { method: 'get'; path: '/:locale/help/:path*'; controller: typeof ShowHelpPageController; localized: true };
     'locale.update': { method: 'post'; path: '/locale'; controller: typeof UpdateLocaleController };
     'members.directory': { method: 'get'; path: '/members/directory'; controller: typeof ListMembersController };
@@ -271,6 +273,7 @@ declare module '@marmeon/http/page' {
     'dashboard/Panels': true;
     'dashboard/RecentSignIns': true;
     'dashboard/Show': true;
+    'handbook/Search': true;
     'help/Show': true;
     'lab/BrowserOnly': true;
     'lab/Chat': true;

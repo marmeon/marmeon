@@ -119,6 +119,7 @@ export declare class TestApp {
     get mail(): MailFake;
     get http(): HttpClientFake;
     get chat(): ChatFake;
+    get search(): SearchFake;
     get queue(): QueueFake;
     get notifications(): NotificationFake;
     get storage(): StorageFake;
@@ -192,6 +193,7 @@ export interface TestAppOptions {
     mail?: 'fake' | 'real';
     http?: 'fake' | 'real';
     chat?: 'fake' | 'real';
+    search?: 'fake' | 'real';
     queue?: 'fake' | 'real';
     notifications?: 'fake' | 'real';
     storage?: 'fake' | 'real';

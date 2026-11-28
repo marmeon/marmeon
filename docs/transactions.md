@@ -77,6 +77,7 @@ again is up to you. A row lock is `forUpdate()` and its siblings (`forShare()`, 
 | Queued listeners, `mailer.queue()`, `notifications.send()` | Jobs, queued like `queue.dispatch()`. |
 | `notifications.sendNow()` | When `NOTIFICATIONS_CONNECTION` is the transaction's connection, its row is written inside it. On another connection the row is committed by a transaction of its own and survives a rollback. Its mail is queued like `mailer.queue()` either way. |
 | `broadcast.refresh()` | Sent once the outermost transaction committed. A rollback sends nothing. |
+| `search.index()`, `search.remove()` | On the `database` search driver, written inside the transaction. On a driver that writes through the queue, such as `meilisearch`, a job queued like `queue.dispatch()`. A rollback leaves nothing in the index either way. See [search](full-text-search.md#keeping-the-index-current). |
 | The database cache with its rate limits and locks, the database sessions, uploads | **Never join.** On Postgres, and on SQLite with a file of their own, they write on [a connection of their own](database.md#infrastructure-connections), and their writes survive a rollback. With the app's own SQLite file, and in a test's refreshed database, they throw `InfrastructureTransactionError` inside a transaction. |
 | `mailer.send()`, a file written to a disk, a call to another service | Happen at once and are not undone. Use [`afterCommit()`](#after-the-commit). |
 

@@ -4,6 +4,9 @@ The app every framework feature is shown and tested in (`modules/auth`, `modules
 `modules/members`, `modules/notifications`, `modules/locale`, `modules/lab`, `modules/system`). `/members` is a server-driven table
 ([@marmeon/table](../../docs/tables.md#defining-a-table)): Ada (an administrator, `DASHBOARD_ADMINS`) sees the e-mail column, removes
 profile links (one member or many) and downloads the list as CSV; Alan and Grace see the table without them.
+`/handbook/search` searches the articles and questions of `modules/handbook` together
+([@marmeon/search](../../docs/full-text-search.md#searching)), in the visitor's language: a guest finds the public ones, a member with a
+confirmed address also those for members.
 
 ```bash
 cp .env.example .env && pnpm exec marmeon key:generate

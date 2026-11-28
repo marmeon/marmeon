@@ -35,6 +35,7 @@ export const FRAMEWORK_PACKAGES: ReadonlyMap<string, FrameworkPackage> = new Map
   ['@marmeon/redis', { dev: false, migrations: false, docs: 'redis' }],
   ['@marmeon/router', { dev: false, migrations: false, docs: 'navigation' }],
   ['@marmeon/scheduler', { dev: false, migrations: false, docs: 'scheduling' }],
+  ['@marmeon/search', { dev: false, migrations: true, docs: 'full-text-search' }],
   ['@marmeon/server', { dev: false, migrations: false, docs: 'deployment' }],
   ['@marmeon/session', { dev: false, migrations: true, docs: 'session' }],
   ['@marmeon/storage', { dev: false, migrations: true, docs: 'storage' }],

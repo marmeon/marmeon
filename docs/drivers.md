@@ -41,6 +41,7 @@ A provider lists drivers in a static record, by name. The record's key tells whi
 | `mailDrivers` | [Mail transports](#mail-transports) | `MAIL_DRIVER` |
 | `fetchDrivers` | [Fetch transports](#fetch-transports) | `FETCH_DRIVER` |
 | `chatDrivers` | [Chat drivers](#chat-drivers) | `CHAT_DRIVER`, or `driver` of a destination |
+| `searchDrivers` | [Search](#search-drivers) | `SEARCH_DRIVER` |
 
 A driver reads its own settings through a configuration of its own, which its provider lists in `static config`
 ([package development](package-development.md#configuration)). The factory resolves what it needs from the `container` it is given.
@@ -426,3 +427,62 @@ nobody brought, when an entry of `CHAT_WEBHOOKS` is not `name=address` or repeat
 selects is built wrongly (it has no `render()`, an empty `hosts` or `paths`, or a host or prefix the check refuses, such as an IP
 address, a port or a bare `*`), or when an entry of `CHAT_WEBHOOKS` is an address that driver does not accept (`log` has no list to check against). A driver that no
 `CHAT_DRIVER` selects is built when a destination first names it, and fails there.
+
+## Search drivers
+
+A search driver keeps the indexes of [search](full-text-search.md) and runs the searches. It is a `SearchDriverFactory`: it gets the
+`name` it was registered under, the `container` and a `logger` of the `search` channel, and returns a `SearchDriver`.
+`SEARCH_DRIVER` selects it. The built-in drivers are `database` and `meilisearch`.
+
+```ts title="src/TypesenseServiceProvider.ts"
+import type { SearchDriverFactory } from '@marmeon/search';
+
+const typesense: SearchDriverFactory = ({ container }) => new TypesenseSearchDriver(container.make(TypesenseConfig));
+
+export class TypesenseServiceProvider {
+  static config = [TypesenseConfig];
+  static searchDrivers = { typesense };
+}
+```
+
+```sh title=".env"
+SEARCH_DRIVER=typesense
+```
+
+A driver declares in `writes` how search brings changes to it:
+
+| `writes` | What search does |
+| --- | --- |
+| `'transaction'` | Calls `upsert()` and `delete()` inside the caller's database transaction, or inside a transaction of its own per batch. The driver writes through the app's database, so a rollback takes its writes back. On Postgres, search first takes transaction-scoped advisory locks on the slots of its documents (see [Postgres](full-text-search.md#postgres)), so two writes of one document never interleave. |
+| `'queue'` | Queues the job `marmeon.search.sync` with the index name and the keys. The job reads the rows when it runs and calls `upsert()` and `delete()`. The app needs `@marmeon/queue`, or the start stops with [Q9](errors.md#server-error-codes). |
+| `'after-commit'` | Reads the documents at the call and calls `upsert()` and `delete()` once the transaction has committed, never after a rollback. After a write of `index()` it reads the rows again and writes once more while they changed, up to three writes; a row that changes after each of them makes the call throw. The read follows the write, so `upsert()` and `delete()` resolve only once the write is applied, and a driver whose writes can still overtake each other keeps the order itself. `remove()` is not read again. |
+
+Search checks what it hands to the driver, and what the driver hands back:
+
+- `upsert(index, documents)` gets at most 500 documents. Each holds only declared fields and filters, a canonical locale or `null`,
+  texts without NUL and without the two characters that mark matches, and filter strings without NUL.
+- `delete(index, keys)` gets at most 500 keys.
+- `query(request)` gets at least one token, and the tokens hold no syntax. `term` is the text the user typed, normalized and cut,
+  but with its web-search syntax: bind it as a parameter and never put it into a query string. The filters are declared by every
+  index of the search, each with a value or a non-empty list of values. `offset` is a whole multiple of `limit`, and `offset` plus `limit` is at most 1000.
+- A hit carries a valid key and a finite score.
+- An outage or a missing index comes back from `query()` as an `err` with the `kind` `unavailable` or `missing-index`, never as a
+  throw. Its `message` names no secret.
+
+A driver returns each key with the type `upsert()` got it. Search throws a `TypeError` for a hit whose key is no valid key or whose
+score is no finite number, and for a failure of another kind. `flush(index)` removes every
+document of an index. `index` is the `IndexInfo` of the index: its name, its key column, its fields with their weights and its
+filters.
+
+A driver must have `writes`, `upsert`, `delete`, `query` and `flush`. The start builds the selected driver and stops with
+[Q9](errors.md#server-error-codes) when one of them is missing, when `writes` is not one of the three values, or when an optional
+member is set but is no method. The optional members:
+
+| Member | Without it |
+| --- | --- |
+| `boot(app)` | Nothing is checked at the start. With it, the start runs it once after the driver was built, and a check that throws stops the start. |
+| `prepare(index, target?)` | A rebuild prepares nothing. With it, a rebuild creates the index, or the target it fills, and applies its settings. |
+| `swap(index, target)` | A rebuild writes into the index itself and removes no document of a deleted row: only the built-in `database` driver is swept. With it, a rebuild fills a separate target and swaps it in at the end. While a rebuild runs, the job `marmeon.search.sync` writes to that target too, so a driver with `swap()` must write through the queue: with any other `writes`, the start stops with [Q9](errors.md#server-error-codes). The job writes to the target first and to the index second, so a swap between the two loses nothing. When the write to the target fails, the job still writes the index until it holds the newest state, and then the attempt fails and tries again. The job reads the table `search_rebuilds`, and `/up/ready` stays red until the [migration of the package](full-text-search.md#rebuilding-and-flushing) has run. |
+| `discard(index, target)` | A rebuild or `search:flush` empties the target of a run that cannot go on with `flush()`, and the target stays behind. A `flush()` that throws there does not stop them, since that target never goes live again, but the target may then still hold documents: they print its name, so you can delete it by hand. With it, they delete that target. |
+| `inspect(indexes, { signal })` | `marmeon check` reports nothing for search. With it, the check [`search-indexes`](check.md#the-app-checks) reports every `SearchProblem` it returns as an error with [Q9](errors.md#server-error-codes): its `index`, when set, starts the message, and its `fix` is shown as the command that fixes it. Name no secret in either. `signal` aborts when the check runs out of time: send nothing more after that. |
+| `close()` | Nothing is released at the shutdown. With it, the shutdown calls it once. |

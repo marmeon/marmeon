@@ -386,6 +386,9 @@ importers:
       '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
+      '@marmeon/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@marmeon/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -1210,6 +1213,28 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(typescript@7.0.2)
 
+  packages/search:
+    dependencies:
+      '@marmeon/core':
+        specifier: workspace:*
+        version: link:../core
+      valibot:
+        specifier: ^1.5.0
+        version: 1.5.0(typescript@7.0.2)
+    devDependencies:
+      '@marmeon/database':
+        specifier: workspace:*
+        version: link:../database
+      '@marmeon/fetch':
+        specifier: workspace:*
+        version: link:../fetch
+      '@marmeon/queue':
+        specifier: workspace:*
+        version: link:../queue
+      marmeon:
+        specifier: workspace:*
+        version: link:../cli
+
   packages/server:
     dependencies:
       '@hono/node-server':
@@ -1397,6 +1422,9 @@ importers:
       '@marmeon/scheduler':
         specifier: workspace:*
         version: link:../scheduler
+      '@marmeon/search':
+        specifier: workspace:*
+        version: link:../search
       '@marmeon/session':
         specifier: workspace:*
         version: link:../session

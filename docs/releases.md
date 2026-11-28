@@ -251,7 +251,7 @@ Some formats have no version of their own and are kept stable another way:
   does so with the same care as a renamed column.
 
 Fixtures sit under `__fixtures__/formats/`, one per version: the page and region object, the job record, the Redis member, queued
-listeners, mails, notifications and chat messages, the session payload, the pagination cursor, the CSV export, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
+listeners, mails, notifications, chat messages and search sync jobs, the session payload, the pagination cursor, the CSV export, the record of migrations, the encrypted value, API tokens, the live stream, its query and the messages between nodes, the manifest of copied files and the `--json` documents. A test reads each
 directory with the current code. A pull request that changes or deletes a fixture is a `breaking` one. [Changing a stored or wire format](../CONTRIBUTING.md#changing-a-stored-or-wire-format)
 says how a format moves on.
 

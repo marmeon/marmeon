@@ -31,6 +31,7 @@ packages=(
   @marmeon/redis
   @marmeon/router
   @marmeon/scheduler
+  @marmeon/search
   @marmeon/server
   @marmeon/session
   @marmeon/storage

@@ -3,6 +3,7 @@
  * @internal
  */
 export { DatabaseConfig } from './config.ts';
+export { declareDerivedSchema, type DerivedSchemaEntry } from './derived-schema.ts';
 export { publishOwnMigrations } from './commands/publish.ts';
 export { Seeding } from './seeders.ts';
 export { leaveOutSelections, selectionsOf } from './selections.ts';
